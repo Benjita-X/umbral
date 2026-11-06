@@ -1,0 +1,10 @@
+# Archivos generados por tools/construir.mjs (se rehacen con un comando)
+build/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+*.rbxl.lock
+*.rbxlx.lock
+.vscode/
+node_modules/
