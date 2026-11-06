@@ -399,24 +399,76 @@ return function(ctx)
 	local request = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SolicitudGolpe")
 	local mA, hA = dummy("Muneco1")
 
+	local startRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("InicioAtaque")
+	local Workspace = game:GetService("Workspace")
+	local function serverNow()
+		return Workspace:GetServerTimeNow()
+	end
+	-- Los inicios falsos usan números de secuencia propios; después se adelanta la secuencia del cliente
+	-- para que sus golpes legítimos siguientes no choquen con ellos.
+	local fakeSeq = Combat.State.sequence + 1000
+	local function nextFake()
+		fakeSeq += 1
+		return fakeSeq
+	end
+	local function rejectedAfter(before, fire)
+		fire()
+		waitUntil(function()
+			return (player:GetAttribute("GolpesRechazados") or 0) > before
+		end, 1.5)
+		task.wait(0.1)
+		return (player:GetAttribute("GolpesRechazados") or 0) - before, tostring(player:GetAttribute("UltimoRechazo"))
+	end
+
 	openArea() -- a más de 100 studs del muñeco
 	local healthBefore = hA.Health
-	request:FireServer({ attack = "Jab", seq = Combat.State.sequence + 1000, target = mA, charge = 0 })
-	waitUntil(function()
-		return (player:GetAttribute("GolpesRechazados") or 0) > rejectedBefore
-	end, 1)
-	record(
-		"Rechaza golpes imposibles por distancia",
-		(player:GetAttribute("GolpesRechazados") or 0) == rejectedBefore + 1 and hA.Health == healthBefore,
-		"motivo: " .. tostring(player:GetAttribute("UltimoRechazo"))
-	)
+	-- Inicio legal y hora correcta, pero el muñeco está lejos: lo debe rechazar la geometría
+	local seqFar = nextFake()
+	local count, reason = rejectedAfter(rejectedBefore, function()
+		startRemote:FireServer(seqFar, "Jab", serverNow())
+		task.wait(Config.Attacks.Jab.startup + 0.02)
+		request:FireServer({ attack = "Jab", seq = seqFar, target = mA, charge = 0, t = serverNow(), pos = ctx.root.Position, look = ctx.root.CFrame.LookVector })
+	end)
+	record("Rechaza golpes imposibles por distancia", count == 1 and hA.Health == healthBefore and string.find(reason, "alcance", 1, true) ~= nil, "motivo: " .. reason)
 
 	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
-	request:FireServer({ attack = "Kamehameha", seq = Combat.State.sequence + 2000, target = mA, charge = 0 })
-	waitUntil(function()
-		return (player:GetAttribute("GolpesRechazados") or 0) > rejectedBefore
-	end, 1)
-	record("Rechaza ataques inventados", (player:GetAttribute("GolpesRechazados") or 0) == rejectedBefore + 1, "motivo: " .. tostring(player:GetAttribute("UltimoRechazo")))
+	count, reason = rejectedAfter(rejectedBefore, function()
+		request:FireServer({ attack = "Kamehameha", seq = nextFake(), target = mA, charge = 0, t = serverNow() })
+	end)
+	record("Rechaza ataques inventados", count == 1, "motivo: " .. reason)
+
+	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
+	count, reason = rejectedAfter(rejectedBefore, function()
+		request:FireServer({ attack = "Jab", seq = nextFake(), target = mA, charge = 0, t = serverNow() - 3, pos = ctx.root.Position })
+	end)
+	record("Rechaza golpes con hora manipulada", count == 1 and string.find(reason, "hora", 1, true) ~= nil, "motivo: " .. reason .. " (hora 3 s en el pasado)")
+
+	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
+	count, reason = rejectedAfter(rejectedBefore, function()
+		request:FireServer({ attack = "Patada", seq = nextFake(), target = mA, charge = 0, t = serverNow(), pos = ctx.root.Position })
+	end)
+	record("Rechaza golpes sin inicio de ataque", count == 1 and string.find(reason, "inicio", 1, true) ~= nil, "motivo: " .. reason)
+
+	-- Secuencia ilegal: tras un Jab no puede venir una Patada (se salta el Directo)
+	task.wait(0.4)
+	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
+	count, reason = rejectedAfter(rejectedBefore, function()
+		startRemote:FireServer(nextFake(), "Jab", serverNow())
+		task.wait(0.25)
+		startRemote:FireServer(nextFake(), "Patada", serverNow())
+	end)
+	record("Rechaza combos fuera de orden", count == 1 and string.find(reason, "secuencia ilegal", 1, true) ~= nil, "motivo: " .. reason)
+
+	-- Ráfaga: dos inicios más rápido de lo que dura un ataque
+	task.wait(0.4)
+	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
+	count, reason = rejectedAfter(rejectedBefore, function()
+		startRemote:FireServer(nextFake(), "Jab", serverNow())
+		startRemote:FireServer(nextFake(), "Jab", serverNow())
+	end)
+	record("Rechaza ataques más rápidos que posible", count == 1 and string.find(reason, "después del anterior", 1, true) ~= nil, "motivo: " .. reason)
+	Combat.State.sequence = fakeSeq + 10
+	task.wait(0.4)
 
 	prepare("Muneco1", 3.2)
 	c0 = #confirms
@@ -424,17 +476,15 @@ return function(ctx)
 	waitUntil(function()
 		return #confirms > c0
 	end, 1)
+	task.wait(0.05)
 	rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
 	healthBefore = hA.Health
-	request:FireServer({ attack = "Jab", seq = Combat.State.sequence, target = mA, charge = 0 }) -- el mismo golpe otra vez
-	waitUntil(function()
-		return (player:GetAttribute("GolpesRechazados") or 0) > rejectedBefore
-	end, 1)
-	record(
-		"Rechaza golpes repetidos",
-		(player:GetAttribute("GolpesRechazados") or 0) == rejectedBefore + 1 and hA.Health == healthBefore,
-		"motivo: " .. tostring(player:GetAttribute("UltimoRechazo"))
-	)
+	-- El mismo golpe otra vez, con hora y posición válidas: solo lo frena la regla de repetidos
+	local lastConfirmedSeq = Combat.State.sequence
+	count, reason = rejectedAfter(rejectedBefore, function()
+		request:FireServer({ attack = "Jab", seq = lastConfirmedSeq, target = mA, charge = 0, t = serverNow(), pos = ctx.root.Position, look = ctx.root.CFrame.LookVector })
+	end)
+	record("Rechaza golpes repetidos", count == 1 and hA.Health == healthBefore, "motivo: " .. reason)
 
 	-- ---------- 10. Poses en el impacto ----------
 	-- forward 1 = la extremidad apunta recta al frente; 0,75 ≈ menos de 41° de desvío

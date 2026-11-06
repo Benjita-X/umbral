@@ -35,14 +35,44 @@ function ResonanceService.Touch(player)
 	info(player).lastCombat = os.clock()
 end
 
--- Suma por un motivo de CombatConfig.Resonance.Gains (respeta el tope por segundo)
-function ResonanceService.Gain(player, reason)
+-- Suma por un motivo de CombatConfig.Resonance.Gains. Límites anti-abuso:
+--   · tope por segundo (MaxGainPerSecond)
+--   · por rival (`source`): como máximo SourceCap cada SourceWindow segundos
+--   · `repeatKey` repetido seguido contra el mismo rival: ×RepeatDecay cada vez
+function ResonanceService.Gain(player, reason, source, repeatKey)
 	local amount = settings.Gains[reason]
 	if not amount then
 		return 0
 	end
 	local i = info(player)
 	local now = os.clock()
+
+	if source then
+		i.bySource = i.bySource or {}
+		local s = i.bySource[source]
+		if not s then
+			s = { gains = {}, lastKey = nil, lastKeyTime = -math.huge, repeats = 0 }
+			i.bySource[source] = s
+		end
+		if repeatKey then
+			if repeatKey == s.lastKey and now - s.lastKeyTime <= settings.RepeatWindow then
+				s.repeats += 1
+			else
+				s.repeats = 0
+			end
+			s.lastKey, s.lastKeyTime = repeatKey, now
+			amount *= settings.RepeatDecay ^ s.repeats
+		end
+		while s.gains[1] and now - s.gains[1].t > settings.SourceWindow do
+			table.remove(s.gains, 1)
+		end
+		local fromSource = 0
+		for _, g in ipairs(s.gains) do
+			fromSource += g.amount
+		end
+		amount = math.min(amount, settings.SourceCap - fromSource)
+	end
+
 	local gains = i.recentGains
 	while gains[1] and now - gains[1].t > 1 do
 		table.remove(gains, 1)
@@ -52,6 +82,9 @@ function ResonanceService.Gain(player, reason)
 		recent += g.amount
 	end
 	local granted = math.max(0, math.min(amount, settings.MaxGainPerSecond - recent))
+	if source and granted > 0 then
+		table.insert(i.bySource[source].gains, { t = now, amount = granted })
+	end
 	if granted > 0 then
 		table.insert(gains, { t = now, amount = granted })
 		set(player, ResonanceService.Get(player) + granted)
@@ -77,9 +110,15 @@ function ResonanceService.Start()
 	spendRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	spendRemote.OnServerEvent:Connect(function(player, kind)
 		if kind == "paso" then
-			if not ResonanceService.Spend(player, settings.DashCost) then
+			-- Autoridad del servidor: como mucho un Paso extra cada ExtraDashCooldown (con un pequeño margen
+			-- por la variación de la red), y solo si alcanza la Resonancia
+			local i = info(player)
+			local now = os.clock()
+			if now - (i.lastExtraDash or -math.huge) < settings.ExtraDashCooldown - 0.15 or not ResonanceService.Spend(player, settings.DashCost) then
 				player:SetAttribute("GastosRechazados", (player:GetAttribute("GastosRechazados") or 0) + 1)
+				return
 			end
+			i.lastExtraDash = now
 		end
 	end)
 

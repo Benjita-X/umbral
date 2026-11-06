@@ -90,6 +90,54 @@ function CombatHUD.Start(combat)
 		end)
 	end)
 
+	-- Avisos grandes de la Grieta (Guardián vencido / se levanta)
+	local banner = Instance.new("TextLabel")
+	banner.Name = "AvisoGrieta"
+	banner.AnchorPoint = Vector2.new(0.5, 0.5)
+	banner.Position = UDim2.fromScale(0.5, 0.24)
+	banner.Size = UDim2.new(0.7, 0, 0, 70)
+	banner.BackgroundTransparency = 1
+	banner.Font = Enum.Font.GothamBlack
+	banner.TextScaled = true
+	banner.TextColor3 = Color3.fromRGB(205, 160, 255)
+	banner.TextStrokeTransparency = 0.1
+	banner.Visible = false
+	banner.Parent = gui
+	local bannerSub = Instance.new("TextLabel")
+	bannerSub.AnchorPoint = Vector2.new(0.5, 0)
+	bannerSub.Position = UDim2.new(0.5, 0, 1, 4)
+	bannerSub.Size = UDim2.new(1, 0, 0, 26)
+	bannerSub.BackgroundTransparency = 1
+	bannerSub.Font = Enum.Font.GothamBold
+	bannerSub.TextScaled = true
+	bannerSub.TextColor3 = Color3.fromRGB(235, 225, 255)
+	bannerSub.TextStrokeTransparency = 0.3
+	bannerSub.Parent = banner
+	local bannerToken = 0
+	task.spawn(function()
+		local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("AvisoGrieta", 30)
+		if not remote then
+			return
+		end
+		remote.OnClientEvent:Connect(function(data)
+			if type(data) ~= "table" then
+				return
+			end
+			bannerToken += 1
+			local token = bannerToken
+			banner.Text = tostring(data.title or "")
+			bannerSub.Text = tostring(data.subtitle or "")
+			banner.Visible = true
+			banner.TextTransparency = 1
+			TweenService:Create(banner, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
+			task.delay(3.5, function()
+				if bannerToken == token then
+					banner.Visible = false
+				end
+			end)
+		end)
+	end)
+
 	combat.Hit:Connect(function()
 		local s = combat.State
 		count.Text = string.format("x%d COMBO", s.comboHits)

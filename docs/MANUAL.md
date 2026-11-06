@@ -29,13 +29,13 @@ Este manual es para que sigas desarrollando UMBRAL **tú mismo**, con otra IA co
 |---|---|
 | **Fase 1 · Movimiento** | ✅ Terminada y probada (carrera, sprint automático, Paso, salto, doble salto, coyote time, búfer de salto) |
 | **Fase 2 · Combate corporal** | ✅ Terminada y probada (combo Jab → Directo → Patada, golpe fuerte con carga, guardia, hitstop, efectos, muñecos, daño validado en el servidor) |
-| **Fase 3 · Defensa** | 🟡 Casi lista en `main`: desvío, desvío perfecto, guardia, postura, ruptura, Contrapaso, Contraataque, Resonancia, compañero de combate que ataca. **4 pruebas de defensa fallan** (sección 10) |
-| **Auditoría de la Fase 3** | 🟠 A medias en la rama `auditoria-fase3` (sección 8). No usar hasta terminarla |
+| **Fase 3 · Defensa** | ✅ Integrada y probada (ver `docs/ESTADO.md` para los defectos conocidos) |
+| **Auditoría de la Fase 3** | ✅ Integrada en `main` el 2026-11-06 (ver `docs/AUDITORIA-FASE3.md`). La sección 8 queda como historia |
 | Mundo, historia, Ecos, tienda | ⏳ No empezado (a propósito: primero el combate) |
 
 **Versiones guardadas en Git:**
-- `main` → `74a9942`: la versión estable. Las pruebas dan 78 de 82.
-- `auditoria-fase3` → `9b4edd0`: la auditoría sin terminar.
+- `main`: versión consolidada (fases 1-3 + auditoría + arena + La Grieta).
+- `respaldo/main-pre-consolidacion` y `respaldo/auditoria-fase3-wip`: etiquetas con el estado anterior, por si hay que volver.
 
 **Dónde está todo:** `C:\Users\bxnjvv\JUEGOSCLAUDE\umbral`
 
@@ -365,7 +365,9 @@ problema del juego o de la prueba?
 
 ---
 
-## 8. Terminar la auditoría (rama `auditoria-fase3`)
+## 8. Terminar la auditoría (rama `auditoria-fase3`) — HECHO el 2026-11-06
+
+> Todo lo de esta sección ya se hizo (salvo red adversa, avatares reales y multijugador, que siguen pendientes). Se conserva como registro.
 
 La auditoría corrige el problema de fondo de las 4 pruebas que fallan y suma profundidad. Está guardada a medias.
 

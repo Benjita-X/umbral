@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 local shared = ReplicatedStorage:WaitForChild("Shared")
 local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
 local Rig = require(shared:WaitForChild("Combat"):WaitForChild("Rig"))
+local PositionService = require(script.Parent:WaitForChild("PositionService"))
 
 local DummyService = {}
 
@@ -118,7 +119,9 @@ local function folder()
 end
 
 -- Crea un personaje de práctica en una marca del mapa.
--- options: maxHealth, displayName, bodyColor, legColor, tags (lista extra de etiquetas)
+-- options: maxHealth, displayName, bodyColor, legColor, tags (lista extra de etiquetas),
+--          noReset (no vuelve solo a su sitio: el compañero de combate lo hace por su cuenta),
+--          noRegen (no se cura solo: el Guardián de la Grieta)
 function DummyService.Spawn(marker, options)
 	options = options or {}
 	local maxHealth = options.maxHealth or settings.MaxHealth
@@ -154,7 +157,9 @@ function DummyService.Spawn(marker, options)
 		root:SetNetworkOwner(nil) -- el servidor simula el personaje (empujes y giros)
 	end)
 
-	local info = { spawn = marker.CFrame, lastHit = -math.huge, lastHealth = maxHealth, humanoid = humanoid, root = root, maxHealth = maxHealth }
+	PositionService.Track(model) -- historial observado (para juzgar golpes en su instante)
+
+	local info = { noRegen = options.noRegen == true, noReset = options.noReset == true, spawn = marker.CFrame, lastHit = -math.huge, lastHealth = maxHealth, humanoid = humanoid, root = root, maxHealth = maxHealth }
 	dummies[model] = info
 	humanoid.HealthChanged:Connect(function(health)
 		if health < info.lastHealth then
@@ -186,10 +191,10 @@ function DummyService.Start()
 				continue
 			end
 			local idle = now - info.lastHit
-			if idle >= settings.RegenDelay and info.humanoid.Health < info.maxHealth then
+			if not info.noRegen and idle >= settings.RegenDelay and info.humanoid.Health < info.maxHealth then
 				info.humanoid.Health = math.min(info.maxHealth, info.humanoid.Health + settings.RegenPerSecond * dt)
 			end
-			if idle >= settings.ResetDelay and (info.root.Position - info.spawn.Position).Magnitude > 3 then
+			if not info.noReset and idle >= settings.ResetDelay and (info.root.Position - info.spawn.Position).Magnitude > 3 then
 				model:PivotTo(info.spawn)
 				info.root.AssemblyLinearVelocity = Vector3.zero
 			end

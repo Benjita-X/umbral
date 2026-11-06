@@ -44,8 +44,26 @@
 | 33 | Muñecos R15 que no mueren (estado Dead desactivado), se curan y vuelven a su sitio | Practicar combos sin interrupciones |
 | 34 | Pruebas que no se pueden medir (ventana sin dibujar) quedan **omitidas** con motivo, no aprobadas | Un resultado honesto: nada pasa "en verde" sin medirse |
 
+## Auditoría y consolidación de la Fase 3 (2026-11-06)
+| # | Decisión | Por qué |
+|---|---|---|
+| 35 | Se integra `auditoria-fase3` en `main` con merge manual (sin commit automático), revisión archivo por archivo y pruebas antes del commit | No perder trabajo y no meter una rama sin conectar |
+| 36 | Golpes juzgados **en su instante** con historial de posiciones, en vez de reintentar 0,35 s (reemplaza la #28) | Sin esperas fijas; espera acotada por cuadros |
+| 37 | Retroceso temporal máximo `MaxRewind = 0,3 s` | Una conexión lenta no compra más ventana; ajustable |
+| 38 | Confirmación de posición con margen `2,25 + velocidad × 0,04` (medido: con 1,5 se rechazaban golpes legítimos) contra **segmentos** observados (antes 4 studs fijos) | El margen fijo regalaba hasta ~4 studs de alcance a quien falsificara su posición |
+| 39 | La posición observada de un jugador **no** se trata como prueba de legitimidad (la produce su cliente). Velocidades imposibles solo se **registran** | Honestidad técnica: sancionar exige datos de juego real y revisión humana |
+| 40 | Remote `InicioAtaque`: el servidor valida la **secuencia** del combo y la ventana activa de cada golpe | El cliente ya no puede declarar el ataque que más daño hace (caso Nexus Battles D) |
+| 41 | Límites de tasa: 45 posiciones/s, 30 defensas/s, 12 inicios/s, 14 golpes/s | Inundar remotes no da ventaja ni consume el servidor |
+| 42 | Paso extra con Resonancia: enfriamiento también **en el servidor** | La regla vale aunque el cliente la ignore |
+| 43 | La recarga de Pasos **sigue** corriendo durante el Paso | Es el valor medido (0,8 s por carga). No se encontró un problema concreto que justifique cambiarlo |
+| 44 | Contrapaso: dirección medida respecto al vector **atacante → defensor** | El punto de impacto adelantado daba un vector diminuto de cerca (bug de la rama) |
+| 45 | El compañero publica `Ataque` y `FaseFin` **antes** que `FaseInicio` y `Estado` | Quien escucha un cambio leía tiempos de la fase anterior |
+| 46 | Las pruebas se separan en reglas, integración, adversariales, rendimiento y humanas | Un bot que conoce el instante del impacto no demuestra legibilidad humana |
+| 47 | La acción de pruebas `teletransporte` vive solo en `tests/server` | Nunca existe en el lugar de desarrollo ni en uno publicable |
+
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)
 - **Antes de publicar:** subir las animaciones a Roblox (o reemplazarlas por otras de un animador) y poner sus IDs en `CombatConfig.AnimationIds`; las generadas por código no funcionan fuera de Studio.
-- **Fase 4:** tamaño de avatar justo en PvP. Un avatar chico tiene menos superficie para recibir golpes; habrá que usar una caja de impacto estándar o fijar la escala del cuerpo.
+- **Fase 4:** ¿autoridad del movimiento en el servidor (Pasos validados contra cargas, o física del servidor) según lo que muestren las pruebas de PvP real?
+- **Fase 4:** avisar también el inicio de la carga del golpe fuerte para cerrar la carga declarada por el cliente.
 - Sonidos definitivos de golpes (subir audio propio o con licencia).

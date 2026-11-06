@@ -1,32 +1,42 @@
--- SparringService: el compañero de combate del Ring (Fase 3), un muñeco que ataca para practicar defensa.
+-- SparringService: oponente de entrenamiento configurable del Ring (Fase 3).
 --
--- Ciclo: Quieto → Preparando (te sigue con la mirada; deja de girar TrackingStop antes del impacto)
---        → Atacando (impacto) → Recuperando → Quieto. Patrón por defecto: Golpe, Golpe, Barrido.
---   Golpe   · se desvía, se bloquea y se esquiva con Contrapaso (Paso lateral a tiempo).
---   Barrido · área alrededor: no se desvía ni se bloquea; hay que saltarlo o salir del área.
--- Estado replicado en atributos (Estado, Ataque, FaseInicio, FaseFin, AtaqueId) con hora del servidor:
--- cada cliente anima y avisa localmente, sincronizado.
+-- Ciclo: Quieto (vuelve a su sitio) → Preparando (te sigue con la mirada; deja de girar TrackingStop
+-- antes del impacto: ahí el ataque queda COMPROMETIDO) → Atacando (se lanza `lunge` studs) →
+-- Recuperando → Quieto.
+-- Ataques (CombatConfig.Sparring.Attacks): Golpe, Rápido, Pesado (solo desvío perfecto, se lanza
+-- lejos) y Barrido (área: se salta o se sale). "Amague": empieza un Golpe, lo corta y prepara el real.
+-- Ritmo variable: los ataques "delayable" se quedan armados hasta `maxDelay` del perfil (o el atributo
+-- "Retraso" fijo, para pruebas). Perfil: atributo "Perfil" (basico, tecnico, agresivo). Patrón fijo:
+-- atributo "Patron" (lo usan las pruebas).
 --
--- Resolución con compensación de lag: en el impacto se anota quién estaba amenazado; luego se espera
--- lo que tarda en llegar la defensa de cada jugador (DefenseService.ResolveDelay) y se decide, en orden:
--- desvío → Contrapaso → salto/esquiva → guardia → golpe.
+-- Estado replicado en atributos (Estado, Ataque, FaseInicio, FaseFin, AtaqueId, en hora del servidor):
+-- cada cliente anima y avisa localmente, sincronizado. Un amague es indistinguible de un Golpe hasta que
+-- se corta (nada en los atributos lo delata).
+--
+-- Resolución con compensación de latencia acotada (PositionService): para cada jugador se usan su
+-- posición CONFIRMADA al comprometerse el ataque y en el impacto que vio en su pantalla, y se decide en
+-- orden: desvío → Contrapaso → salto/esquiva → guardia → golpe.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
+local shared = ReplicatedStorage:WaitForChild("Shared")
+local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
+local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local services = script.Parent
 local DummyService = require(services:WaitForChild("DummyService"))
 local DefenseService = require(services:WaitForChild("DefenseService"))
 local ResonanceService = require(services:WaitForChild("ResonanceService"))
 local DamageService = require(services:WaitForChild("DamageService"))
+local PositionService = require(services:WaitForChild("PositionService"))
 
 local SparringService = {}
 
 local sparring = CombatConfig.Sparring
 local defense = CombatConfig.Defense
+local FORCE = 1e7
 local npcs = {} -- [model] = estado
 local resultRemote
 
@@ -44,19 +54,26 @@ local function setPhase(s, state, attackName, duration)
 	s.attackName = attackName
 	s.phaseStart = t
 	s.phaseEnd = t + duration
+	-- Orden importante: quien escucha "Estado" o "FaseInicio" lee FaseFin y Ataque en ese momento, así
+	-- que se publican ANTES (si no, leen los de la fase anterior y el aviso se desincroniza)
 	local m = s.model
-	m:SetAttribute("Estado", state)
 	m:SetAttribute("Ataque", attackName or "")
-	m:SetAttribute("FaseInicio", s.phaseStart)
 	m:SetAttribute("FaseFin", s.phaseEnd)
+	m:SetAttribute("FaseInicio", s.phaseStart)
+	m:SetAttribute("Estado", state)
+end
+
+local function profile(s)
+	local name = s.model:GetAttribute("Perfil")
+	return sparring.Profiles[name] or sparring.Profiles[sparring.DefaultProfile]
 end
 
 local function pattern(s)
-	local custom = s.model:GetAttribute("Patron") -- p. ej. "Golpe,Barrido" (lo usan las pruebas)
+	local custom = s.model:GetAttribute("Patron") -- p. ej. "Golpe,Amague,Fuerte" (lo usan las pruebas)
 	if type(custom) == "string" and custom ~= "" then
 		local list = {}
 		for name in string.gmatch(custom, "[^,]+") do
-			if sparring.Attacks[name] then
+			if sparring.Attacks[name] or name == "Amague" then
 				table.insert(list, name)
 			end
 		end
@@ -64,7 +81,19 @@ local function pattern(s)
 			return list
 		end
 	end
-	return sparring.Pattern
+	return profile(s).pattern
+end
+
+-- Cuánto se queda armado este ataque (variación de ritmo)
+local function delayFor(s, attack)
+	if not attack.delayable then
+		return 0
+	end
+	local fixed = s.model:GetAttribute("Retraso")
+	if type(fixed) == "number" then
+		return math.max(0, fixed)
+	end
+	return s.random:NextNumber(0, profile(s).maxDelay)
 end
 
 local function alivePlayers()
@@ -111,39 +140,56 @@ local function face(s, targetRoot, dt)
 	s.root.CFrame = CFrame.lookAt(position, position + direction)
 end
 
--- ¿Una posición está dentro del área del ataque? (se usa el centro del cuerpo: igual para todo avatar)
-local function inArea(attack, cframe, position)
-	if attack.shape == "box" then
-		local box = cframe * CFrame.new(0, 0, -(attack.range / 2 + 0.5))
-		local p = box:PointToObjectSpace(position)
-		return math.abs(p.X) <= attack.hitboxSize.X / 2 + 1
-			and math.abs(p.Y) <= attack.hitboxSize.Y / 2 + 1
-			and math.abs(p.Z) <= attack.hitboxSize.Z / 2 + 0.8
+-- Mueve al muñeco con velocidad horizontal (lanzarse o volver a su sitio)
+local function drive(s, velocity)
+	if not s.mover then
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "UmbralMovimientoA"
+		attachment.Parent = s.root
+		local mover = Instance.new("LinearVelocity")
+		mover.Name = "UmbralMovimiento"
+		mover.Attachment0 = attachment
+		mover.RelativeTo = Enum.ActuatorRelativeTo.World
+		mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		mover.ForceLimitsEnabled = true
+		mover.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+		mover.MaxAxesForce = Vector3.new(FORCE, 0, FORCE)
+		mover.Parent = s.root
+		s.mover = mover
 	end
-	local offset = position - cframe.Position
-	return flat(offset).Magnitude <= attack.radius + 0.5 and math.abs(offset.Y) <= 6
+	s.mover.VectorVelocity = velocity or Vector3.zero
+	s.mover.Enabled = velocity ~= nil
 end
 
-local function inHitbox(attack, cframe, root)
-	return inArea(attack, cframe, root.Position)
+-- ¿Una posición está en el área del ataque? (cajas estándar: igual para todo avatar)
+-- `originCFrame`: desde donde parte el atacante. Un ataque que se lanza `lunge` studs barre TODO su
+-- recorrido: la caja va desde el atacante hasta el final del lanzamiento (si no, quien está pegado a él
+-- quedaría "detrás" de una caja desplazada hacia adelante).
+local function inArea(attack, originCFrame, targetCFrame)
+	if attack.shape == "box" then
+		local reach = attack.range + (attack.lunge or 0)
+		local size = Vector3.new(attack.hitboxSize.X, attack.hitboxSize.Y, reach)
+		return Hurtbox.AttackHits(originCFrame, reach, size, targetCFrame)
+	end
+	return Hurtbox.InRadius(originCFrame.Position, attack.radius, targetCFrame.Position, 6)
 end
 
--- ¿Está en el aire, por encima de la altura de un barrido?
+-- ¿En el aire por encima de un barrido?
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-local function airborne(p)
+local function airborne(p, position)
 	raycastParams.FilterDescendantsInstances = { p.character }
-	local hit = Workspace:Raycast(p.root.Position, Vector3.new(0, -30, 0), raycastParams)
+	local hit = Workspace:Raycast(position, Vector3.new(0, -30, 0), raycastParams)
 	if not hit then
 		return true
 	end
 	local standing = p.humanoid.HipHeight + p.root.Size.Y / 2
-	return (p.root.Position.Y - hit.Position.Y) - standing > defense.JumpClearance
+	return (position.Y - hit.Position.Y) - standing > defense.JumpClearance
 end
 
-local function facingAttacker(root, attackerPosition)
-	local toAttacker = flat(attackerPosition - root.Position)
-	local look = flat(root.CFrame.LookVector)
+local function facingAttacker(defenderCFrame, attackerPosition)
+	local toAttacker = flat(attackerPosition - defenderCFrame.Position)
+	local look = flat(defenderCFrame.LookVector)
 	if toAttacker.Magnitude < 0.01 or look.Magnitude < 0.01 then
 		return true
 	end
@@ -159,13 +205,25 @@ local function isLateral(dir, fromAttacker)
 end
 
 local function stagger(s, duration)
+	if RunService:IsStudio() then
+		print(string.format("[UMBRAL] Compañero aturdido %.2f s en %s (ataque %d)", duration, tostring(s.state), s.attackId))
+	end
 	if s.model.Parent then
+		drive(s, nil)
 		setPhase(s, "Aturdido", nil, duration)
 	end
 end
 
--- Decide qué le pasó a un jugador con un ataque (se llama tras esperar su latencia)
-local function resolve(s, attackName, attack, attackId, impactTime, cframe, player, threat)
+-- Decide qué le pasó a un jugador con un ataque (corre en su propio hilo; las esperas están acotadas)
+local function resolve(s, info, player)
+	local attack = info.attack
+	local oneWay = DefenseService.OneWay(player)
+	local perceived = info.impactTime + oneWay -- cuándo vio el impacto en su pantalla
+
+	-- Esperar a que lleguen las defensas que hizo a tiempo (acotado)
+	while now() < perceived + oneWay + 0.03 do
+		RunService.Heartbeat:Wait()
+	end
 	local p = nil
 	for _, candidate in ipairs(alivePlayers()) do
 		if candidate.player == player then
@@ -175,61 +233,78 @@ local function resolve(s, attackName, attack, attackId, impactTime, cframe, play
 	if not p or not s.model.Parent then
 		return
 	end
-	local perceived = impactTime + DefenseService.OneWay(player) -- cuándo vio el impacto en su pantalla
-	local insideNow = inHitbox(attack, cframe, p.root)
-	-- Amenazado: estaba en el área cuando el ataque quedó comprometido, o al empezar un Paso a tiempo
-	if not threat then
-		local paso = DefenseService.FindPaso(player, perceived - defense.ContrapasoWindow, perceived + 0.03)
-		if paso and paso.position and inArea(attack, cframe, paso.position) then
-			threat = { position = paso.position }
-		end
-	end
+
+	-- Dónde estaba (confirmado por la física observada). Sin confirmación se usa lo observado ahora.
+	local atImpact, whyNot = PositionService.ConfirmedAt(player, perceived)
+	local confirmed = atImpact ~= nil
+	atImpact = atImpact or p.root.CFrame
+	local atCommit = PositionService.ConfirmedAt(player, info.commitTime + oneWay) or info.observedAtCommit[player]
+	local paso = DefenseService.FindPaso(player, perceived - defense.ContrapasoWindow, perceived + 0.03)
+	local pasoStart = paso and PositionService.ConfirmedAt(player, paso.t)
+
+	local threat = (atCommit ~= nil and inArea(attack, info.originCFrame, atCommit))
+		or (pasoStart ~= nil and inArea(attack, info.originCFrame, pasoStart))
+	local insideNow = inArea(attack, info.originCFrame, atImpact)
 	if not threat and not insideNow then
 		if RunService:IsStudio() then
-			print(string.format("[UMBRAL] Defensa · ataque %d %s → fuera de alcance (%.1f studs)", attackId, attackName, flat(p.root.Position - cframe.Position).Magnitude))
+			print(string.format(
+				"[UMBRAL] Defensa · ataque %d %s → fuera del área · al comprometerse %s · en el impacto %s (confirmado %s%s) · origen %s",
+				info.attackId, info.attackName,
+				if atCommit then tostring(Vector3.new(math.floor(atCommit.X * 10) / 10, 0, math.floor(atCommit.Z * 10) / 10)) else "?",
+				tostring(Vector3.new(math.floor(atImpact.X * 10) / 10, 0, math.floor(atImpact.Z * 10) / 10)),
+				tostring(confirmed), if whyNot then ", " .. whyNot else "",
+				tostring(Vector3.new(math.floor(info.originCFrame.X * 10) / 10, 0, math.floor(info.originCFrame.Z * 10) / 10))
+			))
 		end
 		return
 	end
 
-	local result, damage = nil, 0
-	-- 1. Desvío
+	local result, damage, exposed = nil, 0, false
+	-- 1. Desvío (el pesado solo con desvío perfecto)
 	if attack.deflectable then
-		local kind = DefenseService.FindDeflect(player, perceived)
-		if kind then
+		local kind, press = DefenseService.FindDeflect(player, perceived)
+		if kind == "perfecto" or (kind == "normal" and not attack.perfectOnly) then
+			DefenseService.Consume(press)
 			result = if kind == "perfecto" then "desvio_perfecto" else "desvio"
 		end
 	end
-	-- 2. Contrapaso: Paso lateral a tiempo, estando amenazado
-	if not result and attack.contrapaso and threat then
-		local paso = DefenseService.FindPaso(player, perceived - defense.ContrapasoWindow, perceived + 0.03)
-		if paso and isLateral(paso.dir, flat(threat.position - cframe.Position)) then
+	-- 2. Contrapaso: Paso lateral a tiempo, estando amenazado. La dirección se mide respecto al vector
+	-- ATACANTE → defensor (la amenaza), no respecto al punto de impacto (que va adelantado por el
+	-- lanzamiento y, de cerca, da un vector diminuto y de dirección casi aleatoria) ni a la cámara.
+	if not result and attack.contrapaso and threat and paso then
+		local reference = (pasoStart or atCommit or atImpact).Position
+		if isLateral(paso.dir, flat(reference - info.originCFrame.Position)) then
 			result = "contrapaso"
 		end
 	end
 	-- 3. Salió del área o saltó por encima del barrido
 	if not result then
-		local jumped = attack.shape == "ring" and insideNow and airborne(p)
+		local jumped = attack.shape == "ring" and insideNow and airborne(p, atImpact.Position)
 		if not insideNow or jumped then
-			local paso = DefenseService.FindPaso(player, perceived - defense.PreciseDodgeWindow, perceived + 0.03)
-			if threat and (paso or jumped) then
+			local dodgePaso = DefenseService.FindPaso(player, perceived - defense.PreciseDodgeWindow, perceived + 0.03)
+			if threat and (dodgePaso or jumped) then
 				result = "esquiva"
 			else
+				if RunService:IsStudio() then
+					print(string.format("[UMBRAL] Defensa · ataque %d %s → no estaba en el área en el impacto", info.attackId, info.attackName))
+				end
 				return -- simplemente no estaba ahí
 			end
 		end
 	end
-	-- 4. Guardia (de frente)
-	if not result and attack.guardable and DefenseService.IsGuarding(player, perceived) and facingAttacker(p.root, cframe.Position) then
+	-- 4. Guardia (de frente). Un desvío fallido deja EXPUESTO: sin guardia y con más daño.
+	exposed = DefenseService.IsExposed(player, perceived)
+	if not result and not exposed and attack.guardable and DefenseService.IsGuarding(player, perceived) and facingAttacker(atImpact, info.originCFrame.Position) then
 		damage = attack.damage * defense.GuardDamageMultiplier
 		result = if DefenseService.AddPosture(player, attack.posture) then "ruptura" else "guardia"
 	end
 	-- 5. Golpe
 	if not result then
 		result = "golpe"
-		damage = attack.damage
+		damage = attack.damage * (if exposed then defense.ExposedDamageMultiplier else 1)
 	end
 
-	-- Consecuencias
+	-- Consecuencias (la Resonancia de defensa ya está limitada por el ritmo de ataques del rival)
 	if result == "desvio_perfecto" then
 		ResonanceService.Gain(player, "DesvioPerfecto")
 		DefenseService.OpenCounter(player)
@@ -245,7 +320,7 @@ local function resolve(s, attackName, attack, attackId, impactTime, cframe, play
 	elseif result == "ruptura" then
 		DefenseService.Stun(player, defense.GuardBreakStun)
 	elseif result == "golpe" then
-		DefenseService.Stun(player, defense.HitStun)
+		DefenseService.Stun(player, defense.HitStun * (if exposed then 1.3 else 1))
 	end
 	if damage > 0 then
 		p.humanoid:TakeDamage(damage)
@@ -254,37 +329,39 @@ local function resolve(s, attackName, attack, attackId, impactTime, cframe, play
 
 	if RunService:IsStudio() then
 		print(string.format(
-			"[UMBRAL] Defensa · ataque %d %s → %s · amenazado %s · dentro %s · daño %.1f · Resonancia %.1f",
-			attackId,
-			attackName,
+			"[UMBRAL] Defensa · ataque %d %s → %s · amenazado %s · dentro %s (a %.1f studs) · confirmado %s%s%s · daño %.1f",
+			info.attackId,
+			info.attackName,
 			result,
-			tostring(threat ~= nil),
+			tostring(threat),
 			tostring(insideNow),
-			damage,
-			ResonanceService.Get(player)
+			flat(atImpact.Position - info.originCFrame.Position).Magnitude,
+			tostring(confirmed),
+			if whyNot then " (" .. whyNot .. ")" else "",
+			if exposed then " · EXPUESTO" else "",
+			damage
 		))
 	end
 	resultRemote:FireAllClients({
 		player = player,
 		npc = s.model,
-		attack = attackName,
-		attackId = attackId,
+		attack = info.attackName,
+		attackId = info.attackId,
 		result = result,
 		damage = damage,
-		from = cframe.Position,
+		exposed = exposed,
+		from = info.originCFrame.Position, -- el empuje sale desde el atacante, no desde el punto adelantado
 	})
 end
 
--- El ataque queda comprometido cuando deja de girar: se anota quién está en el área en ese momento
+-- El ataque queda comprometido al dejar de girar: se fija la dirección y se anota quién estaba en el área
 local function commit(s)
 	s.committed = true
+	s.commitTime = now()
 	s.commitCFrame = s.root.CFrame
-	s.threats = {}
-	local attack = sparring.Attacks[s.attackName]
+	s.observedAtCommit = {}
 	for _, p in ipairs(alivePlayers()) do
-		if inHitbox(attack, s.commitCFrame, p.root) then
-			s.threats[p.player] = { position = p.root.Position }
-		end
+		s.observedAtCommit[p.player] = p.root.CFrame
 	end
 end
 
@@ -292,21 +369,34 @@ local function startActive(s)
 	if not s.committed then
 		commit(s)
 	end
-	local attackName = s.attackName
-	local attack = sparring.Attacks[attackName]
-	local impactTime = s.phaseEnd
-	local cframe = s.commitCFrame -- la dirección del golpe quedó fija al comprometerse
-	local attackId = s.attackId
-	local threats = s.threats
-	setPhase(s, "Atacando", attackName, attack.active)
-
-	for _, p in ipairs(alivePlayers()) do
-		local threat = threats[p.player]
-		if not threat and inHitbox(attack, cframe, p.root) then
-			threat = { position = p.root.Position }
-		end
-		task.delay(DefenseService.ResolveDelay(p.player), resolve, s, attackName, attack, attackId, impactTime, cframe, p.player, threat)
+	local attack = sparring.Attacks[s.attackName]
+	local info = {
+		attack = attack,
+		attackName = s.attackName,
+		attackId = s.attackId,
+		impactTime = s.phaseEnd,
+		commitTime = s.commitTime,
+		-- El área del golpe ya incluye lo que se lanza hacia adelante
+		impactCFrame = s.commitCFrame * CFrame.new(0, 0, -(attack.lunge or 0)),
+		originCFrame = s.commitCFrame, -- desde dónde ataca (referencia de dirección)
+		observedAtCommit = s.observedAtCommit,
+	}
+	setPhase(s, "Atacando", s.attackName, attack.active)
+	if (attack.lunge or 0) > 0 then
+		drive(s, flat(s.commitCFrame.LookVector).Unit * (attack.lunge / attack.active))
 	end
+	for _, p in ipairs(alivePlayers()) do
+		task.spawn(resolve, s, info, p.player)
+	end
+end
+
+local function startWindup(s, attackName, feint)
+	local attack = sparring.Attacks[attackName]
+	s.attackId += 1
+	s.committed = false
+	s.feint = feint
+	s.model:SetAttribute("AtaqueId", s.attackId)
+	setPhase(s, "Preparando", attackName, attack.startup + (if feint then 0 else delayFor(s, attack)))
 end
 
 local function update(s, dt)
@@ -319,24 +409,37 @@ local function update(s, dt)
 
 	if s.state == "Aturdido" then
 		if t >= s.phaseEnd then
-			setPhase(s, "Quieto", nil, sparring.Pause * 0.5)
+			setPhase(s, "Quieto", nil, profile(s).pause * 0.5)
 		end
 	elseif s.state == "Quieto" then
+		-- Volver a su sitio tras lanzarse
+		local home = flat(s.spawn.Position - s.root.Position)
+		drive(s, if home.Magnitude > 0.75 then home.Unit * math.min(sparring.ReturnSpeed, home.Magnitude * 8) else nil)
 		if not target then
-			s.phaseEnd = math.max(s.phaseEnd, t + sparring.Pause * 0.5) -- empieza a contar cuando llegas
+			s.phaseEnd = math.max(s.phaseEnd, t + profile(s).pause * 0.5) -- empieza a contar cuando llegas
 			return
 		end
 		face(s, target.root, dt)
-		if t >= s.phaseEnd then
+		-- Si no logra volver a su sitio (p. ej. el jugador le bloquea el camino tras un lanzamiento largo),
+		-- ataca desde donde está en vez de quedarse esperando para siempre
+		local stuck = t - s.phaseStart > profile(s).pause + 1.5
+		if t >= s.phaseEnd and (home.Magnitude <= 1.5 or stuck) then
+			drive(s, nil)
 			local list = pattern(s)
 			s.patternIndex = s.patternIndex % #list + 1
-			local attackName = list[s.patternIndex]
-			s.attackId += 1
-			s.committed = false
-			s.model:SetAttribute("AtaqueId", s.attackId)
-			setPhase(s, "Preparando", attackName, sparring.Attacks[attackName].windup)
+			local step = list[s.patternIndex]
+			if step == "Amague" then
+				startWindup(s, "Golpe", true)
+			else
+				startWindup(s, step, false)
+			end
 		end
 	elseif s.state == "Preparando" then
+		local elapsed = t - s.phaseStart
+		if s.feint and elapsed >= sparring.FeintRestartAt then
+			startWindup(s, "Golpe", false) -- el amague se corta y prepara el golpe real
+			return
+		end
 		if t < s.phaseEnd - sparring.TrackingStop then
 			if target then
 				face(s, target.root, dt)
@@ -349,16 +452,44 @@ local function update(s, dt)
 		end
 	elseif s.state == "Atacando" then
 		if t >= s.phaseEnd then
+			drive(s, nil)
 			setPhase(s, "Recuperando", s.attackName, sparring.Attacks[s.attackName].recovery)
 		end
 	elseif s.state == "Recuperando" then
 		if t >= s.phaseEnd then
-			setPhase(s, "Quieto", nil, sparring.Pause)
+			setPhase(s, "Quieto", nil, profile(s).pause)
 		end
 	end
 end
 
+-- Guardián de la Grieta: al llegar a 0 de vida queda vencido (aviso a todos), y se levanta para la revancha
+local guardian = sparring.Guardian
+local noticeRemote
+local function watchGuardian(s)
+	local humanoid = s.model:FindFirstChildOfClass("Humanoid")
+	local defeated = false
+	humanoid.HealthChanged:Connect(function(health)
+		if defeated or health > 0 then
+			return
+		end
+		defeated = true
+		drive(s, nil)
+		setPhase(s, "Aturdido", nil, guardian.RiseAfter)
+		noticeRemote:FireAllClients({ title = "¡GRIETA SUPERADA!", subtitle = string.format("El Guardián se levantará en %d s", guardian.RiseAfter) })
+		task.delay(guardian.RiseAfter, function()
+			if s.model.Parent then
+				humanoid.Health = humanoid.MaxHealth
+				defeated = false
+				noticeRemote:FireAllClients({ title = "EL GUARDIÁN SE LEVANTA", subtitle = "" })
+			end
+		end)
+	end)
+end
+
 function SparringService.Start()
+	noticeRemote = Instance.new("RemoteEvent")
+	noticeRemote.Name = "AvisoGrieta"
+	noticeRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	resultRemote = Instance.new("RemoteEvent")
 	resultRemote.Name = "ResultadoDefensa"
 	resultRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
@@ -372,27 +503,41 @@ function SparringService.Start()
 		end
 	end)
 
-	local ring = Workspace:WaitForChild("Maps"):WaitForChild("MovementLab"):WaitForChild("Ring")
-	for _, marker in ipairs(ring:GetChildren()) do
+	-- Un compañero por cada marca PuntoSparring del mapa (el Ring del laboratorio y, en el lugar de
+	-- desarrollo, la sala del Guardián de la Grieta)
+	local maps = Workspace:WaitForChild("Maps")
+	maps:WaitForChild("MovementLab"):WaitForChild("Ring")
+	for _, marker in ipairs(maps:GetDescendants()) do
 		if marker:IsA("BasePart") and marker.Name == "PuntoSparring" then
+			-- En la Grieta es el Guardián: perfil técnico, no se cura solo y se le puede vencer
+			local grieta = maps:FindFirstChild("Grieta")
+			local isGuardian = grieta ~= nil and marker:IsDescendantOf(grieta)
 			task.spawn(function()
 				local model = DummyService.Spawn(marker, {
-					maxHealth = sparring.MaxHealth,
-					displayName = "Compañero de combate",
-					bodyColor = Color3.fromRGB(70, 76, 96),
-					legColor = Color3.fromRGB(45, 48, 62),
-					tags = { "Sparring" },
+					maxHealth = if isGuardian then guardian.MaxHealth else sparring.MaxHealth,
+					displayName = if isGuardian then "Guardián de la Grieta" else "Compañero de combate",
+					bodyColor = if isGuardian then Color3.fromRGB(58, 40, 82) else Color3.fromRGB(70, 76, 96),
+					legColor = if isGuardian then Color3.fromRGB(30, 22, 44) else Color3.fromRGB(45, 48, 62),
+					tags = if isGuardian then { "Sparring", "Guardian" } else { "Sparring" },
+					noReset = true, -- vuelve a su sitio por su cuenta
+					noRegen = isGuardian,
 				})
 				local s = {
 					model = model,
 					root = model:FindFirstChild("HumanoidRootPart"),
+					spawn = marker.CFrame,
 					state = "Quieto",
 					patternIndex = 0,
 					attackId = 0,
+					random = Random.new(1234),
 				}
 				model:SetAttribute("AtaqueId", 0)
-				setPhase(s, "Quieto", nil, sparring.Pause)
+				model:SetAttribute("Perfil", if isGuardian then guardian.Profile else sparring.DefaultProfile)
+				setPhase(s, "Quieto", nil, profile(s).pause)
 				npcs[model] = s
+				if isGuardian then
+					watchGuardian(s)
+				end
 			end)
 		end
 	end

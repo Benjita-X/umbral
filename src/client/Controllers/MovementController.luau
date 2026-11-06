@@ -304,7 +304,8 @@ local function update(dt)
 		end
 	end
 
-	-- Recarga de Pasos, de una carga a la vez
+	-- Recarga de Pasos, de una carga a la vez (sigue corriendo durante el Paso: es el valor medido
+	-- de 0,8 s por carga; ver DECISIONES.md)
 	if state.charges < Config.DashCharges then
 		chargeTimer += dt
 		if chargeTimer >= Config.DashRechargeTime then

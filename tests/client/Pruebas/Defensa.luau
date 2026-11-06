@@ -238,8 +238,9 @@ return function(ctx)
 	reset()
 	stand(3.5)
 	impact, id = nextAttack("Golpe", 0.45)
+	-- Si el rival no preparó un ataque a tiempo, se registra como fallo (no como error de la suite)
 	local pressTime = (impact or serverNow()) - 0.42
-	while pressTime <= impact + 0.02 do
+	while impact and pressTime <= impact + 0.02 do
 		at(pressTime)
 		Input.Trigger("Defender")
 		pressTime += 0.08
@@ -356,7 +357,10 @@ return function(ctx)
 	stand(3.5)
 	impact, id = nextAttack("Golpe")
 	res0 = resonance()
-	at(impact - 0.13)
+	-- El Paso tarda 0,18 s en recorrer 14 studs: para salir de un alcance de ~10 studs desde 3,5 studs hay
+	-- que salir ~0,2 s antes (dentro de la ventana de esquiva precisa de 0,3 s). Con 0,13 s el jugador
+	-- seguía dentro del área: la prueba pedía algo físicamente imposible.
+	at(impact - 0.22)
 	ctx.humanoid:Move(Vector3.new(0, 0, 1)) -- hacia atrás
 	task.wait()
 	task.wait()

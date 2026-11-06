@@ -5,7 +5,7 @@
 # 3. Lee lo que el plugin guardó con plugin:SetSetting (Studio no escribe los print en sus registros).
 # 4. Cierra SOLO la ventana de pruebas que abrió este script; las demás ventanas de Studio no se tocan.
 
-param([int]$TimeoutSeconds = 320)
+param([int]$TimeoutSeconds = 600)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -41,6 +41,11 @@ function Read-Results {
 }
 
 $placePath = Join-Path $root 'build\UMBRAL-Pruebas.rbxlx'
+# Con otra ventana de Studio abierta, la nueva instancia puede entregarle el archivo y no abrir el lugar de
+# pruebas (pasó el 2026-11-06: Studio quedó en la pantalla de inicio y no hubo resultados).
+if (Get-Process -Name RobloxStudioBeta -ErrorAction SilentlyContinue) {
+    Write-Host 'AVISO: ya hay una ventana de Roblox Studio abierta. Si no aparecen resultados, ciérrala y vuelve a ejecutar.'
+}
 $before = @(Get-Process -Name RobloxStudioBeta -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 Start-Process -FilePath $studio.FullName -ArgumentList "`"$placePath`""
 Write-Host "Studio abierto con el lugar de pruebas. Esperando resultados (máx. $TimeoutSeconds s)..."

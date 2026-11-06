@@ -11,6 +11,7 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, statSync, writeFile
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildMovementLab } from './mapa.mjs';
+import { buildDungeon, dungeonLighting } from './mazmorra.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'src');
@@ -100,17 +101,33 @@ const jumpHeight = configNumber('JumpHeight');
 const gravity = configNumber('Gravity');
 
 // withTests: añade tests/ y la carpeta-marca que hace que el plugin de pruebas se active.
-function placeTree(withTests) {
-  const testClient = withTests ? fromDir(join(ROOT, 'tests', 'client')).children : [];
-  const testServer = withTests ? fromDir(join(ROOT, 'tests', 'server')).children : [];
-  return [
-    service('Workspace', [['float', 'Gravity', gravity]], buildMovementLab()),
-    service('Lighting', [
+// Desarrollo: se aparece en la Grieta (mazmorra de muestra) con su iluminación nocturna.
+// Pruebas: solo el laboratorio, con luz de día (las pruebas miden en él y buscan UN compañero de combate).
+function workspaceTree(withTests) {
+  const maps = buildMovementLab({ labSpawn: withTests });
+  if (!withTests) maps[0].children.push(buildDungeon());
+  return maps;
+}
+
+function lightingService(withTests) {
+  if (withTests) {
+    return service('Lighting', [
       ['float', 'ClockTime', 14.5],
       ['float', 'Brightness', 2],
       ['color3', 'Ambient', [0.27, 0.29, 0.35]],
       ['color3', 'OutdoorAmbient', [0.5, 0.52, 0.58]],
-    ]),
+    ]);
+  }
+  const lighting = dungeonLighting();
+  return service('Lighting', lighting.props, lighting.children);
+}
+
+function placeTree(withTests) {
+  const testClient = withTests ? fromDir(join(ROOT, 'tests', 'client')).children : [];
+  const testServer = withTests ? fromDir(join(ROOT, 'tests', 'server')).children : [];
+  return [
+    service('Workspace', [['float', 'Gravity', gravity]], workspaceTree(withTests)),
+    lightingService(withTests),
     service('ReplicatedStorage', [], [
       fromDir(join(SRC, 'shared'), 'Shared'),
       ...(withTests

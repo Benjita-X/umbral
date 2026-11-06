@@ -8,6 +8,8 @@ local SUITES = {
 	{ "Movimiento", require(Pruebas:WaitForChild("Movimiento")) },
 	{ "Combate", require(Pruebas:WaitForChild("Combate")) },
 	{ "Defensa", require(Pruebas:WaitForChild("Defensa")) },
+	{ "Auditoria", require(Pruebas:WaitForChild("Auditoria")) },
+	{ "Habilidad", require(Pruebas:WaitForChild("Habilidad")) },
 }
 
 if ctx.start() then

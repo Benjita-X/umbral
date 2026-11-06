@@ -3,7 +3,7 @@
 Juego original de acción y combate para Roblox (PC, celular y mando).
 
 ## Estado
-**Fase 2: combate corporal.** Movimiento (Fase 1) + combo de 3 golpes, golpe fuerte con carga, guardia, muñecos de práctica en el Dojo y daño validado en el servidor. Sin Ecos ni historia todavía.
+**Fases 1-3 consolidadas** (movimiento, combate corporal, defensa/Contrapaso/Resonancia) con validación en el servidor y pruebas automáticas. Al apretar Play apareces en **La Grieta**, una mazmorra de muestra con ambiente; el laboratorio gris de pruebas, el Dojo, el Ring y la arena de duelo siguen en la superficie. Detalle en [docs/ESTADO.md](docs/ESTADO.md).
 
 ## Cómo se arma
 El código vive en `src/` y el mapa en `tools/mapa.mjs`. Un solo comando genera el archivo que abre Roblox Studio:
@@ -12,7 +12,7 @@ El código vive en `src/` y el mapa en `tools/mapa.mjs`. Un solo comando genera 
 node tools/construir.mjs
 ```
 
-Resultado: `build/UMBRAL-Desarrollo.rbxlx`. Ábrelo con doble clic (o desde Studio) y presiona **F5** para jugar.
+Resultado: `build/UMBRAL-Desarrollo.rbxlx`. Ábrelo con doble clic (o desde Studio) y presiona **F5** para jugar. Para ver el panel de números de depuración, pon `DebugHUD = true` en `MovementConfig.luau`.
 
 > Los cambios hechos a mano dentro de Studio **no** vuelven a `src/`. Lo que vale es lo que está en los archivos; el `.rbxlx` se regenera.
 
@@ -52,3 +52,7 @@ El clic derecho queda libre porque en Roblox gira la cámara.
 - [docs/DECISIONES.md](docs/DECISIONES.md): qué se decidió y por qué.
 - [docs/PRUEBAS-FASE1.md](docs/PRUEBAS-FASE1.md): lista para aprobar el movimiento.
 - [docs/PRUEBAS-FASE2.md](docs/PRUEBAS-FASE2.md): lista para aprobar el combate.
+- [docs/PRUEBAS-FASE3.md](docs/PRUEBAS-FASE3.md): pruebas de defensa (automáticas y humanas).
+- [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): módulos, eventos cliente-servidor, flujo de ataque y defensa.
+- [docs/AUDITORIA-FASE3.md](docs/AUDITORIA-FASE3.md): hallazgos de la auditoría y cómo se corrigieron.
+- [docs/REVISION-CODEX.md](docs/REVISION-CODEX.md): canal de revisión cruzada con otro asistente.

@@ -29,10 +29,28 @@ local CombatConfig = {
 
 	-- Validación en el servidor
 	Validation = {
-		ExtraRange = 4, -- margen por latencia y movimiento
-		LagWindow = 0.35, -- si el golpe parece lejano, se espera esto a que llegue la posición real
+		Tolerance = 1.5, -- studs extra al comprobar un golpe en el servidor (sincronización)
 		MinSequenceInterval = 0.08, -- tiempo mínimo entre dos golpes distintos del mismo jugador
 		MaxHitsPerSecond = 14,
+		MaxStartsPerSecond = 12, -- inicios de ataque por segundo (el combo más rápido da ~7)
+		StartTimeSlack = 0.05, -- margen al comparar tiempos de inicio de ataques consecutivos
+		HitWindowSlack = 0.25, -- margen sobre la ventana activa al juzgar la hora de un golpe (hitstop, red)
+	},
+
+	-- Red: historial de posiciones con hora del servidor (ver PositionService y docs/AUDITORIA-FASE3.md)
+	Network = {
+		ReportRate = 20, -- posiciones por segundo que manda cada cliente
+		MaxReportsPerSecond = 45, -- tope de informes por jugador (incluye los que van con golpes y defensas)
+		HistorySeconds = 1.5, -- cuánto historial se guarda
+		MaxRewind = 0.3, -- retroceso temporal MÁXIMO (s): con más ping no se compra más ventana
+		-- Medido: al avanzar golpeando, la trayectoria replicada se separa hasta ~2 studs de la real; con 1,5
+		-- se rechazaban golpes legítimos. 2,25 sigue rechazando una posición falsa de 3,5 studs (prueba).
+		ConfirmRadius = 2.25, -- la trayectoria observada debe pasar a esta distancia de lo informado...
+		ConfirmSpeedFactor = 0.04, -- ...más velocidad × esto (en un Paso a 78 studs/s: +3,1 studs)
+		ConfirmWindow = 0.25, -- ...dentro de este tiempo (más la latencia de ida)
+		MaxSpeed = 160, -- studs/s horizontales: lo más rápido posible (Paso 78, empuje fuerte ~83, Contraataque)
+		ObservedSpeedWindow = 0.1, -- s: tramo sobre el que se mide la velocidad observada de cada jugador
+		ClockSlack = 0.15, -- margen al validar la hora que manda el cliente
 	},
 
 	-- Muñecos de práctica
@@ -70,6 +88,14 @@ local CombatConfig = {
 			knockUp = 0,
 			limb = "LeftHand", -- extremidad que deja estela
 			shake = 0,
+			posture = 8, -- desgaste de postura si el rival bloquea (PvP, Fase 4)
+			hitstun = 0.3, -- aturdimiento del rival al recibirlo (PvP, Fase 4)
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = true, -- al conectar se encadena desde la recuperación
+			cancelInto = { "Paso", "Salto", "Guardia" }, -- qué cancela su recuperación
 		},
 		Cross = {
 			label = "Directo",
@@ -84,6 +110,14 @@ local CombatConfig = {
 			knockUp = 0,
 			limb = "RightHand",
 			shake = 0.08,
+			posture = 10,
+			hitstun = 0.32,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = true,
+			cancelInto = { "Paso", "Salto", "Guardia" },
 		},
 		Patada = {
 			label = "Patada",
@@ -99,6 +133,14 @@ local CombatConfig = {
 			knockUp = 10,
 			limb = "RightFoot",
 			shake = 0.25,
+			posture = 18,
+			hitstun = 0.5,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false, -- remate: no se encadena
+			cancelInto = { "Paso", "Salto" },
 		},
 		Fuerte = {
 			label = "Golpe fuerte",
@@ -116,6 +158,14 @@ local CombatConfig = {
 			knockUp = 22,
 			limb = "RightHand",
 			shake = 0.45,
+			posture = 35,
+			hitstun = 0.7,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
 		},
 	},
 
@@ -144,34 +194,57 @@ local CombatConfig = {
 		HitStun = 0.35, -- aturdimiento al recibir un golpe
 		HitKnockback = 18,
 		JumpClearance = 1.5, -- studs sobre la altura normal para saltar por encima de un barrido
-		LagCompensationMax = 0.25, -- lo máximo que el servidor espera por latencia antes de resolver
 		TimestampSlack = 0.15, -- margen extra al validar los tiempos que manda el cliente
+		-- Desvío fallido: si pulsas (sin mantener) y no llega ningún golpe en la ventana, quedas EXPUESTO
+		-- un instante: la guardia no funciona y el golpe que llegue hace más daño. Desviar a ciegas se paga.
+		WhiffPenalty = 0.3,
+		ExposedDamageMultiplier = 1.25,
 	},
 
 	-- Resonancia: recurso que se gana jugando bien. Fase 3: se gana y se gasta en un Paso extra.
+	-- Anti-abuso: los muñecos que no pelean NO dan Resonancia; repetir el mismo golpe al mismo rival da
+	-- cada vez menos; y cada rival da como máximo SourceCap cada SourceWindow segundos.
 	Resonance = {
 		Max = 100,
 		Gains = { Golpe = 5, Desvio = 5, DesvioPerfecto = 15, Esquiva = 10, Contrapaso = 20 },
-		MaxGainPerSecond = 40, -- límite para que no se pueda "farmear"
+		MaxGainPerSecond = 40,
+		RepeatDecay = 0.5, -- el mismo golpe seguido al mismo rival: ×0,5 cada repetición
+		RepeatWindow = 3,
+		SourceWindow = 5,
+		SourceCap = 25,
 		DecayDelay = 5, -- sin combate este tiempo, empieza a apagarse
 		DecayPerSecond = 8,
-		DashCost = 30, -- sin cargas de Paso, gastar esto da un Paso extra
+		DashCost = 30, -- sin cargas de Paso, gastar esto da un Paso extra...
+		ExtraDashCooldown = 2, -- ...como mucho uno cada este tiempo
 	},
 
-	-- Compañero de combate: muñeco que ataca para practicar la defensa
+	-- Compañero de combate: oponente de entrenamiento configurable (Fase 3).
+	-- Perfil (atributo "Perfil"): básico, técnico o agresivo. Las pruebas fijan "Patron" y "Retraso".
+	-- "Amague" en un patrón: empieza a preparar un Golpe, lo corta en FeintRestartAt y prepara el real.
 	Sparring = {
 		MaxHealth = 300,
 		AggroRange = 12, -- empieza a atacar si hay un jugador a esta distancia
 		TurnSpeed = 7, -- radianes por segundo
 		TrackingStop = 0.15, -- deja de girar este tiempo antes del impacto (se puede esquivar de lado)
-		Pause = 1.2, -- pausa entre ataques
-		Pattern = { "Golpe", "Golpe", "Barrido" },
+		ReturnSpeed = 12, -- vuelve a su sitio tras lanzarse
 		StaggerOnPerfect = 0.8, -- aturdido tras un desvío perfecto
 		StaggerOnInterrupt = 0.5, -- aturdido si un golpe fuerte lo interrumpe al preparar
+		FeintRestartAt = 0.3,
+		DefaultProfile = "basico",
+		-- Guardián de la Grieta (mazmorra de muestra, solo en el lugar de desarrollo): mismo oponente, más
+		-- exigente; no se cura solo y al vencerlo se levanta tras RiseAfter segundos
+		Guardian = { MaxHealth = 220, Profile = "tecnico", RiseAfter = 8 },
+		Profiles = {
+			basico = { pattern = { "Golpe", "Golpe", "Barrido" }, pause = 1.2, maxDelay = 0 },
+			tecnico = { pattern = { "Golpe", "Rapido", "Fuerte", "Barrido", "Amague", "Golpe" }, pause = 1.0, maxDelay = 0.3 },
+			agresivo = { pattern = { "Rapido", "Rapido", "Golpe", "Fuerte", "Barrido", "Amague" }, pause = 0.6, maxDelay = 0.2 },
+		},
+		-- Mismo esquema que los golpes del jugador (ver MoveSchema): preparación, impacto, recuperación,
+		-- daño, postura, forma y alcance, y qué defensas admite.
 		Attacks = {
 			Golpe = {
 				label = "Golpe",
-				windup = 0.5,
+				startup = 0.5,
 				active = 0.1,
 				recovery = 0.5,
 				damage = 12,
@@ -179,22 +252,65 @@ local CombatConfig = {
 				shape = "box",
 				range = 5.5,
 				hitboxSize = Vector3.new(5, 6, 5.5),
+				lunge = 3, -- studs que se lanza hacia adelante al golpear
 				deflectable = true,
 				guardable = true,
 				contrapaso = true,
+				delayable = true, -- puede quedarse armado más tiempo (variación de ritmo)
+				clip = "SparringGolpe",
+				holdAt = 0.375, -- instante del clip en que queda armado (donde se alarga el retraso)
+			},
+			Rapido = {
+				label = "Golpe rápido",
+				startup = 0.28,
+				active = 0.08,
+				recovery = 0.35,
+				damage = 7,
+				posture = 15,
+				shape = "box",
+				range = 5,
+				hitboxSize = Vector3.new(4.5, 6, 5),
+				lunge = 2,
+				deflectable = true,
+				guardable = true,
+				contrapaso = true,
+				delayable = false,
+				clip = "SparringRapido",
+			},
+			Fuerte = {
+				label = "Golpe pesado",
+				startup = 0.85,
+				active = 0.12,
+				recovery = 0.8,
+				damage = 22,
+				posture = 60,
+				shape = "box",
+				range = 6,
+				hitboxSize = Vector3.new(5.5, 6, 6),
+				lunge = 9, -- se lanza: alejarse antes de tiempo no basta
+				deflectable = true,
+				perfectOnly = true, -- solo el desvío PERFECTO lo detiene
+				guardable = true,
+				contrapaso = true,
+				delayable = true,
+				clip = "SparringFuerte",
+				holdAt = 0.6,
 			},
 			Barrido = {
 				label = "Barrido",
-				windup = 0.7,
+				startup = 0.7,
 				active = 0.12,
 				recovery = 0.7,
 				damage = 15,
 				posture = 0,
 				shape = "ring", -- área alrededor: no se desvía ni se bloquea; se salta o se sale
 				radius = 7,
+				lunge = 0,
 				deflectable = false,
 				guardable = false,
 				contrapaso = false,
+				delayable = false,
+				clip = "SparringBarrido",
 			},
 		},
 	},

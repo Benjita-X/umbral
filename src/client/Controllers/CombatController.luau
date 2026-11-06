@@ -26,7 +26,9 @@ local shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
 local AnimationLibrary = require(shared:WaitForChild("Combat"):WaitForChild("AnimationLibrary"))
 local Rig = require(shared:WaitForChild("Combat"):WaitForChild("Rig"))
+local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local Effects = require(script.Parent:WaitForChild("EffectsController"))
+local PositionReporter = require(script.Parent:WaitForChild("PositionReporter"))
 
 local defense = Config.Defense
 local player = Players.LocalPlayer
@@ -78,8 +80,6 @@ local lastDefendPress = -math.huge
 local pendingSpend = 0
 local remotes = {}
 
-local overlapParams = OverlapParams.new()
-overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function flat(v)
 	return Vector3.new(v.X, 0, v.Z)
@@ -89,9 +89,11 @@ local function serverNow()
 	return Workspace:GetServerTimeNow()
 end
 
+-- Informa una acción defensiva con su hora y la posición en ese instante
 local function report(action, dir)
 	if remotes.defense then
-		remotes.defense:FireServer(action, serverNow(), dir)
+		local t, position, look = PositionReporter.Sample()
+		remotes.defense:FireServer(action, t, dir, position, look)
 	end
 end
 
@@ -212,23 +214,20 @@ local function onHit(a, model, targetRoot)
 	Effects.Impact(hitPosition, def, model)
 
 	if remotes.request then
-		remotes.request:FireServer({ attack = a.name, seq = a.seq, target = model, charge = a.charge })
+		-- El golpe va con su instante y la posición en ese instante (el servidor juzga ese momento)
+		local t, position, look = PositionReporter.Sample()
+		remotes.request:FireServer({ attack = a.name, seq = a.seq, target = model, charge = a.charge, t = t, pos = position, look = look })
 	end
 	events.Hit:Fire(a.name, model)
 end
 
+-- Cajas de impacto estándar (Hurtbox): el tamaño del avatar del rival no cambia nada
 local function detectHits(a)
 	local def = a.def
-	local boxCFrame = root.CFrame * CFrame.new(0, 0, -(def.range / 2 + 0.5))
-	overlapParams.FilterDescendantsInstances = { character, Workspace.CurrentCamera }
-	for _, part in ipairs(Workspace:GetPartBoundsInBox(boxCFrame, def.hitboxSize, overlapParams)) do
-		local model = part:FindFirstAncestorOfClass("Model")
-		while model and not model:FindFirstChildOfClass("Humanoid") do
-			model = model:FindFirstAncestorOfClass("Model")
-		end
-		if model and model ~= character and not a.targets[model] then
+	for _, model in ipairs(candidateTargets()) do
+		if not a.targets[model] then
 			local targetRoot = targetRootOf(model)
-			if targetRoot then
+			if targetRoot and Hurtbox.AttackHits(root.CFrame, def.range, def.hitboxSize, targetRoot.CFrame) then
 				a.targets[model] = true
 				onHit(a, model, targetRoot)
 			end
@@ -253,6 +252,10 @@ local function startAttack(name, charge)
 	local startup = if counter then def.startup * defense.CounterStartupMultiplier else def.startup
 
 	state.sequence += 1
+	-- El servidor valida la secuencia de ataques: se le avisa cada inicio con su hora
+	if remotes.start then
+		remotes.start:FireServer(state.sequence, name, serverNow())
+	end
 	local desired = movement.DesiredDirection()
 	local target, distance
 	if counter then
@@ -681,8 +684,13 @@ local function bindCharacter(newCharacter)
 end
 
 -- La Resonancia paga un Paso extra cuando no quedan cargas
+local lastExtraDash = -math.huge
 local function payExtraDash()
 	if state.mode == "Aturdido" then
+		return false
+	end
+	-- Como mucho un Paso extra cada ExtraDashCooldown (el servidor aplica la misma regla)
+	if os.clock() - lastExtraDash < Config.Resonance.ExtraDashCooldown then
 		return false
 	end
 	local available = (player:GetAttribute("Resonancia") or 0) - pendingSpend
@@ -690,6 +698,7 @@ local function payExtraDash()
 		return false
 	end
 	pendingSpend += Config.Resonance.DashCost
+	lastExtraDash = os.clock()
 	remotes.spend:FireServer("paso")
 	return true
 end
@@ -735,6 +744,7 @@ function CombatController.Start(inputController, movementController)
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("Remotes")
 		remotes.request = folder:WaitForChild("SolicitudGolpe")
+		remotes.start = folder:WaitForChild("InicioAtaque")
 		remotes.defense = folder:WaitForChild("Defensa")
 		remotes.spend = folder:WaitForChild("GastarResonancia")
 		folder:WaitForChild("GolpeConfirmado").OnClientEvent:Connect(function(data)

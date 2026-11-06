@@ -3,6 +3,8 @@
 -- aquí se anima y se avisa, sincronizado con esa hora aunque haya lag.
 -- Cada amenaza se reconoce por tres señales, no solo por color:
 --   Golpe   · brazo armado arriba · brillo rojo · sonido grave corto
+--   Rápido  · preparación corta · brillo naranja
+--   Pesado  · brillo rojo oscuro · aviso pesado (solo el desvío PERFECTO lo detiene)
 --   Barrido · agachado · brillo violeta + anillo en el suelo con el área · sonido de explosión grave
 
 local CollectionService = game:GetService("CollectionService")
@@ -18,9 +20,12 @@ local Effects = require(script.Parent:WaitForChild("EffectsController"))
 local EnemyController = {}
 
 local sparring = CombatConfig.Sparring
+-- Color y peso del aviso de cada ataque (el clip sale de attack.clip en CombatConfig)
 local TELEGRAPH = {
-	Golpe = { color = Color3.fromRGB(255, 70, 60), clip = "SparringGolpe", heavy = false },
-	Barrido = { color = Color3.fromRGB(170, 80, 255), clip = "SparringBarrido", heavy = true },
+	Golpe = { color = Color3.fromRGB(255, 70, 60), heavy = false },
+	Rapido = { color = Color3.fromRGB(255, 150, 40), heavy = false },
+	Fuerte = { color = Color3.fromRGB(150, 20, 30), heavy = true },
+	Barrido = { color = Color3.fromRGB(170, 80, 255), heavy = true },
 }
 
 local enemies = {} -- [model] = { tracks, highlight, ring, current }
@@ -79,12 +84,36 @@ local function onState(model, e)
 	local finish = model:GetAttribute("FaseFin") or serverNow()
 	local elapsed = math.max(0, serverNow() - start)
 
-	if state == "Preparando" and TELEGRAPH[attackName] then
+	local attack = sparring.Attacks[attackName]
+	if state == "Preparando" and attack and TELEGRAPH[attackName] then
 		local style = TELEGRAPH[attackName]
-		local attack = sparring.Attacks[attackName]
 		cleanup(e)
-		play(e, model, style.clip, elapsed)
+		e.holdToken = (e.holdToken or 0) + 1
+		play(e, model, attack.clip, elapsed)
 		Effects.WindupCue(model, style.heavy)
+		-- Retraso deliberado: la preparación dura más que el clip. Se congela la pose armada (holdAt)
+		-- el tiempo extra, así la animación sigue llegando al impacto en el instante real.
+		local extra = (finish - start) - attack.startup
+		if extra > 0.01 and attack.holdAt and e.current then
+			local token, track = e.holdToken, e.current
+			local holdStart = start + attack.holdAt
+			local function freezeAt(serverTime, fn)
+				task.delay(math.max(0, serverTime - serverNow()), function()
+					if e.holdToken == token and e.current == track then
+						fn()
+					end
+				end)
+			end
+			if serverNow() < holdStart + extra then
+				freezeAt(holdStart, function()
+					track.TimePosition = attack.holdAt
+					track:AdjustSpeed(0)
+				end)
+				freezeAt(holdStart + extra, function()
+					track:AdjustSpeed(1)
+				end)
+			end
+		end
 
 		-- Brillo que se intensifica hasta el impacto
 		local highlight = Instance.new("Highlight")
@@ -124,6 +153,7 @@ local function onState(model, e)
 			end
 		end
 	elseif state == "Atacando" then
+		e.holdToken = (e.holdToken or 0) + 1
 		if e.highlight then
 			e.highlight.FillColor = Color3.new(1, 1, 1)
 			e.highlight.FillTransparency = 0.2
@@ -153,6 +183,12 @@ local function watch(model)
 	enemies[model] = e
 	model:GetAttributeChangedSignal("Estado"):Connect(function()
 		onState(model, e)
+	end)
+	-- Un amague reinicia la preparación sin cambiar Estado: FaseInicio sí cambia
+	model:GetAttributeChangedSignal("FaseInicio"):Connect(function()
+		if model:GetAttribute("Estado") == "Preparando" then
+			onState(model, e)
+		end
 	end)
 	model.AncestryChanged:Connect(function()
 		if not model:IsDescendantOf(Workspace) then

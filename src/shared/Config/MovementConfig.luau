@@ -38,7 +38,7 @@ local MovementConfig = {
 	FOVResponsiveness = 12, -- qué tan rápido sigue la cámara al FOV objetivo
 
 	-- Depuración
-	DebugHUD = true, -- panel con velocidad, cargas y estado
+	DebugHUD = false, -- panel con velocidad, cargas y estado (true para medir; las pruebas no lo necesitan)
 	DebugPrints = true, -- mensajes [UMBRAL] en Output
 }
 

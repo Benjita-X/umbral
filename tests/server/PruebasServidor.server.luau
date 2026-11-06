@@ -27,7 +27,30 @@ local function endTest(value)
 end
 
 remote.OnServerEvent:Connect(function(player, action, payload)
-	if action == "reaparecer" then
+	if action == "teletransporte" then
+		-- Las pruebas mueven al personaje de golpe: se avisa al historial de posiciones para que no lo
+		-- marque como movimiento imposible. SOLO existe en el lugar de pruebas (este script no se
+		-- incluye en build/UMBRAL-Desarrollo.rbxlx ni en ninguna versión publicable).
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local module = services and services:FindFirstChild("PositionService")
+		if module then
+			require(module).AllowTeleport(player, 1)
+		end
+	elseif action == "perfil" then
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Sparring")) do
+			model:SetAttribute("Perfil", payload)
+		end
+	elseif action == "retraso" then
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Sparring")) do
+			model:SetAttribute("Retraso", payload)
+		end
+	elseif action == "curar" then
+		-- Solo la vida (las pruebas de habilidad necesitan conservar postura y aturdimiento)
+		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.Health = humanoid.MaxHealth
+		end
+	elseif action == "reaparecer" then
 		player:LoadCharacterAsync()
 	elseif action == "patron" then
 		-- Fija el patrón de ataques del compañero de combate (p. ej. "Golpe" o "Barrido")
@@ -50,10 +73,10 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 	end
 end)
 
-task.delay(300, function()
+task.delay(540, function()
 	if not finished then
 		warn("[UMBRAL-PRUEBAS] Tiempo agotado: cerrando la prueba")
-		endTest({ { name = "Tiempo", ok = false, detail = "la prueba no terminó en 300 s" } })
+		endTest({ { name = "Tiempo", ok = false, detail = "la prueba no terminó en 540 s" } })
 	end
 end)
 

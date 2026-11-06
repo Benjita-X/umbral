@@ -111,6 +111,12 @@ end
 function ctx.teleport(position, look)
 	ctx.humanoid:Move(Vector3.zero)
 	ctx.root.AssemblyLinearVelocity = Vector3.zero
+	if ctx.remote then
+		ctx.remote:FireServer("teletransporte") -- el servidor no lo cuenta como movimiento imposible
+		task.wait(0.05)
+		ctx.humanoid:Move(Vector3.zero)
+		ctx.root.AssemblyLinearVelocity = Vector3.zero
+	end
 	ctx.root.CFrame = CFrame.lookAt(position, position + look)
 	ctx.settle()
 end
