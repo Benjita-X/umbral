@@ -12,6 +12,7 @@ local DefenseService = require(services:WaitForChild("DefenseService"))
 local ResonanceService = require(services:WaitForChild("ResonanceService"))
 local DummyService = require(services:WaitForChild("DummyService"))
 local SparringService = require(services:WaitForChild("SparringService"))
+local GrietaService = require(services:WaitForChild("GrietaService"))
 
 Workspace.Gravity = MovementConfig.Gravity
 
@@ -22,5 +23,6 @@ DefenseService.Start()
 ResonanceService.Start()
 DummyService.Start()
 SparringService.Start()
+GrietaService.Start() -- solo actúa si el mapa tiene la Grieta (lugar de desarrollo)
 
 print("[UMBRAL] Servidor listo · Fase 3: defensa y Contrapaso")

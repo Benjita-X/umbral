@@ -4,8 +4,8 @@
 //
 // Está bajo tierra (Y = -200), cerrada por todos lados, así que su luz es la de sus antorchas y cristales.
 // Recorrido, con medidas que salen del movimiento real (salto 8,5 · doble salto 15,5 · Paso 14):
-//   A. Umbral (aparición) → B. pasillo → C. Abismo: salto de 12 y salto + Paso de 18; caer deja en un foso
-//   con escalera de vuelta → D. Ascenso: repisas de 6, 13, 20 y 28 (salto y doble salto) →
+//   A. Umbral (aparición) → B. pasillo → C. Abismo: salto de 8 y salto + Paso de 16; caer al foso te
+//   devuelve al borde de inicio (GrietaService) → D. Ascenso: repisas de 6, 13, 20 y 28 (salto y doble salto) →
 //   E. Sala del Guardián: el compañero de combate espera en el centro.
 
 import { part, sign, folder, rotY, facing } from './mapa.mjs';
@@ -168,20 +168,19 @@ export function buildDungeon() {
   items.push(...torch('AntorchaPasillo', -5, 6, 51, -1));
 
   // ---------- C. Abismo ----------
-  // Tres pisos con huecos de 12 (salto con carrera) y 18 (salto + Paso). Abajo, un foso con escalera.
+  // Tres pisos con huecos de 8 (un salto corriendo: a 22 studs/s un salto recorre ~11,4) y 16 (salto + Paso
+  // en el aire). Tocar el foso devuelve a PuntoRetornoAbismo (GrietaService).
   const C0 = 61, C1 = 121;
   items.push(box('AbismoBordeInicio', [-20, -2, C0], [20, 0, 74], FLOOR, 'Cobblestone'));
-  items.push(box('AbismoIsla', [-7, -2, 86], [7, 0, 94], FLOOR, 'Cobblestone'));
-  items.push(box('AbismoBordeFinal', [-20, -2, 112], [20, 0, C1], FLOOR, 'Cobblestone'));
+  items.push(box('AbismoIsla', [-7, -2, 82], [7, 0, 92], FLOOR, 'Cobblestone'));
+  items.push(box('AbismoBordeFinal', [-20, -2, 108], [20, 0, C1], FLOOR, 'Cobblestone'));
+  const retorno = P(0, 3.2, 68);
+  items.push(part({ name: 'PuntoRetornoAbismo', size: [1, 1, 1], pos: retorno, rot: facing(retorno, P(0, 3.2, 200)), transparency: 1, collide: false, color: [255, 255, 255] }));
   items.push(box('AbismoFoso', [-20, -16, C0], [20, -14, C1], STONE_DARK, 'Rock'));
   items.push(box('AbismoTecho', [-20, 26, C0], [20, 28, C1], STONE_DARK, 'Rock'));
   items.push(...wallX('AbismoParedO', -21, C0, C1, -16, 28), ...wallX('AbismoParedE', 21, C0, C1, -16, 28));
   items.push(...wallZ('AbismoEntrada', C0, -22, 22, -16, 28, [-5, 5, 0, 12]));
   items.push(...wallZ('AbismoSalida', C1, -22, 22, -16, 28, [-6, 6, 0, 12]));
-  // Escalera para volver del foso al borde de inicio (contra la pared oeste)
-  [[-11, 90], [-8, 86], [-5, 82], [-2, 78]].forEach(([top, z], i) => {
-    items.push(box('Escalon' + (i + 1), [-20, -14, z - 2], [-14, top, z + 2], STONE, 'Slate'));
-  });
   // Cristales en el foso: lo iluminan desde abajo (se ve la profundidad)
   [[-12, 100], [10, 80], [14, 104], [-4, 70], [6, 96], [-15, 110]].forEach(([x, z], i) => {
     items.push(crystal('CristalFoso' + i, x, -14, z, 3 + (i % 3) * 1.5, [90, 220, 255], i * 37));
@@ -189,7 +188,7 @@ export function buildDungeon() {
   for (const z of [66, 116]) {
     items.push(...torch('AntorchaAbismoO', -20, 6, z, -1), ...torch('AntorchaAbismoE', 20, 6, z, 1));
   }
-  items.push(sign('CartelAbismo', 'salta (12) · después salta y da un Paso en el aire (18)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
+  items.push(sign('CartelAbismo', 'salta (8) · después salta y da un Paso en el aire (16)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
 
   // ---------- D. Ascenso ----------
   const D0 = 121, D1 = 153;
