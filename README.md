@@ -47,6 +47,7 @@ Por usar las mismas convenciones de Rojo, se puede pasar a Rojo más adelante si
 El clic derecho queda libre porque en Roblox gira la cámara.
 
 ## Documentos
+- **[docs/MANUAL.md](docs/MANUAL.md): cómo seguir por tu cuenta (empieza aquí).**
 - [docs/ESTADO.md](docs/ESTADO.md): lo que llevamos y lo que vamos a usar.
 - [docs/DECISIONES.md](docs/DECISIONES.md): qué se decidió y por qué.
 - [docs/PRUEBAS-FASE1.md](docs/PRUEBAS-FASE1.md): lista para aprobar el movimiento.
