@@ -172,6 +172,37 @@ local POSES = {
 		LeftUpperArm = { -20, 0, 0 },
 		LeftLowerArm = { 70, 0, 0 },
 	},
+	QuickChamber = { -- Golpe rápido: guardia compacta, casi sin aviso
+		UpperTorso = { -5, -10, 0 },
+		RightUpperArm = { 50, 0, -10 },
+		RightLowerArm = { 110, 0, 0 },
+		LeftUpperArm = { 55, 0, 10 },
+		LeftLowerArm = { 105, 0, 0 },
+	},
+	QuickStrike = {
+		UpperTorso = { -8, 22, 0 },
+		Head = { 0, -15, 0 },
+		RightUpperArm = { 90, 0, -6 },
+		RightLowerArm = { 0, 0, 0 },
+		LeftUpperArm = { 55, 0, 10 },
+		LeftLowerArm = { 105, 0, 0 },
+	},
+	HeavyRaise = { -- Golpe pesado: los dos brazos arriba (silueta inconfundible)
+		UpperTorso = { 15, 0, 0 },
+		Head = { 10, 0, 0 },
+		RightUpperArm = { 170, 0, 15 },
+		RightLowerArm = { 30, 0, 0 },
+		LeftUpperArm = { 170, 0, -15 },
+		LeftLowerArm = { 30, 0, 0 },
+	},
+	HeavySlam = {
+		UpperTorso = { -30, 0, 0 },
+		Head = { -15, 0, 0 },
+		RightUpperArm = { 70, 0, -10 },
+		RightLowerArm = { 10, 0, 0 },
+		LeftUpperArm = { 70, 0, 10 },
+		LeftLowerArm = { 10, 0, 0 },
+	},
 	SweepCrouch = { -- Barrido: agachado con los brazos abiertos (silueta distinta al Golpe)
 		LowerTorso = { -10, 0, 0, p = Vector3.new(0, -0.8, 0) },
 		UpperTorso = { -15, 0, 0 },
@@ -251,6 +282,8 @@ local function buildClips()
 	local heavy = CombatConfig.Attacks.Fuerte
 	local defense = CombatConfig.Defense
 	local golpe = CombatConfig.Sparring.Attacks.Golpe
+	local rapido = CombatConfig.Sparring.Attacks.Rapido
+	local fuerte = CombatConfig.Sparring.Attacks.Fuerte
 	local barrido = CombatConfig.Sparring.Attacks.Barrido
 	return {
 		Jab = attackClip("Jab", POSES.JabImpact, UPPER_BODY),
@@ -290,11 +323,34 @@ local function buildClips()
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
 				{ time = 0, poses = NEUTRAL },
-				{ time = golpe.windup * 0.75, poses = POSES.SparringCock },
-				{ time = golpe.windup - 0.02, poses = POSES.SparringCock },
-				{ time = golpe.windup + 0.04, poses = POSES.SparringStrike },
-				{ time = golpe.windup + golpe.active, poses = POSES.SparringStrike },
-				{ time = golpe.windup + golpe.active + golpe.recovery, poses = NEUTRAL },
+				{ time = golpe.holdAt, poses = POSES.SparringCock },
+				{ time = golpe.startup - 0.02, poses = POSES.SparringCock },
+				{ time = golpe.startup + 0.04, poses = POSES.SparringStrike },
+				{ time = golpe.startup + golpe.active, poses = POSES.SparringStrike },
+				{ time = golpe.startup + golpe.active + golpe.recovery, poses = NEUTRAL },
+			},
+		},
+		SparringRapido = {
+			joints = UPPER_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL },
+				{ time = rapido.startup * 0.6, poses = POSES.QuickChamber },
+				{ time = rapido.startup, poses = POSES.QuickStrike },
+				{ time = rapido.startup + rapido.active, poses = POSES.QuickStrike },
+				{ time = rapido.startup + rapido.active + rapido.recovery, poses = NEUTRAL },
+			},
+		},
+		SparringFuerte = {
+			joints = UPPER_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL },
+				{ time = fuerte.holdAt, poses = POSES.HeavyRaise },
+				{ time = fuerte.startup - 0.02, poses = POSES.HeavyRaise },
+				{ time = fuerte.startup + 0.04, poses = POSES.HeavySlam },
+				{ time = fuerte.startup + fuerte.active, poses = POSES.HeavySlam },
+				{ time = fuerte.startup + fuerte.active + fuerte.recovery, poses = NEUTRAL },
 			},
 		},
 		SparringBarrido = {
@@ -302,12 +358,12 @@ local function buildClips()
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
 				{ time = 0, poses = NEUTRAL },
-				{ time = barrido.windup * 0.8, poses = POSES.SweepCrouch },
-				{ time = barrido.windup, poses = sweepSpin(0) },
-				{ time = barrido.windup + barrido.active * 0.33, poses = sweepSpin(120) },
-				{ time = barrido.windup + barrido.active * 0.66, poses = sweepSpin(240) },
-				{ time = barrido.windup + barrido.active, poses = sweepSpin(360) },
-				{ time = barrido.windup + barrido.active + barrido.recovery, poses = NEUTRAL },
+				{ time = barrido.startup * 0.8, poses = POSES.SweepCrouch },
+				{ time = barrido.startup, poses = sweepSpin(0) },
+				{ time = barrido.startup + barrido.active * 0.33, poses = sweepSpin(120) },
+				{ time = barrido.startup + barrido.active * 0.66, poses = sweepSpin(240) },
+				{ time = barrido.startup + barrido.active, poses = sweepSpin(360) },
+				{ time = barrido.startup + barrido.active + barrido.recovery, poses = NEUTRAL },
 			},
 		},
 	}

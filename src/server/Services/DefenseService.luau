@@ -19,6 +19,7 @@ local DefenseService = {}
 
 local defense = CombatConfig.Defense
 local KEEP_SECONDS = 2
+local PositionService = nil -- lo inyecta ServerBootstrap
 local records = {} -- [player] = { presses = { {t, valid} }, lastPress, guardDown, guardUp, pasos = { {t, dir} }, postureActivity, stunStart }
 
 local function now()
@@ -42,12 +43,7 @@ end
 
 -- Latencia de ida (aprox. la mitad del ping), con tope
 function DefenseService.OneWay(player)
-	return math.min(player:GetNetworkPing() / 2, defense.LagCompensationMax)
-end
-
--- Cuánto debe esperar el servidor tras un impacto para recibir las defensas que el cliente hizo a tiempo
-function DefenseService.ResolveDelay(player)
-	return math.clamp(player:GetNetworkPing() + 0.05, 0.05, defense.LagCompensationMax)
+	return math.min(player:GetNetworkPing() / 2, CombatConfig.Network.ConfirmWindow)
 end
 
 local function validTime(player, t)
@@ -62,16 +58,18 @@ local function validTime(player, t)
 	return true, t
 end
 
-local function onDefense(player, action, t, dir)
+local function onDefense(player, action, t, dir, position, look)
 	local ok, time = validTime(player, t)
 	if not ok then
 		-- Hora imposible (futura o demasiado vieja): se cuenta y se usa la hora actual, sin ventaja
 		player:SetAttribute("DefensasRechazadas", (player:GetAttribute("DefensasRechazadas") or 0) + 1)
+	elseif PositionService then
+		PositionService.Report(player, time, position, look) -- dónde estaba en ese instante
 	end
 	local r = recordFor(player)
 	if action == "defender_inicio" then
 		-- Solo abre ventana de desvío si pasó el enfriamiento desde la pulsación anterior
-		table.insert(r.presses, { t = time, valid = time - r.lastPress >= defense.DeflectCooldown })
+		table.insert(r.presses, { t = time, valid = time - r.lastPress >= defense.DeflectCooldown, consumed = false })
 		r.lastPress = time
 		r.guardDown = time
 		r.guardUp = nil
@@ -80,31 +78,58 @@ local function onDefense(player, action, t, dir)
 	elseif action == "defender_fin" then
 		r.guardUp = time
 		r.postureActivity = time
+		local last = r.presses[#r.presses]
+		if last and last.released == nil then
+			last.released = time
+		end
 	elseif action == "paso" then
 		local flatDir = if typeof(dir) == "Vector3" then Vector3.new(dir.X, 0, dir.Z) else Vector3.zero
-		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if flatDir.Magnitude > 0.1 then
-			-- Se guarda dónde estaba al empezar el Paso: sirve para saber si el ataque lo amenazaba
-			table.insert(r.pasos, { t = time, dir = flatDir.Unit, position = if root then root.Position else nil })
+			table.insert(r.pasos, { t = time, dir = flatDir.Unit })
 			prune(r.pasos, time)
 		end
 	end
 end
 
--- "perfecto", "normal" o nil, para un impacto que el jugador vio en el instante `perceived`
+-- "perfecto", "normal" o nil, para un impacto que el jugador vio en el instante `perceived`.
+-- La pulsación que desvía queda "usada" (no cuenta como desvío fallido).
 function DefenseService.FindDeflect(player, perceived)
 	local r = recordFor(player)
-	local best = nil
+	local best, bestPress = nil, nil
 	for _, press in ipairs(r.presses) do
 		local before = perceived - press.t
 		if press.valid and before >= -0.03 and before <= defense.DeflectWindow then
 			local kind = if before <= defense.PerfectWindow then "perfecto" else "normal"
 			if kind == "perfecto" or not best then
-				best = kind
+				best, bestPress = kind, press
 			end
 		end
 	end
-	return best
+	return best, bestPress
+end
+
+function DefenseService.Consume(press)
+	if press then
+		press.consumed = true
+	end
+end
+
+-- ¿Expuesto por un desvío fallido? Una pulsación SUELTA (no mantenida) cuya ventana terminó sin desviar
+-- nada deja al jugador vulnerable WhiffPenalty segundos: sin guardia y con más daño.
+function DefenseService.IsExposed(player, perceived)
+	for _, press in ipairs(recordFor(player).presses) do
+		local windowEnd = press.t + defense.DeflectWindow
+		local tapped = press.released ~= nil and press.released <= windowEnd
+		if tapped and not press.consumed and perceived > windowEnd and perceived <= windowEnd + defense.WhiffPenalty then
+			return true
+		end
+	end
+	return false
+end
+
+-- Inyecta el servicio de posiciones (evita dependencias circulares al arrancar)
+function DefenseService.SetPositionService(service)
+	PositionService = service
 end
 
 -- Primer Paso dado entre `from` y `to` (hora del servidor)
@@ -161,9 +186,9 @@ function DefenseService.Start()
 	local remote = Instance.new("RemoteEvent")
 	remote.Name = "Defensa"
 	remote.Parent = ReplicatedStorage:WaitForChild("Remotes")
-	remote.OnServerEvent:Connect(function(player, action, t, dir)
+	remote.OnServerEvent:Connect(function(player, action, t, dir, position, look)
 		if action == "defender_inicio" or action == "defender_fin" or action == "paso" then
-			onDefense(player, action, t, dir)
+			onDefense(player, action, t, dir, position, look)
 		end
 	end)
 

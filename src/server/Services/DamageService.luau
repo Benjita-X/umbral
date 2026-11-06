@@ -2,9 +2,11 @@
 -- El cliente nunca decide el daño: solo dice "golpeé a X con el ataque Y".
 -- Fase 2: los objetivos válidos son los muñecos (etiqueta "Objetivo"). El PvP llega en la Fase 4.
 --
--- Tolerancia al lag: el servidor ve la posición del jugador con un pequeño retraso. Si un golpe parece
--- lejano (por ejemplo, justo después de un Paso), se vuelve a comprobar cada cuadro durante
--- Validation.LagWindow con la posición actualizada. Un golpe imposible sigue siendo rechazado.
+-- Compensación de latencia acotada (ver PositionService): el golpe se juzga en su instante `t`.
+--   · Atacante: la posición que informó en `t`, CONFIRMADA por la física que observa el servidor.
+--   · Objetivo: dónde lo veía el atacante, es decir, el historial observado en `t - latencia de ida`.
+--   · Alcance: caja del ataque contra la caja estándar del objetivo (Hurtbox), con 1,5 studs de margen.
+-- La espera máxima está acotada; si la posición no se confirma, el golpe se rechaza.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,9 +14,12 @@ local RunService = game:GetService("RunService")
 
 local Workspace = game:GetService("Workspace")
 
-local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
+local shared = ReplicatedStorage:WaitForChild("Shared")
+local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
+local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local DefenseService = require(script.Parent:WaitForChild("DefenseService"))
 local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
+local PositionService = require(script.Parent:WaitForChild("PositionService"))
 
 local DamageService = {}
 
@@ -99,9 +104,6 @@ local function bodies(player, target)
 	return { attackerRoot = attackerRoot, targetHumanoid = targetHumanoid, targetRoot = targetRoot }
 end
 
-local function distanceOf(b)
-	return flat(b.targetRoot.Position - b.attackerRoot.Position).Magnitude
-end
 
 -- Ritmo (sin repetidos ni ráfagas imposibles) y aplicación del golpe
 local function applyHit(player, attackName, def, seq, target, charge, b)
@@ -145,7 +147,11 @@ local function applyHit(player, attackName, def, seq, target, charge, b)
 		player:SetAttribute("ContraataqueHasta", nil)
 	end
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
-	ResonanceService.Gain(player, "Golpe")
+	-- Solo dan Resonancia los rivales que pelean (no los muñecos), con rendimiento decreciente si se
+	-- repite el mismo golpe contra el mismo rival
+	if target:HasTag("Sparring") or Players:GetPlayerFromCharacter(target) then
+		ResonanceService.Gain(player, "Golpe", target, attackName)
+	end
 
 	local direction = flat(b.targetRoot.Position - b.attackerRoot.Position)
 	direction = if direction.Magnitude > 0.01 then direction.Unit else flat(b.attackerRoot.CFrame.LookVector).Unit
@@ -192,24 +198,28 @@ local function handleHit(player, payload)
 		return reject(player, "aturdido")
 	end
 
-	-- 3. Distancia posible (alcance + acercamiento + margen), con tolerancia al lag
-	local maxDistance = def.range + CombatConfig.MaxLunge + validation.ExtraRange
-	if distanceOf(b) <= maxDistance then
-		return applyHit(player, attackName, def, seq, target, charge, b)
+	-- 3. El instante del golpe: hora coherente con el ping y posición informada en ese instante
+	local t = payload.t
+	if not PositionService.ValidTime(player, t) then
+		return reject(player, "hora inválida")
 	end
+	PositionService.Report(player, t, payload.pos, payload.look)
+
+	-- 4. Alcance en ese instante (espera acotada a que la física observada confirme la posición)
 	task.spawn(function()
-		local deadline = os.clock() + validation.LagWindow
-		while os.clock() < deadline do
-			RunService.Heartbeat:Wait()
-			b, problem = bodies(player, target)
-			if not b then
-				return reject(player, problem)
-			end
-			if distanceOf(b) <= maxDistance then
-				return applyHit(player, attackName, def, seq, target, charge, b)
-			end
+		local attackerCFrame = PositionService.ConfirmedAt(player, t)
+		if not attackerCFrame then
+			return reject(player, "posición no confirmada por la física observada")
 		end
-		reject(player, string.format("distancia %.1f > %.1f", distanceOf(b), maxDistance))
+		local current, problemNow = bodies(player, target)
+		if not current then
+			return reject(player, problemNow)
+		end
+		local targetCFrame = PositionService.ObservedAt(target, t - DefenseService.OneWay(player)) or current.targetRoot.CFrame
+		if not Hurtbox.AttackHits(attackerCFrame, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
+			return reject(player, string.format("fuera de alcance (%.1f studs)", flat(targetCFrame.Position - attackerCFrame.Position).Magnitude))
+		end
+		applyHit(player, attackName, def, seq, target, charge, current)
 	end)
 end
 
