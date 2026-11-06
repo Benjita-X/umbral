@@ -313,8 +313,8 @@ return function(ctx)
 	task.wait()
 	local beforeContrapaso = snapshot()
 	Input.Trigger("Paso")
+	ctx.humanoid:Move(Vector3.zero) -- suelta la dirección al dar el Paso (si no, sigue corriendo de lado y se aleja)
 	r = resultFor(id)
-	ctx.humanoid:Move(Vector3.zero)
 	waitUntil(function()
 		return resonance() > res0
 	end, 0.5)
@@ -326,15 +326,30 @@ return function(ctx)
 	c0 = #confirms
 	s0 = #started
 	task.wait(0.15)
+	local distanceBefore = (Vector3.new(npcRoot.Position.X, 0, npcRoot.Position.Z) - Vector3.new(ctx.root.Position.X, 0, ctx.root.Position.Z)).Magnitude
+	local counterOpen = os.clock() <= Combat.State.counterUntil
 	Input.Trigger("Atacar")
-	waitUntil(function()
-		return #confirms > c0
-	end, 1)
+	local closest = math.huge
+	local t0 = os.clock()
+	while os.clock() - t0 < 1 and #confirms <= c0 do
+		local d = (Vector3.new(npcRoot.Position.X, 0, npcRoot.Position.Z) - Vector3.new(ctx.root.Position.X, 0, ctx.root.Position.Z)).Magnitude
+		closest = math.min(closest, d)
+		task.wait()
+	end
 	counterConfirm = confirms[c0 + 1]
+	local counterDiag = string.format(
+		" [ventana abierta %s · salió %s · contraataque %s · distancia %.1f → mínima %.1f · rechazos %d]",
+		tostring(counterOpen),
+		tostring(started[s0 + 1] ~= nil),
+		tostring(started[s0 + 1] ~= nil and started[s0 + 1].counter),
+		distanceBefore,
+		closest,
+		player:GetAttribute("GolpesRechazados") or 0
+	)
 	record(
 		"Contraataque vuelve al rival",
 		started[s0 + 1] ~= nil and started[s0 + 1].counter == true and counterConfirm ~= nil and counterConfirm.target == npc and counterConfirm.counter == true,
-		if counterConfirm then string.format("tras apartarse de lado, vuelve y conecta (%.1f de daño)", counterConfirm.damage) else "no conectó"
+		(if counterConfirm then string.format("tras apartarse de lado, vuelve y conecta (%.1f de daño)", counterConfirm.damage) else "no conectó") .. counterDiag
 	)
 
 	setPattern("Barrido")

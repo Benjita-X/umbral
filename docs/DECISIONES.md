@@ -61,6 +61,16 @@
 | 46 | Las pruebas se separan en reglas, integración, adversariales, rendimiento y humanas | Un bot que conoce el instante del impacto no demuestra legibilidad humana |
 | 47 | La acción de pruebas `teletransporte` vive solo en `tests/server` | Nunca existe en el lugar de desarrollo ni en uno publicable |
 
+## Sensación del combate (2026-11-06, pedido del jugador)
+| # | Decisión | Por qué |
+|---|---|---|
+| 48 | Animaciones: guardia de pelea como base, curva que **acelera** hacia el impacto (antes frenaba al llegar), pequeño exceso (×1,08) con retroceso y vuelta suave | Los golpes se veían blandos y robóticos: partían con los brazos colgando y frenaban justo en el impacto |
+| 49 | Movilidad al atacar: 80 % de velocidad (antes 35 %), 60 % cargando (antes 30 %); el Paso y el salto solo se bloquean en el impacto (0,06 s) y cancelan la preparación; se puede girar en la recuperación | "Moverse mientras atacas": el personaje se sentía pesado |
+| 50 | El avance de un golpe llega a mitad de la ventana activa; si el tramo es largo (Contraataque tras Contrapaso) la preparación se alarga lo justo, como mucho a 120 studs/s | El Contraataque llegaba al alcance justo cuando la ventana se cerraba y salía al aire |
+| 51 | Servidor: entre dos inicios se exige solo la preparación del anterior (margen 0,02 s, horas del cliente) | Permite cancelar con Paso y volver a atacar sin rechazos; las ráfagas imposibles se siguen rechazando |
+| 52 | Muñecos y enemigos sin estados FallingDown ni Ragdoll | Un compañero tumbado tras chocar con el jugador dejaba de atacar |
+| 53 | Guardián de la Grieta: ojos, cristales y núcleo de neón soldados (sin masa ni colisión) | Que se lea como enemigo; no cambia la Hurtbox estándar |
+
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)
 - **Antes de publicar:** subir las animaciones a Roblox (o reemplazarlas por otras de un animador) y poner sus IDs en `CombatConfig.AnimationIds`; las generadas por código no funcionan fuera de Studio.

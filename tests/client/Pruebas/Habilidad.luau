@@ -162,6 +162,7 @@ return function(ctx)
 	end
 
 	local COUNT = 6
+	local COUNT_MASH = 10 -- el machacador acierta por azar: más ataques para una medida estable
 
 	-- Lector
 	local lector = runBot("Lector", nil, function(w)
@@ -192,9 +193,9 @@ return function(ctx)
 		return function()
 			running = false
 		end
-	end, function() end, nil, COUNT)
+	end, function() end, nil, COUNT_MASH)
 	local machacadorRate = rate(machacador)
-	record("[Adversarial] Machacar Defender rinde menos del 30 %", #machacador == COUNT and machacadorRate < 0.3, string.format("%.0f %% · %s", machacadorRate * 100, summary(machacador)))
+	record("[Adversarial] Machacar Defender rinde menos del 30 %", #machacador == COUNT_MASH and machacadorRate < 0.3, string.format("%.0f %% · %s", machacadorRate * 100, summary(machacador)))
 
 	-- Solo guardia
 	local guardia = runBot("Solo guardia", function()

@@ -219,10 +219,19 @@ local function reportedAt(player, t)
 	if not list or #list == 0 then
 		return nil
 	end
+	local cut = teleportCut[player]
 	for i = #list, 1, -1 do
 		local a = list[i]
 		if a.t <= t then
 			local b = list[i + 1]
+			if cut and a.t < cut then
+				if t >= cut then
+					return nil -- una muestra de antes del teletransporte no vale para un instante posterior
+				end
+				if b and b.t >= cut then
+					b = nil -- no se interpola a través de un teletransporte
+				end
+			end
 			if b then
 				local alpha = (t - a.t) / math.max(b.t - a.t, 1e-4)
 				return { position = a.position:Lerp(b.position, alpha), look = if alpha < 0.5 then a.look else b.look }
@@ -267,8 +276,8 @@ end
 function PositionService.AllowTeleport(player, seconds)
 	teleportAllowance[player] = now() + (seconds or 0.5)
 	teleportCut[player] = now()
-	reported[player] = {}
-	-- El historial OBSERVADO no se borra: es lo que vio el servidor, y un golpe dado justo antes del
+	-- Lo informado ANTES no se borra (un golpe dado justo antes todavía se confirma con ello); al
+	-- interpolar no se cruza el corte (ver reportedAt). El historial OBSERVADO tampoco se borra: es lo que vio el servidor, y un golpe dado justo antes del
 	-- teletransporte todavía se juzga con él
 end
 

@@ -16,8 +16,9 @@ local CombatConfig = {
 
 	-- Ritmo
 	WhiffRecoveryMultiplier = 1.35, -- fallar alarga la recuperación (y no deja cancelar)
-	AttackMoveMultiplier = 0.35, -- velocidad mientras golpeas
-	ChargeMoveMultiplier = 0.3, -- velocidad mientras cargas el golpe fuerte
+	-- Movilidad al atacar (2026-11-06, pedido del jugador: "moverse mientras atacas"): antes 0,35 y 0,3
+	AttackMoveMultiplier = 0.8, -- velocidad mientras golpeas
+	ChargeMoveMultiplier = 0.6, -- velocidad mientras cargas el golpe fuerte
 	GuardMoveMultiplier = 0.45, -- velocidad en guardia
 
 	-- Orientación y acercamiento (iguales en PC, mando y celular: solo orientan, no aciertan por ti)
@@ -33,7 +34,7 @@ local CombatConfig = {
 		MinSequenceInterval = 0.08, -- tiempo mínimo entre dos golpes distintos del mismo jugador
 		MaxHitsPerSecond = 14,
 		MaxStartsPerSecond = 12, -- inicios de ataque por segundo (el combo más rápido da ~7)
-		StartTimeSlack = 0.05, -- margen al comparar tiempos de inicio de ataques consecutivos
+		StartTimeSlack = 0.02, -- margen al comparar horas de inicio (son del reloj del cliente: sin desfase de red)
 		HitWindowSlack = 0.25, -- margen sobre la ventana activa al juzgar la hora de un golpe (hitstop, red)
 	},
 

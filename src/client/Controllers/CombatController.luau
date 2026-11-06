@@ -161,11 +161,13 @@ local function defaultSoftTarget(desired)
 end
 
 -- ---------- Bloqueos del movimiento ----------
+-- Solo el instante del impacto ("active", ~0,06 s) queda comprometido: en la preparación un Paso o un
+-- salto cancelan el golpe (movilidad y amagues), y en la recuperación se puede girar libremente.
 local function setAttackLocks(phase)
-	local committed = phase == "startup" or phase == "active"
+	local committed = phase == "active"
 	movement.SetDashBlocked(KEY, committed)
 	movement.SetJumpBlocked(KEY, committed)
-	movement.SetAutoRotateBlocked(KEY, true)
+	movement.SetAutoRotateBlocked(KEY, phase ~= "recovery")
 	movement.SetSpeedMultiplier(KEY, Config.AttackMoveMultiplier)
 end
 
@@ -269,9 +271,17 @@ local function startAttack(name, charge)
 	end
 	movement.Face(direction)
 
-	local lungeTime = startup + def.active
+	-- El avance debe LLEGAR a mitad de la ventana activa (antes llegaba justo al cerrarse y el golpe salía
+	-- al aire, sobre todo el Contraataque que recorre ~11 studs). Si el tramo es largo, la preparación se
+	-- alarga lo justo para recorrerlo sin pasar de MAX_LUNGE_SPEED (el servidor vigila las velocidades).
+	local MAX_LUNGE_SPEED = 120
 	local maxLunge = if counter then defense.CounterMaxLunge else Config.MaxLunge
 	local lungeDistance = if target then math.clamp(distance - Config.IdealDistance, 0, maxLunge) else Config.LungeWithoutTarget
+	local lungeTime = startup + def.active * 0.5
+	if lungeDistance / lungeTime > MAX_LUNGE_SPEED then
+		lungeTime = lungeDistance / MAX_LUNGE_SPEED
+		startup = math.max(startup, lungeTime - def.active * 0.5)
+	end
 	if lungeDistance > 0.05 then
 		movement.Lunge(direction, lungeDistance / lungeTime, lungeTime)
 	end
@@ -606,6 +616,10 @@ local function update(dt)
 		local a = state.attack
 		local def = a.def
 		a.t += dt
+		if a.phase == "startup" and humanoid:GetState() == Enum.HumanoidStateType.Jumping then
+			finishAttack() -- saltar en la preparación cancela el golpe (amague / movilidad)
+			return
+		end
 		if a.phase == "startup" and a.t >= a.startup then
 			enterActive(a)
 		end
@@ -725,8 +739,8 @@ function CombatController.Start(inputController, movementController)
 	-- El Paso: se informa al servidor (esquiva y Contrapaso) y cancela recuperación, carga y guardia
 	movement.Dashed:Connect(function(direction)
 		report("paso", direction)
-		if state.mode == "Ataque" and state.attack and state.attack.phase == "recovery" then
-			finishAttack()
+		if state.mode == "Ataque" and state.attack and state.attack.phase ~= "active" then
+			finishAttack() -- el Paso cancela la preparación (amague) o la recuperación
 		elseif state.mode == "Carga" or state.mode == "Guardia" then
 			cancelToFree()
 		end

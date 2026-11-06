@@ -13,7 +13,38 @@ local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatC
 local Rig = require(shared:WaitForChild("Combat"):WaitForChild("Rig"))
 local PositionService = require(script.Parent:WaitForChild("PositionService"))
 
+local PhysicsService = game:GetService("PhysicsService")
+
 local DummyService = {}
+
+-- Los luchadores (jugadores, muñecos, enemigos) no chocan entre sí: se atraviesan, como en los juegos de
+-- pelea. Sí chocan con el escenario. Evita que un enemigo que se lanza contra el jugador salga disparado
+-- por la física o quede bloqueado al volver a su sitio. Los golpes no dependen de colisiones (Hurtbox).
+local FIGHTERS = "Luchadores"
+local groupReady = false
+local function ensureGroup()
+	if groupReady then
+		return
+	end
+	groupReady = true
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(FIGHTERS)
+	end)
+	PhysicsService:CollisionGroupSetCollidable(FIGHTERS, FIGHTERS, false)
+end
+
+function DummyService.MarkFighter(model)
+	ensureGroup()
+	local function mark(part)
+		if part:IsA("BasePart") then
+			part.CollisionGroup = FIGHTERS
+		end
+	end
+	for _, part in ipairs(model:GetDescendants()) do
+		mark(part)
+	end
+	model.DescendantAdded:Connect(mark)
+end
 
 local WOOD = Color3.fromRGB(178, 134, 86)
 local WOOD_DARK = Color3.fromRGB(140, 102, 64)
@@ -141,6 +172,9 @@ function DummyService.Spawn(marker, options)
 	humanoid.AutoRotate = false
 	humanoid.BreakJointsOnDeath = false
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false) -- nunca muere: se queda en 0
+	-- No tropieza ni cae al chocar (un compañero tumbado tras lanzarse contra el jugador dejaba de atacar)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 
 	Rig.MakeKinematic(model) -- animaciones nítidas
 	model:PivotTo(marker.CFrame)
@@ -158,6 +192,7 @@ function DummyService.Spawn(marker, options)
 	end)
 
 	PositionService.Track(model) -- historial observado (para juzgar golpes en su instante)
+	DummyService.MarkFighter(model)
 
 	local info = { noRegen = options.noRegen == true, noReset = options.noReset == true, spawn = marker.CFrame, lastHit = -math.huge, lastHealth = maxHealth, humanoid = humanoid, root = root, maxHealth = maxHealth }
 	dummies[model] = info
@@ -172,6 +207,17 @@ end
 
 function DummyService.Start()
 	folder()
+	-- Los personajes de los jugadores también son luchadores
+	local function watchPlayer(player)
+		player.CharacterAdded:Connect(DummyService.MarkFighter)
+		if player.Character then
+			DummyService.MarkFighter(player.Character)
+		end
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		watchPlayer(player)
+	end
 	local dojo = Workspace:WaitForChild("Maps"):WaitForChild("MovementLab"):WaitForChild("Dojo")
 	for _, marker in ipairs(dojo:GetChildren()) do
 		if marker:IsA("BasePart") and string.sub(marker.Name, 1, 11) == "PuntoMuneco" then

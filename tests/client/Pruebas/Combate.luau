@@ -332,14 +332,21 @@ return function(ctx)
 	Input.Trigger("Paso")
 	task.wait(0.05)
 	local blocked = dashes == d0
+	-- Segunda parte: un golpe nuevo, y en su recuperación el Paso también lo termina
+	ctx.settle()
+	ctx.waitForCharges()
+	local d1 = dashes
+	Input.Trigger("Atacar")
 	waitUntil(function()
 		return Combat.State.attack ~= nil and Combat.State.attack.phase == "recovery"
 	end, 1)
 	Input.Trigger("Paso")
 	local canceled = waitUntil(function()
-		return dashes > d0 and Combat.State.mode == "Libre"
+		return dashes > d1 and Combat.State.mode == "Libre"
 	end, 0.4)
-	record("Paso bloqueado al preparar el golpe", blocked, "durante la preparación el Paso no sale")
+	-- Diseño desde el 2026-11-06 (DECISIONES #49): el Paso CANCELA la preparación del golpe (movilidad y amagues)
+	local dashCanceledStartup = not blocked
+	record("El Paso cancela la preparación del golpe", dashCanceledStartup, if dashCanceledStartup then "el Paso sale y el golpe se cancela" else "el Paso no salió durante la preparación")
 	record("El Paso cancela la recuperación", canceled, "en la recuperación el Paso sale y termina el golpe")
 
 	openArea()

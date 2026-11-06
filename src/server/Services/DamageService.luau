@@ -119,10 +119,11 @@ for i, name in ipairs(CombatConfig.LightChain) do
 end
 local FIRST_LIGHT = CombatConfig.LightChain[1]
 
--- Lo mínimo que dura un ataque antes de poder empezar otro (cancelar su recuperación al conectar)
+-- Lo mínimo que dura un ataque antes de poder empezar otro: su preparación (un Paso o un salto la
+-- cancelan, así que no se exige esperar el impacto). Las horas son del reloj del cliente: el desfase de
+-- la red no las acerca, por eso el margen puede ser pequeño.
 local function minBusy(def, counter)
-	local startup = if counter then def.startup * CombatConfig.Defense.CounterStartupMultiplier else def.startup
-	return startup + def.active
+	return if counter then def.startup * CombatConfig.Defense.CounterStartupMultiplier else def.startup
 end
 
 -- ¿Es legal empezar `attackName` en la hora `t`, viniendo de `previous`? Devuelve ok, motivo, cargaMáxima
@@ -158,8 +159,15 @@ local function handleStart(player, seq, attackName, t)
 	if not def or type(seq) ~= "number" or seq ~= seq then
 		return reject(player, "inicio inválido")
 	end
+	-- Hora de inicio vieja (el cliente o el servidor se trabó un instante) o inválida: se usa la hora del
+	-- servidor, que no da ventaja (solo hace más estricta la ventana del golpe, por eso se marca "clamped")
+	local clamped = false
 	if not PositionService.ValidTime(player, t) then
-		return reject(player, "hora de inicio inválida")
+		if type(t) ~= "number" or t ~= t or t > Workspace:GetServerTimeNow() + 0.05 then
+			return reject(player, "hora de inicio inválida")
+		end
+		t = Workspace:GetServerTimeNow()
+		clamped = true
 	end
 	local record = recordFor(player)
 	if record.lastStart and seq <= record.lastStart.seq then
@@ -188,6 +196,7 @@ local function handleStart(player, seq, attackName, t)
 		def = def,
 		t = t,
 		maxCharge = maxCharge,
+		clamped = clamped,
 		counter = not def.heavy and counterUntil ~= nil and Workspace:GetServerTimeNow() <= counterUntil,
 	}
 	record.lastStart = start
@@ -314,11 +323,28 @@ local function handleHit(player, payload)
 		end
 		local minStartup = def.startup * CombatConfig.Defense.CounterStartupMultiplier
 		local offset = t - start.t
-		if offset < minStartup - validation.StartTimeSlack or offset > def.startup + def.active + validation.HitWindowSlack then
+		local tooEarly = offset < minStartup - validation.StartTimeSlack and not start.clamped
+		if tooEarly or offset > def.startup + def.active + validation.HitWindowSlack then
 			return reject(player, string.format("golpe fuera de su ventana activa (%.2f s tras el inicio)", offset))
 		end
 		charge = math.min(charge, start.maxCharge)
 		local attackerCFrame, whyNot = PositionService.ConfirmedAt(player, t)
+		-- Alrededor de un teletransporte autorizado por el servidor (reaparecer, pruebas, la Grieta) lo
+		-- informado puede mezclar el lugar viejo y el nuevo: se usa lo que el SERVIDOR observó en el
+		-- instante del golpe (su historial), no la posición de ahora
+		local teleportCandidates = nil
+		if not attackerCFrame and PositionService.Teleporting(player) and player.Character then
+			-- La replicación del salto llega unos cuadros tarde al historial: se prueban el instante del golpe,
+			-- unos cuadros después y la posición actual (solo dentro del segundo autorizado)
+			local root = player.Character:FindFirstChild("HumanoidRootPart")
+			teleportCandidates = {
+				PositionService.ObservedAt(player.Character, t),
+				PositionService.ObservedAt(player.Character, t + 0.1),
+				PositionService.ObservedAt(player.Character, t + 0.25),
+				root and root.CFrame,
+			}
+			attackerCFrame = teleportCandidates[1] or teleportCandidates[4]
+		end
 		if not attackerCFrame then
 			return reject(player, "posición no confirmada por la física observada (" .. tostring(whyNot) .. ")")
 		end
@@ -328,8 +354,25 @@ local function handleHit(player, payload)
 		end
 		-- El atacante veía al objetivo como estaba hace (latencia de ida + interpolación) aprox.
 		local targetCFrame = PositionService.ObservedAt(target, t - PositionService.OneWay(player)) or current.targetRoot.CFrame
+		if teleportCandidates then
+			for _, candidate in ipairs(teleportCandidates) do
+				if candidate and Hurtbox.AttackHits(candidate, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
+					attackerCFrame = candidate
+					break
+				end
+			end
+		end
 		if not Hurtbox.AttackHits(attackerCFrame, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
-			return reject(player, string.format("fuera de alcance (%.1f studs)", flat(targetCFrame.Position - attackerCFrame.Position).Magnitude))
+			return reject(player, string.format(
+				"fuera de alcance (%.1f studs) · %s seq %d contra %s · atacante en (%.0f, %.0f) · %.2f s tras el inicio",
+				flat(targetCFrame.Position - attackerCFrame.Position).Magnitude,
+				attackName,
+				seq,
+				target.Name,
+				attackerCFrame.Position.X,
+				attackerCFrame.Position.Z,
+				t - start.t
+			))
 		end
 		applyHit(player, attackName, def, seq, target, charge, current)
 	end)

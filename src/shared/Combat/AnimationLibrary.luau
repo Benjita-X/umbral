@@ -231,6 +231,34 @@ end
 
 local NEUTRAL = {}
 
+-- Guardia de pelea: base de la que parten y a la que vuelven los golpes (en un combo los brazos no bajan
+-- entre golpe y golpe)
+local STANCE = {
+	UpperTorso = { -4, -8, 0 },
+	Head = { 0, 6, 0 },
+	LeftUpperArm = { 62, 0, 14 },
+	LeftLowerArm = { 105, 0, 0 },
+	RightUpperArm = { 55, 0, -16 },
+	RightLowerArm = { 112, 0, 0 },
+}
+
+-- Curvas (la curva de un keyframe describe el tramo HACIA el siguiente):
+--   ANTICIPA: sale rápido y frena (preparación)     GOLPEA: acelera hacia el impacto (sin frenar al llegar)
+--   VUELVE: suave en los dos extremos (recuperación)
+local ANTICIPA = { Enum.PoseEasingStyle.Cubic, Enum.PoseEasingDirection.Out }
+local GOLPEA = { Enum.PoseEasingStyle.Cubic, Enum.PoseEasingDirection.In }
+local VUELVE = { Enum.PoseEasingStyle.Cubic, Enum.PoseEasingDirection.InOut }
+local SECO = { Enum.PoseEasingStyle.Linear, Enum.PoseEasingDirection.In }
+
+-- Exagera una pose un poco más allá (overshoot): el golpe "llega" con fuerza y retrocede al impacto
+local function extend(pose, factor)
+	local result = {}
+	for joint, spec in pairs(pose) do
+		result[joint] = { (spec[1] or 0) * factor, (spec[2] or 0) * factor, (spec[3] or 0) * factor, p = spec.p }
+	end
+	return result
+end
+
 local function toCFrame(spec)
 	if not spec then
 		return CFrame.identity
@@ -239,16 +267,20 @@ local function toCFrame(spec)
 	return CFrame.new(offset) * CFrame.Angles(math.rad(spec[1] or 0), math.rad(spec[2] or 0), math.rad(spec[3] or 0))
 end
 
--- Clip de un golpe: neutro → (preparación) → impacto al empezar "active" → se mantiene → neutro al terminar
+-- Clip de un golpe: guardia → (preparación) → acelera hasta pasarse un poco del impacto al empezar
+-- "active" → retrocede a la pose de impacto → vuelve a la guardia al terminar
 local function attackClip(attackName, impact, joints, chamber)
 	local a = CombatConfig.Attacks[attackName]
-	local keyframes = { { time = 0, poses = NEUTRAL } }
+	local keyframes = {}
 	if chamber then
-		table.insert(keyframes, { time = a.startup * 0.55, poses = chamber })
+		table.insert(keyframes, { time = 0, poses = STANCE, ease = ANTICIPA })
+		table.insert(keyframes, { time = a.startup * 0.55, poses = chamber, ease = GOLPEA })
+	else
+		table.insert(keyframes, { time = 0, poses = STANCE, ease = GOLPEA })
 	end
-	table.insert(keyframes, { time = a.startup, poses = impact })
-	table.insert(keyframes, { time = a.startup + a.active, poses = impact })
-	table.insert(keyframes, { time = a.startup + a.active + a.recovery, poses = NEUTRAL })
+	table.insert(keyframes, { time = a.startup, poses = extend(impact, 1.08), ease = SECO })
+	table.insert(keyframes, { time = a.startup + a.active, poses = impact, ease = VUELVE })
+	table.insert(keyframes, { time = a.startup + a.active + a.recovery, poses = STANCE, ease = VUELVE })
 	return { joints = joints, priority = Enum.AnimationPriority.Action, keyframes = keyframes }
 end
 
@@ -294,10 +326,10 @@ local function buildClips()
 			joints = UPPER_BODY,
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
-				{ time = 0, poses = POSES.HeavyWindup },
-				{ time = heavy.startup, poses = POSES.HeavyImpact },
-				{ time = heavy.startup + heavy.active, poses = POSES.HeavyImpact },
-				{ time = heavy.startup + heavy.active + heavy.recovery, poses = NEUTRAL },
+				{ time = 0, poses = POSES.HeavyWindup, ease = GOLPEA },
+				{ time = heavy.startup, poses = extend(POSES.HeavyImpact, 1.08), ease = SECO },
+				{ time = heavy.startup + heavy.active, poses = POSES.HeavyImpact, ease = VUELVE },
+				{ time = heavy.startup + heavy.active + heavy.recovery, poses = STANCE, ease = VUELVE },
 			},
 		},
 		Guardia = holdClip(POSES.Guard, UPPER_BODY, 0.08),
@@ -322,35 +354,35 @@ local function buildClips()
 			joints = UPPER_BODY,
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
-				{ time = 0, poses = NEUTRAL },
-				{ time = golpe.holdAt, poses = POSES.SparringCock },
-				{ time = golpe.startup - 0.02, poses = POSES.SparringCock },
-				{ time = golpe.startup + 0.04, poses = POSES.SparringStrike },
-				{ time = golpe.startup + golpe.active, poses = POSES.SparringStrike },
-				{ time = golpe.startup + golpe.active + golpe.recovery, poses = NEUTRAL },
+				{ time = 0, poses = NEUTRAL, ease = ANTICIPA },
+				{ time = golpe.holdAt, poses = POSES.SparringCock, ease = VUELVE },
+				{ time = golpe.startup - 0.02, poses = extend(POSES.SparringCock, 1.05), ease = GOLPEA },
+				{ time = golpe.startup + 0.04, poses = extend(POSES.SparringStrike, 1.08), ease = SECO },
+				{ time = golpe.startup + golpe.active, poses = POSES.SparringStrike, ease = VUELVE },
+				{ time = golpe.startup + golpe.active + golpe.recovery, poses = NEUTRAL, ease = VUELVE },
 			},
 		},
 		SparringRapido = {
 			joints = UPPER_BODY,
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
-				{ time = 0, poses = NEUTRAL },
-				{ time = rapido.startup * 0.6, poses = POSES.QuickChamber },
-				{ time = rapido.startup, poses = POSES.QuickStrike },
-				{ time = rapido.startup + rapido.active, poses = POSES.QuickStrike },
-				{ time = rapido.startup + rapido.active + rapido.recovery, poses = NEUTRAL },
+				{ time = 0, poses = NEUTRAL, ease = ANTICIPA },
+				{ time = rapido.startup * 0.6, poses = POSES.QuickChamber, ease = GOLPEA },
+				{ time = rapido.startup, poses = extend(POSES.QuickStrike, 1.08), ease = SECO },
+				{ time = rapido.startup + rapido.active, poses = POSES.QuickStrike, ease = VUELVE },
+				{ time = rapido.startup + rapido.active + rapido.recovery, poses = NEUTRAL, ease = VUELVE },
 			},
 		},
 		SparringFuerte = {
 			joints = UPPER_BODY,
 			priority = Enum.AnimationPriority.Action,
 			keyframes = {
-				{ time = 0, poses = NEUTRAL },
-				{ time = fuerte.holdAt, poses = POSES.HeavyRaise },
-				{ time = fuerte.startup - 0.02, poses = POSES.HeavyRaise },
-				{ time = fuerte.startup + 0.04, poses = POSES.HeavySlam },
-				{ time = fuerte.startup + fuerte.active, poses = POSES.HeavySlam },
-				{ time = fuerte.startup + fuerte.active + fuerte.recovery, poses = NEUTRAL },
+				{ time = 0, poses = NEUTRAL, ease = ANTICIPA },
+				{ time = fuerte.holdAt, poses = POSES.HeavyRaise, ease = VUELVE },
+				{ time = fuerte.startup - 0.02, poses = extend(POSES.HeavyRaise, 1.04), ease = GOLPEA },
+				{ time = fuerte.startup + 0.04, poses = extend(POSES.HeavySlam, 1.1), ease = SECO },
+				{ time = fuerte.startup + fuerte.active, poses = POSES.HeavySlam, ease = VUELVE },
+				{ time = fuerte.startup + fuerte.active + fuerte.recovery, poses = NEUTRAL, ease = VUELVE },
 			},
 		},
 		SparringBarrido = {
@@ -372,17 +404,17 @@ end
 local clips = nil
 local animations = {}
 
-local function buildPose(partName, joints, poses)
+local function buildPose(partName, joints, poses, ease)
 	local pose = Instance.new("Pose")
 	pose.Name = partName
 	local animated = joints[partName] == true
 	pose.Weight = if animated then 1 else 0
 	pose.CFrame = if animated then toCFrame(poses[partName]) else CFrame.identity
-	pose.EasingStyle = Enum.PoseEasingStyle.Cubic
-	pose.EasingDirection = Enum.PoseEasingDirection.Out
+	pose.EasingStyle = if ease then ease[1] else Enum.PoseEasingStyle.Cubic
+	pose.EasingDirection = if ease then ease[2] else Enum.PoseEasingDirection.Out
 	local anyAnimated = animated
 	for _, childName in ipairs(HIERARCHY[partName] or {}) do
-		local child, childAnimated = buildPose(childName, joints, poses)
+		local child, childAnimated = buildPose(childName, joints, poses, ease)
 		if childAnimated then
 			child.Parent = pose
 			anyAnimated = true
@@ -409,7 +441,7 @@ function AnimationLibrary.BuildSequence(name)
 	for _, kf in ipairs(clip.keyframes) do
 		local keyframe = Instance.new("Keyframe")
 		keyframe.Time = kf.time
-		local rootPose = buildPose("HumanoidRootPart", jointSet, kf.poses)
+		local rootPose = buildPose("HumanoidRootPart", jointSet, kf.poses, kf.ease)
 		rootPose.Parent = keyframe
 		keyframe.Parent = sequence
 	end

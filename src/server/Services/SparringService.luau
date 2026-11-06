@@ -462,6 +462,47 @@ local function update(s, dt)
 	end
 end
 
+-- Aspecto del Guardián: ojos que brillan, cristales del Eco en los hombros y un aura violeta.
+-- Piezas sin colisión ni masa, soldadas al cuerpo (no cambian la Hurtbox: esa es estándar).
+local function dressGuardian(model)
+	local color = Color3.fromRGB(190, 110, 255)
+	local function glow(name, parentPart, size, offset, light)
+		if not parentPart then
+			return
+		end
+		local piece = Instance.new("Part")
+		piece.Name = name
+		piece.Size = size
+		piece.Material = Enum.Material.Neon
+		piece.Color = color
+		piece.CanCollide = false
+		piece.CanQuery = false
+		piece.CanTouch = false
+		piece.Massless = true
+		piece.CastShadow = false
+		piece.CFrame = parentPart.CFrame * offset
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = parentPart
+		weld.Part1 = piece
+		weld.Parent = piece
+		if light then
+			local point = Instance.new("PointLight")
+			point.Color = color
+			point.Range = light
+			point.Brightness = 1.5
+			point.Parent = piece
+		end
+		piece.Parent = model
+	end
+	local head = model:FindFirstChild("Head")
+	local torso = model:FindFirstChild("UpperTorso")
+	glow("OjoIzq", head, Vector3.new(0.22, 0.12, 0.08), CFrame.new(-0.2, 0.1, -0.58), nil)
+	glow("OjoDer", head, Vector3.new(0.22, 0.12, 0.08), CFrame.new(0.2, 0.1, -0.58), 8)
+	glow("CristalHombroIzq", torso, Vector3.new(0.35, 1.1, 0.35), CFrame.new(-1.1, 1.1, 0) * CFrame.Angles(0, 0, math.rad(20)), nil)
+	glow("CristalHombroDer", torso, Vector3.new(0.35, 1.1, 0.35), CFrame.new(1.1, 1.1, 0) * CFrame.Angles(0, 0, math.rad(-20)), 14)
+	glow("Nucleo", torso, Vector3.new(0.4, 0.4, 0.1), CFrame.new(0, 0.2, -0.52), nil)
+end
+
 -- Guardián de la Grieta: al llegar a 0 de vida queda vencido (aviso a todos), y se levanta para la revancha
 local guardian = sparring.Guardian
 local noticeRemote
@@ -536,6 +577,7 @@ function SparringService.Start()
 				setPhase(s, "Quieto", nil, profile(s).pause)
 				npcs[model] = s
 				if isGuardian then
+					dressGuardian(model)
 					watchGuardian(s)
 				end
 			end)
