@@ -176,12 +176,76 @@ local function onState(model, e)
 	end
 end
 
+-- Barra de postura sobre el enemigo (naranja) y el aviso de QUEBRADO (rojo): atacar cerca = Golpe de Gracia
+local function postureBar(model)
+	-- El servidor fija la postura máxima justo después de crear al enemigo: se espera un poco
+	local start = os.clock()
+	while not model:GetAttribute("PosturaMax") and os.clock() - start < 6 and model.Parent do
+		task.wait(0.2)
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if not root or not model:GetAttribute("PosturaMax") or root:FindFirstChild("UmbralPostura") then
+		return
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "UmbralPostura"
+	gui.Size = UDim2.fromOffset(110, 26)
+	gui.StudsOffset = Vector3.new(0, 4.6, 0)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.MaxDistance = 70
+	local back = Instance.new("Frame")
+	back.AnchorPoint = Vector2.new(0.5, 1)
+	back.Position = UDim2.fromScale(0.5, 1)
+	back.Size = UDim2.new(1, 0, 0, 7)
+	back.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+	back.BackgroundTransparency = 0.3
+	back.BorderSizePixel = 0
+	back.Parent = gui
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(255, 160, 60)
+	fill.BorderSizePixel = 0
+	fill.Parent = back
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, -9)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(255, 90, 80)
+	label.TextStrokeTransparency = 0.2
+	label.Text = ""
+	label.Parent = gui
+	gui.Adornee = root
+	gui.Parent = root
+	local function refresh()
+		local max = model:GetAttribute("PosturaMax") or 100
+		local value = model:GetAttribute("Postura") or 0
+		local brokenUntil = model:GetAttribute("QuebradoHasta") or 0
+		local isBroken = brokenUntil > serverNow()
+		back.Visible = value > 0.5 or isBroken
+		fill.Size = UDim2.fromScale(math.clamp(value / max, 0, 1), 1)
+		fill.BackgroundColor3 = if isBroken then Color3.fromRGB(255, 70, 60) elseif value / max > 0.75 then Color3.fromRGB(255, 120, 50) else Color3.fromRGB(255, 170, 70)
+		label.Text = if isBroken then "¡QUEBRADO! · ATACA" else ""
+	end
+	model:GetAttributeChangedSignal("Postura"):Connect(refresh)
+	model:GetAttributeChangedSignal("QuebradoHasta"):Connect(function()
+		refresh()
+		local untilTime = model:GetAttribute("QuebradoHasta")
+		if untilTime then
+			task.delay(math.max(0, untilTime - serverNow()) + 0.05, refresh)
+		end
+	end)
+	refresh()
+end
+
 local function watch(model)
 	if enemies[model] then
 		return
 	end
 	local e = { tracks = {} }
 	enemies[model] = e
+	task.spawn(postureBar, model)
 	model:GetAttributeChangedSignal("Estado"):Connect(function()
 		onState(model, e)
 	end)

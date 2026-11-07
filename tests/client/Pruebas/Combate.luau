@@ -109,7 +109,9 @@ return function(ctx)
 		h1.RigType == Enum.HumanoidRigType.R15 and h1.Health == Config.Dummy.MaxHealth and m1:HasTag("Objetivo"),
 		string.format("RigType %s, vida %d/%d", h1.RigType.Name, h1.Health, h1.MaxHealth)
 	)
-	record("Animaciones de combate cargadas", Combat.LoadedTrackCount() == 9, string.format("%d de 9 pistas", Combat.LoadedTrackCount()))
+	-- Puños, defensa, espada y golpes especiales: todas las pistas del combate (ver TRACK_NAMES)
+	local expectedTracks = 19
+	record("Animaciones de combate cargadas", Combat.LoadedTrackCount() == expectedTracks, string.format("%d de %d pistas", Combat.LoadedTrackCount(), expectedTracks))
 
 	local function waitComboReset()
 		waitUntil(function()

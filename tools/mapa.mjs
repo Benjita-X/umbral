@@ -203,6 +203,8 @@ export function buildMovementLab(options = {}) {
   zones.push(folder('Ring', ring));
 
   zones.push(arena());
+  // Gancho (E): puntos de enganche para practicar en el laboratorio
+  zones.push(folder('Ganchos', [hookPoint([-30, 16, 50]), hookPoint([30, 16, 50]), hookPoint([0, 22, 90])]));
   if (options.testEnemies) zones.push(testEnemies());
 
   return [folder('Maps', [folder('MovementLab', zones)])];
@@ -264,6 +266,11 @@ function arena() {
   return folder('Arena', items);
 }
 
+// Punto de enganche (Gancho, tecla E): orbe brillante sin colisión. El cliente los busca por su nombre.
+export function hookPoint(pos) {
+  return part({ name: 'PuntoGancho', size: [1.6, 1.6, 1.6], pos, color: [120, 255, 230], material: 'Neon', collide: false, extra: [['token', 'shape', 0]] });
+}
+
 // Zona de pruebas de enemigos (SOLO en build/UMBRAL-Pruebas.rbxlx): un ejemplar de cada enemigo común,
 // separados más de su alcance de agresión (12) para probarlos de a uno. Lejos del laboratorio (X = 200).
 function testEnemies() {
@@ -277,5 +284,7 @@ function testEnemies() {
     marker('PuntoSparring_Acechador', [200, 3.2, -120]),
     // Agarre de borde: 10,5 de alto (un salto llega a 8,5; con el agarre se sube)
     part({ name: 'BloqueBorde', size: [8, 10.5, 8], pos: [150, 5.25, 0], color: [120, 110, 90] }),
+    // Gancho: un punto de enganche alto y aislado para la prueba
+    hookPoint([150, 18, 40]),
   ]);
 }

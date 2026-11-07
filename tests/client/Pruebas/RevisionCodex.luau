@@ -30,50 +30,71 @@ return function(ctx)
 
 	ctx.waitForCharges()
 	ctx.teleport(Vector3.new(0, 4, 150), Vector3.new(0, 0, 1)) -- zona abierta, sin enemigos cerca
-	task.wait(3.2) -- que venzan los enfriamientos del Eco de pruebas anteriores
+	task.wait(0.5)
 
-	-- #1: dos Ráfagas en el mismo cuadro cobran una sola vez
+	local function resetEco()
+		ctx.remote:FireServer("reiniciar_eco")
+		task.wait(0.15)
+	end
+	local function rejectionAfter(fire)
+		local count = player:GetAttribute("EcosRechazados") or 0
+		fire()
+		waitUntil(function()
+			return (player:GetAttribute("EcosRechazados") or 0) > count
+		end, 1.5)
+		return player:GetAttribute("EcoRechazado")
+	end
+
+	-- #1: dos pedidos de la misma habilidad en el mismo cuadro: sale UNA sola vez (la definitiva cobra una vez)
 	if ecoRemote then
+		resetEco()
 		setResonance(100)
 		local before = player:GetAttribute("Resonancia") or 0
 		local root = ctx.root
 		local t = now()
-		ecoRemote:FireServer("rafaga", t, root.Position, root.CFrame.LookVector)
-		ecoRemote:FireServer("rafaga", t, root.Position, root.CFrame.LookVector)
+		local look = root.CFrame.LookVector
+		ecoRemote:FireServer("tempestad", t, root.Position, look, look)
+		ecoRemote:FireServer("tempestad", t, root.Position, look, look)
 		task.wait(0.8)
 		local spent = before - (player:GetAttribute("Resonancia") or 0)
-		local cost = Config.Eco.Techniques.Rafaga.cost
-		record("[Codex #1] Dos Ráfagas simultáneas cobran una sola vez", spent >= cost - 0.5 and spent < cost * 2 - 1, string.format("cobró %.1f (una = %d, dos = %d)", spent, cost, cost * 2))
+		local cost = Config.Eco.Skills.Tempestad.cost
+		record("[Codex #1] Dos definitivas en el mismo cuadro cobran una sola vez", spent >= cost - 0.5 and spent < cost + 6 and player:GetAttribute("EcoRechazado") == "enfriamiento", string.format("cobró %.1f (una = %d) · el segundo pedido: %s", spent, cost, tostring(player:GetAttribute("EcoRechazado"))))
+		task.wait(Config.Eco.Skills.Tempestad.duration)
+		setResonance(0)
 
 		-- #2: el Descenso desde el suelo se rechaza
-		task.wait(Config.Eco.Techniques.Descenso.cooldown + 0.2)
+		resetEco()
 		ctx.settle()
-		setResonance(100)
-		ecoRemote:FireServer("descenso", now(), ctx.root.Position, ctx.root.CFrame.LookVector)
-		waitUntil(function()
-			return player:GetAttribute("EcoRechazado") == "descenso sin estar en el aire"
-		end, 1.5)
-		record("[Codex #2] El Descenso desde el suelo se rechaza", player:GetAttribute("EcoRechazado") == "descenso sin estar en el aire", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
-		setResonance(0)
+		local reason = rejectionAfter(function()
+			ecoRemote:FireServer("descenso", now(), ctx.root.Position, ctx.root.CFrame.LookVector)
+		end)
+		record("[Codex #2] El Descenso desde el suelo se rechaza", reason == "descenso sin estar en el aire", "motivo: " .. tostring(reason))
 	end
 
-	-- #8: la Ráfaga en el aire se rechaza sin cobrar
+	-- #8: el Levante (técnica de suelo) en el aire se rechaza y NO gasta el enfriamiento
 	if ecoRemote then
-		task.wait(Config.Eco.Techniques.Rafaga.cooldown + 0.2)
+		resetEco()
 		ctx.settle()
-		setResonance(100)
 		ctx.humanoid.Jump = true
 		waitUntil(function()
 			return not ctx.grounded() and ctx.root.AssemblyLinearVelocity.Y <= 3
 		end, 1.5)
-		local before = player:GetAttribute("Resonancia") or 0
-		ecoRemote:FireServer("rafaga", now(), ctx.root.Position, ctx.root.CFrame.LookVector)
-		waitUntil(function()
-			return player:GetAttribute("EcoRechazado") == "ráfaga en el aire"
+		local look = ctx.root.CFrame.LookVector
+		local reason = rejectionAfter(function()
+			ecoRemote:FireServer("levante", now(), ctx.root.Position, look, look)
+		end)
+		ctx.settle()
+		-- Si el rechazo hubiera gastado el enfriamiento, este Levante de suelo también se rechazaría
+		local accepted = false
+		local finishedBefore = player:GetAttribute("UltimoEco")
+		player:SetAttribute("UltimoEco", nil)
+		ecoRemote:FireServer("levante", now(), ctx.root.Position, look, look)
+		accepted = waitUntil(function()
+			local last = player:GetAttribute("UltimoEco")
+			return type(last) == "string" and string.sub(last, 1, 8) == "Levante:"
 		end, 1.5)
-		local after = player:GetAttribute("Resonancia") or 0
-		record("[Codex #8] La Ráfaga en el aire se rechaza sin cobrar", player:GetAttribute("EcoRechazado") == "ráfaga en el aire" and after >= before - 2.5, string.format("motivo: %s · Resonancia %.0f → %.0f", tostring(player:GetAttribute("EcoRechazado")), before, after))
-		setResonance(0)
+		local _ = finishedBefore
+		record("[Codex #8] El Levante en el aire se rechaza sin gastar el enfriamiento", reason == "levante en el aire" and accepted, string.format("motivo: %s · luego en el suelo salió: %s", tostring(reason), tostring(accepted)))
 		ctx.settle()
 	end
 

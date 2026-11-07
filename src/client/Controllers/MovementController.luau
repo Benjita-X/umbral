@@ -27,6 +27,15 @@ local wallRunEvent = Instance.new("BindableEvent")
 MovementController.WallRunStarted = wallRunEvent.Event
 local mantledEvent = Instance.new("BindableEvent")
 MovementController.Mantled = mantledEvent.Event
+-- Gancho: empezó (posición del enganche) y llegó (true si fue a un enemigo)
+local grappledEvent = Instance.new("BindableEvent")
+MovementController.Grappled = grappledEvent.Event
+local grappleEndedEvent = Instance.new("BindableEvent")
+MovementController.GrappleEnded = grappleEndedEvent.Event
+-- Aterrizaje: velocidad de caída al tocar el suelo (polvo y sacudida al caer desde alto)
+local landedEvent = Instance.new("BindableEvent")
+MovementController.Landed = landedEvent.Event
+local lastAirVelocityY = 0
 
 -- Estado de solo lectura para la cámara y el panel de depuración
 local state = {
@@ -65,6 +74,9 @@ local wallRunUsed = false -- una carrera por pared por salto
 local mantleUsed = false -- un agarre de borde por salto
 local sliding = false -- deslizándose por una pared (fuerza vertical constante)
 local mantle = nil -- { topY, dir, remaining, overStart }: trepada controlada sobre un borde
+local hover = nil -- { remaining }: flotando un instante en el aire (combos aéreos: golpear en el aire te sostiene)
+local grapple = nil -- { getTarget, enemy, remaining, speed }: el gancho te lleva hacia un punto o un enemigo
+local hoverVelocity = nil -- fuerza solo vertical propia del flotar (no choca con el Paso ni los avances)
 local wallParams = RaycastParams.new()
 wallParams.FilterType = Enum.RaycastFilterType.Exclude
 local blockParams = RaycastParams.new()
@@ -75,9 +87,12 @@ local baseSpeed = Config.RunSpeed -- velocidad de carrera/sprint antes de multip
 -- Bloqueos y multiplicadores que piden otros sistemas (combate, menús...), por clave
 local extraDashProvider = nil -- función que devuelve true si paga un Paso extra sin cargas
 local speedMultipliers = {}
+local speedBoosts = {} -- [clave] = multiplicador > 1 (se usa el mayor)
 local dashBlockers = {}
 local jumpBlockers = {}
 local rotateBlockers = {}
+local cameraFacing = false -- cámara fija: el personaje mira hacia donde apunta la cámara
+local lockedTarget = nil -- enemigo fijado (R): el personaje lo encara siempre
 
 local function log(...)
 	if Config.DebugPrints then
@@ -265,7 +280,12 @@ local function speedMultiplier()
 	for _, value in pairs(speedMultipliers) do
 		m = math.min(m, value)
 	end
-	return m
+	-- Impulsos (formas de las definitivas): el mayor
+	local boost = 1
+	for _, value in pairs(speedBoosts) do
+		boost = math.max(boost, value)
+	end
+	return m * boost
 end
 
 local function applyBlockers()
@@ -273,12 +293,13 @@ local function applyBlockers()
 		return
 	end
 	humanoid.JumpHeight = if next(jumpBlockers) then 0 else Config.JumpHeight
-	humanoid.AutoRotate = next(rotateBlockers) == nil
+	humanoid.AutoRotate = next(rotateBlockers) == nil and not cameraFacing and lockedTarget == nil
 end
 
 local function stopDashForces()
 	sliding = false
 	mantle = nil
+	grapple = nil
 	dash = nil
 	exitBlend = nil
 	lunge = nil
@@ -325,6 +346,13 @@ end
 local function startDash()
 	if not humanoid or not root or humanoid.Health <= 0 or dash then
 		return
+	end
+	if grapple then
+		grapple = nil -- el Paso corta el gancho
+	end
+	if hover then
+		hover = nil
+		hoverVelocity.Enabled = false
 	end
 	local now = os.clock()
 	if now - lastDashTime < Config.DashMinInterval or next(dashBlockers) then
@@ -390,9 +418,13 @@ local function onJumpPressed()
 	end
 	local now = os.clock()
 
-	-- Un salto corta el Paso aéreo y el deslizamiento (su fuerza vertical anularía el impulso)
+	-- Un salto corta el Paso aéreo, el flotar y el deslizamiento (su fuerza vertical anularía el impulso)
 	if dash then
 		endDash()
+	end
+	if hover then
+		hover = nil
+		hoverVelocity.Enabled = false
 	end
 	if sliding then
 		sliding = false
@@ -435,6 +467,8 @@ local function onStateChanged(_, newState)
 	if newState == Enum.HumanoidStateType.Jumping then
 		jumpedSinceGrounded = true
 	elseif newState == Enum.HumanoidStateType.Landed then
+		landedEvent:Fire(-lastAirVelocityY)
+		lastAirVelocityY = 0
 		resetAir()
 		if os.clock() - bufferedJumpTime <= Config.JumpBufferTime and not next(jumpBlockers) then
 			bufferedJumpTime = -math.huge
@@ -448,6 +482,7 @@ local function setupCharacter(character)
 	disconnectAll()
 	stopDashForces()
 	humanoid, root, dashVelocity = nil, nil, nil
+	hover, hoverVelocity = nil, nil
 	state.ready = false
 
 	local newHumanoid = character:WaitForChild("Humanoid")
@@ -481,6 +516,20 @@ local function setupCharacter(character)
 	state.sprinting = false
 	resetAir()
 
+	local float = Instance.new("LinearVelocity")
+	float.Name = "UmbralFlotar"
+	float.Attachment0 = attachment
+	float.RelativeTo = Enum.ActuatorRelativeTo.World
+	float.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+	float.ForceLimitsEnabled = true
+	float.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+	float.MaxAxesForce = Vector3.new(0, FORCE, 0)
+	float.VectorVelocity = Vector3.zero
+	float.Enabled = false
+	float.Parent = newRoot
+	hover = nil
+	hoverVelocity = float
+
 	humanoid, root, dashVelocity = newHumanoid, newRoot, constraint
 	applyBlockers()
 	table.insert(connections, newHumanoid.StateChanged:Connect(onStateChanged))
@@ -499,6 +548,12 @@ local function update(dt)
 
 	-- Suelo
 	state.grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+	if not state.grounded then
+		lastAirVelocityY = math.min(lastAirVelocityY, velocity.Y)
+		if velocity.Y > 0 then
+			lastAirVelocityY = 0 -- subiendo: la caída se mide desde lo más alto
+		end
+	end
 	if state.grounded then
 		lastGroundedTime = now
 		if velocity.Y <= 1 and not dash then
@@ -517,6 +572,47 @@ local function update(dt)
 	else
 		chargeTimer = 0
 	end
+
+	-- Gancho: te lleva en línea recta hacia el enganche (o hasta quedar frente al enemigo)
+	if grapple then
+		grapple.remaining -= dt
+		local target = grapple.getTarget()
+		local offset = if target then target - root.Position else Vector3.zero
+		local stopAt = if grapple.enemy then 3.2 else 2.2
+		local blocked = false
+		if target and offset.Magnitude > stopAt then
+			blockParams.FilterDescendantsInstances = { root.Parent, Workspace.CurrentCamera }
+			local ok, hit = pcall(Workspace.Spherecast, Workspace, root.Position, 1, offset.Unit * math.min(offset.Magnitude, grapple.speed * dt * 1.5 + 0.5), blockParams)
+			if ok and hit then
+				local model = hit.Instance:FindFirstAncestorOfClass("Model")
+				blocked = not (model and model:FindFirstChildOfClass("Humanoid")) and hit.Instance.Name ~= "PuntoGancho"
+			end
+		end
+		if not target or offset.Magnitude <= stopAt or grapple.remaining <= 0 or blocked then
+			local wasEnemy = grapple.enemy
+			local dir = if offset.Magnitude > 0.01 then offset.Unit else flat(root.CFrame.LookVector)
+			grapple = nil
+			dashVelocity.Enabled = false
+			resetAir() -- el gancho devuelve el doble salto y el Paso aéreo
+			if wasEnemy then
+				root.AssemblyLinearVelocity = Vector3.new(0, math.max(root.AssemblyLinearVelocity.Y * 0.2, 0), 0)
+			else
+				-- Al llegar al enganche, un impulso hacia adelante y arriba (para pasar sobre el borde)
+				local forward = flat(dir)
+				forward = if forward.Magnitude > 0.01 then forward.Unit else flat(root.CFrame.LookVector)
+				root.AssemblyLinearVelocity = forward * 22 + Vector3.new(0, 34, 0)
+			end
+			grappleEndedEvent:Fire(wasEnemy)
+		else
+			dashVelocity.MaxAxesForce = Vector3.new(FORCE, FORCE, FORCE)
+			dashVelocity.VectorVelocity = offset.Unit * grapple.speed
+			dashVelocity.Enabled = true
+		end
+		state.grappling = grapple ~= nil
+		state.speed = flat(root.AssemblyLinearVelocity).Magnitude
+		return
+	end
+	state.grappling = false
 
 	-- Paso en curso y fundido de salida.
 	-- Termina por DISTANCIA, no por tiempo: así recorre lo mismo a 30 o a 60 FPS (justo en PvP).
@@ -594,6 +690,15 @@ local function update(dt)
 				stopAgainst(wall.Normal)
 			end
 			if lunge.remaining <= 0 then
+				-- Embestidas rápidas de habilidad: frenan en seco al terminar (si no, el impulso las alargaba al doble)
+				if lunge.stop then
+					local v = root.AssemblyLinearVelocity
+					local keep = flat(v)
+					if keep.Magnitude > Config.RunSpeed then
+						keep = keep.Unit * Config.RunSpeed
+					end
+					root.AssemblyLinearVelocity = Vector3.new(keep.X, v.Y, keep.Z)
+				end
 				lunge = nil
 				dashVelocity.Enabled = false
 			end
@@ -693,8 +798,37 @@ local function update(dt)
 	state.wallRunning = wallRun ~= nil
 	state.wallSliding = sliding
 
+	-- Flotar (combos aéreos): sostiene la altura un instante
+	if hover then
+		hover.remaining -= dt
+		if hover.remaining <= 0 or state.grounded or dash or wallRun or mantle then
+			hover = nil
+			hoverVelocity.Enabled = false
+		end
+	end
+	state.hovering = hover ~= nil
+
+	-- Cámara fija: el cuerpo gira hacia donde mira la cámara (salvo que un golpe o una habilidad lo esté
+	-- orientando hacia un rival, o corriendo por una pared / trepando)
+	local lockedRoot = lockedTarget and lockedTarget.Parent and lockedTarget:FindFirstChild("HumanoidRootPart")
+	if lockedRoot and not next(rotateBlockers) and not wallRun and not mantle then
+		-- Enemigo fijado: el cuerpo lo encara siempre
+		local toward = flat(lockedRoot.Position - root.Position)
+		if toward.Magnitude > 0.3 then
+			local target = CFrame.lookAt(root.Position, root.Position + toward.Unit)
+			root.CFrame = root.CFrame:Lerp(target, 1 - math.exp(-30 * dt))
+		end
+	elseif cameraFacing and not next(rotateBlockers) and not wallRun and not mantle then
+		local camera = Workspace.CurrentCamera
+		local look = camera and flat(camera.CFrame.LookVector)
+		if look and look.Magnitude > 0.01 then
+			local target = CFrame.lookAt(root.Position, root.Position + look.Unit)
+			root.CFrame = root.CFrame:Lerp(target, 1 - math.exp(-30 * dt))
+		end
+	end
+
 	-- Caída más rápida que la subida
-	if not state.grounded and velocity.Y < 0 and not (dash and dash.holdHeight) and not sliding and not wallRun and not mantle then
+	if not state.grounded and velocity.Y < 0 and not (dash and dash.holdHeight) and not sliding and not wallRun and not mantle and not hover then
 		local extra = Workspace.Gravity * (Config.FallGravityMultiplier - 1) * dt
 		local newY = math.max(velocity.Y - extra, -Config.MaxFallSpeed)
 		root.AssemblyLinearVelocity = Vector3.new(velocity.X, newY, velocity.Z)
@@ -725,6 +859,11 @@ function MovementController.SetAutoRotateBlocked(key, blocked)
 	applyBlockers()
 end
 
+-- Más velocidad mientras la clave esté activa (nil la quita); se usa el mayor de los impulsos
+function MovementController.SetSpeedBoost(key, value)
+	speedBoosts[key] = value
+end
+
 -- Quita todos los bloqueos y multiplicadores de una clave (al terminar un golpe, al reaparecer...)
 function MovementController.ClearKey(key)
 	speedMultipliers[key] = nil
@@ -741,8 +880,9 @@ function MovementController.CancelDash()
 	end
 end
 
--- Avance horizontal corto (los golpes se acercan al rival)
-function MovementController.Lunge(direction, speed, duration)
+-- Avance horizontal corto (los golpes se acercan al rival). `stopAtEnd`: frena en seco al terminar (embestidas
+-- de habilidad, que van muy rápido)
+function MovementController.Lunge(direction, speed, duration, stopAtEnd)
 	if not dashVelocity or dash then
 		return
 	end
@@ -751,7 +891,7 @@ function MovementController.Lunge(direction, speed, duration)
 		return
 	end
 	exitBlend = nil
-	lunge = { velocity = dir.Unit * speed, remaining = duration, hold = 0 }
+	lunge = { velocity = dir.Unit * speed, remaining = duration, hold = 0, stop = stopAtEnd == true }
 	dashVelocity.MaxAxesForce = Vector3.new(FORCE, 0, FORCE)
 	dashVelocity.VectorVelocity = lunge.velocity
 	dashVelocity.Enabled = true
@@ -806,6 +946,98 @@ function MovementController.StopLunge()
 	end
 end
 
+-- Flota un instante en el aire (golpear en el aire te sostiene para seguir el combo). En el suelo no hace nada.
+function MovementController.AirStall(duration)
+	if not root or not hoverVelocity or state.grounded or duration <= 0 then
+		return
+	end
+	if hover then
+		hover.remaining = math.max(hover.remaining, duration)
+		return
+	end
+	hover = { remaining = duration }
+	local v = root.AssemblyLinearVelocity
+	root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, 0), v.Z)
+	hoverVelocity.VectorVelocity = Vector3.zero
+	hoverVelocity.Enabled = true
+end
+
+-- Gancho: te lleva hacia `getTarget()` (función que devuelve la posición, se reevalúa cada cuadro) a `speed`.
+-- `enemy`: se detiene frente a él en vez de impulsarte al llegar.
+function MovementController.Grapple(getTarget, enemy, speed)
+	if not root or not humanoid or humanoid.Health <= 0 or not dashVelocity then
+		return false
+	end
+	local target = getTarget()
+	if not target then
+		return false
+	end
+	if dash then
+		endDash()
+	end
+	exitBlend = nil
+	lunge = nil
+	wallPush = nil
+	mantle = nil
+	sliding = false
+	if wallRun then
+		endWallRun()
+	end
+	if hover then
+		hover = nil
+		hoverVelocity.Enabled = false
+	end
+	speed = speed or 95
+	local distance = (target - root.Position).Magnitude
+	grapple = { getTarget = getTarget, enemy = enemy == true, remaining = distance / speed + 0.35, speed = speed }
+	state.grappling = true -- desde ya (no recién en el próximo cuadro)
+	if state.grounded then
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+	jumpedSinceGrounded = true
+	grappledEvent:Fire(target, enemy == true)
+	return true
+end
+
+function MovementController.CancelGrapple()
+	if grapple then
+		grapple = nil
+		if dashVelocity then
+			dashVelocity.Enabled = false
+		end
+	end
+end
+
+-- Impulso en el aire con una velocidad dada (subir tras un enemigo lanzado, picadas): corta Paso y flotar
+function MovementController.Launch(velocity)
+	if not root or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	if dash then
+		endDash()
+	end
+	exitBlend = nil
+	lunge = nil
+	if dashVelocity and not wallPush and not mantle then
+		dashVelocity.Enabled = false
+	end
+	if hover then
+		hover = nil
+		hoverVelocity.Enabled = false
+	end
+	if state.grounded then
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+	jumpedSinceGrounded = true
+	root.AssemblyLinearVelocity = velocity
+	-- Un cuadro después se repite por si el estado del Humanoid se lo comió al despegar del suelo
+	task.defer(function()
+		if root and velocity.Y > 0 and root.AssemblyLinearVelocity.Y < velocity.Y * 0.6 then
+			root.AssemblyLinearVelocity = velocity
+		end
+	end)
+end
+
 -- Gira el cuerpo al instante hacia una dirección horizontal
 function MovementController.Face(direction)
 	if not root then
@@ -817,10 +1049,44 @@ function MovementController.Face(direction)
 	end
 end
 
--- Hacia dónde quiere ir el jugador (o hacia donde mira si no pulsa nada)
+-- Cámara fija (la activa CameraController): el personaje mira hacia la cámara
+function MovementController.SetCameraFacing(on)
+	cameraFacing = on == true
+	applyBlockers()
+end
+
+-- Enemigo fijado (FijarObjetivoController): el personaje lo encara y los golpes van hacia él
+function MovementController.SetLockedTarget(model)
+	lockedTarget = model
+	applyBlockers()
+end
+
+function MovementController.LockedTarget()
+	if lockedTarget and lockedTarget.Parent then
+		return lockedTarget
+	end
+	return nil
+end
+
+-- Hacia dónde quiere ir el jugador (o hacia donde mira si no pulsa nada). Con la cámara fija, hacia donde
+-- apunta la cámara (los golpes salen hacia la mira aunque te muevas de lado).
 function MovementController.DesiredDirection()
 	if not humanoid or not root then
 		return Vector3.new(0, 0, -1)
+	end
+	local lockedRoot = lockedTarget and lockedTarget.Parent and lockedTarget:FindFirstChild("HumanoidRootPart")
+	if lockedRoot then
+		local toward = flat(lockedRoot.Position - root.Position)
+		if toward.Magnitude > 0.3 then
+			return toward.Unit
+		end
+	end
+	if cameraFacing then
+		local camera = Workspace.CurrentCamera
+		local look = camera and flat(camera.CFrame.LookVector)
+		if look and look.Magnitude > 0.01 then
+			return look.Unit
+		end
 	end
 	local move = flat(humanoid.MoveDirection)
 	if move.Magnitude > 0.1 then

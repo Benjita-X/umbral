@@ -4,6 +4,16 @@ Actualizado: 2026-11-06 (consolidación de las fases 1-3).
 
 Leyenda: **IMPLEMENTADO** (hay código) · **INTEGRADO** (conectado) · **PROBADO** (una prueba concreta pasó) · **VALIDADO** (cumple criterios, también humanos) · **PENDIENTE** · **BLOQUEADO**.
 
+## Rama experimental `experimental/habilidades-v2` (2026-11-07)
+Sobre `experimental/eco` (mazmorra, movilidad en paredes, tutorial). Lo nuevo, todo **INTEGRADO y PROBADO** con
+pruebas automáticas (la sensación queda PENDIENTE de una persona):
+- **Habilidades v2**: una tecla por habilidad (Z X C V), barra con enfriamientos, sin costo las básicas,
+  sinergias con nombre y combos aéreos. **5 Ecos** (Viento, Agua, Oscuridad, Fuego infernal, Trueno): 20
+  habilidades + variantes en el aire y relanzamientos.
+- **Armas**: Puños ↔ Espada (Q), golpe tras el Paso y golpe en picada para cada arma.
+- **Movimiento a lo Sekiro**: gancho (E) a orbes del mapa y a enemigos; postura enemiga y Golpe de Gracia.
+- Guía para probarlo: [COMO-JUGAR.md](COMO-JUGAR.md). Diseño y estado: [HABILIDADES-V2.md](HABILIDADES-V2.md).
+
 ## Resumen
 | Parte | Estado |
 |---|---|

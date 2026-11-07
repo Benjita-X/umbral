@@ -108,6 +108,23 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 		if humanoid then
 			humanoid.Health = humanoid.MaxHealth
 		end
+	elseif action == "postura" then
+		-- Fija la postura de los enemigos con una etiqueta (si llega al máximo, quedan quebrados)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local sparringModule = services and services:FindFirstChild("SparringService")
+		if sparringModule then
+			for _, model in ipairs(game:GetService("CollectionService"):GetTagged(payload.tag)) do
+				require(sparringModule).SetPosture(model, payload.value)
+			end
+		end
+	elseif action == "reiniciar_eco" then
+		-- Enfriamientos de las habilidades a cero (para probar cada una sin esperar)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local ecoModule = services and services:FindFirstChild("EcoService")
+		if ecoModule then
+			require(ecoModule).ResetCooldowns(player)
+		end
+		player:SetAttribute("UltimaSinergia", nil)
 	elseif action == "fin" then
 		print("[UMBRAL-PRUEBAS] Servidor: resultados recibidos, cerrando la prueba")
 		endTest(payload)

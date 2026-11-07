@@ -1,10 +1,15 @@
--- InputController: traduce teclado, mando y pantalla táctil a las 5 acciones del juego.
+-- InputController: traduce teclado, mando y pantalla táctil a las acciones del juego.
 -- Emite ActionBegan(acción) al pulsar y ActionEnded(acción) al soltar.
---   Atacar   · clic izquierdo · X (mando) · botón ATACAR   (pulsar = combo, mantener = golpe fuerte)
---   Defender · F · R1/RB (mando) · botón DEFENDER          (mantener = guardia)
---   Paso     · Shift · B (mando) · botón PASO
---   Saltar   · Espacio · A (mando) · botón de salto de Roblox
---   Eco      · Q / Y / botón ECO: el Eco del jugador (EXPERIMENTAL)
+--   Atacar      · clic izquierdo · X (mando) · botón ATACAR   (pulsar = combo, mantener = golpe fuerte)
+--   Defender    · F · R1/RB (mando) · botón DEFENDER          (mantener = guardia)
+--   Paso        · Shift · B (mando) · botón PASO
+--   Saltar      · Espacio · A (mando) · botón de salto de Roblox
+--   HabilidadZ/X/C/V · Z X C V · Y, L1, L2, R2 (mando) · un botón por habilidad: las del Eco puesto
+--   Eco1..Eco5  · teclas 1-5 · cruceta izq./der. (EcoAnterior / EcoSiguiente): cambiar de Eco
+--   Arma        · Q · cruceta arriba · botón ARMA: Puños ↔ Espada
+--   Gancho      · E · cruceta abajo · botón GANCHO: engancharse al punto o enemigo marcado
+--   FijarCamara · Ctrl: cámara fija (el personaje mira hacia la mira) o ratón libre
+--   FijarObjetivo · R · R3: fijar al enemigo del centro de la pantalla (la cámara lo sigue)
 -- El clic derecho NO se usa: en Roblox gira la cámara.
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -81,7 +86,14 @@ local TOUCH_BUTTONS = {
 	{ action = "Atacar", label = "ATACAR", dx = -1.15, dy = 0.05, scale = 1.1, color = Color3.fromRGB(150, 40, 40) },
 	{ action = "Paso", label = "PASO", dx = -0.2, dy = -1.05, scale = 0.8, color = Color3.fromRGB(28, 36, 58) },
 	{ action = "Defender", label = "DEFENDER", dx = -1.3, dy = -1.0, scale = 0.8, color = Color3.fromRGB(40, 90, 70) },
-	{ action = "Eco", label = "ECO", dx = -0.75, dy = -1.95, scale = 0.75, color = Color3.fromRGB(30, 110, 100) },
+	-- Habilidades del Eco: un arco a la izquierda (EcoController les pone el nombre y el enfriamiento)
+	{ action = "HabilidadZ", label = "Z", dx = -2.3, dy = 0.3, scale = 0.72, color = Color3.fromRGB(30, 96, 90) },
+	{ action = "HabilidadX", label = "X", dx = -2.4, dy = -0.62, scale = 0.72, color = Color3.fromRGB(30, 96, 90) },
+	{ action = "HabilidadC", label = "C", dx = -2.05, dy = -1.52, scale = 0.72, color = Color3.fromRGB(30, 96, 90) },
+	{ action = "HabilidadV", label = "V", dx = -1.15, dy = -1.98, scale = 0.8, color = Color3.fromRGB(90, 70, 30) },
+	{ action = "Arma", label = "ARMA", dx = -0.1, dy = -2.0, scale = 0.6, color = Color3.fromRGB(70, 60, 50) },
+	{ action = "Gancho", label = "GANCHO", dx = 0.7, dy = -1.75, scale = 0.6, color = Color3.fromRGB(30, 100, 95) },
+	{ action = "FijarObjetivo", label = "FIJAR", dx = 0.7, dy = -2.6, scale = 0.55, color = Color3.fromRGB(110, 40, 40) },
 }
 
 local function makeButton(spec, gui)
@@ -175,7 +187,20 @@ function InputController.Start()
 	bind("Atacar", Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX)
 	bind("Defender", Enum.KeyCode.F, Enum.KeyCode.ButtonR1)
 	bind("Paso", Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB)
-	bind("Eco", Enum.KeyCode.Q, Enum.KeyCode.ButtonY)
+	bind("HabilidadZ", Enum.KeyCode.Z, Enum.KeyCode.ButtonY)
+	bind("HabilidadX", Enum.KeyCode.X, Enum.KeyCode.ButtonL1)
+	bind("HabilidadC", Enum.KeyCode.C, Enum.KeyCode.ButtonL2)
+	bind("HabilidadV", Enum.KeyCode.V, Enum.KeyCode.ButtonR2)
+	local numbers = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+	for i, key in ipairs(numbers) do
+		bind("Eco" .. i, key)
+	end
+	bind("Arma", Enum.KeyCode.Q, Enum.KeyCode.DPadUp)
+	bind("Gancho", Enum.KeyCode.E, Enum.KeyCode.DPadDown)
+	bind("FijarCamara", Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl)
+	bind("FijarObjetivo", Enum.KeyCode.R, Enum.KeyCode.ButtonR3)
+	bind("EcoAnterior", Enum.KeyCode.DPadLeft)
+	bind("EcoSiguiente", Enum.KeyCode.DPadRight)
 
 	UserInputService.JumpRequest:Connect(function()
 		local now = os.clock()

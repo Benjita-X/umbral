@@ -72,8 +72,20 @@ local CombatConfig = {
 		DamageNumbers = true,
 	},
 
-	-- Combo básico: pulsar Atacar encadena estos golpes en orden
+	-- Combo básico: pulsar Atacar encadena estos golpes en orden (Puños; cada arma tiene el suyo en Weapons)
 	LightChain = { "Jab", "Cross", "Patada" },
+
+	-- Armas (EXPERIMENTAL): Q cambia entre Puños y Espada. Cada arma tiene su combo (pulsar Atacar), su golpe
+	-- fuerte (mantener), un golpe tras el Paso (atacar justo después de un Paso) y uno en picada (atacar cayendo
+	-- desde altura). El servidor valida que el golpe sea del arma que llevas y que se cumpla su condición.
+	Weapons = {
+		Order = { "Punos", "Espada" },
+		Punos = { label = "Puños", chain = { "Jab", "Cross", "Patada" }, heavy = "Fuerte", dash = "PatadaVoladora", plunge = "PatadaPicada" },
+		Espada = { label = "Espada", chain = { "Tajo", "Reves", "Estocada" }, heavy = "TajoFuerte", dash = "EstocadaCarrera", plunge = "Clavada" },
+		DashWindow = 0.4, -- s tras un Paso en los que atacar sale como golpe tras el Paso
+		PlungeMinHeight = 5, -- altura mínima de los pies para el golpe en picada
+		SwitchTime = 0.25, -- s sin poder atacar al cambiar de arma
+	},
 
 	Attacks = {
 		Jab = {
@@ -143,6 +155,215 @@ local CombatConfig = {
 			cancelOnHit = false, -- remate: no se encadena
 			cancelInto = { "Paso", "Salto" },
 		},
+		-- ---------- Puños: golpes especiales ----------
+		PatadaVoladora = {
+			label = "Patada voladora",
+			weapon = "Punos",
+			special = "dash", -- atacar justo después de un Paso
+			finisher = true,
+			startup = 0.06,
+			active = 0.1,
+			recovery = 0.3,
+			damage = 8,
+			range = 5,
+			hitboxSize = Vector3.new(5, 5, 5),
+			hitstop = 0.08,
+			knockback = 45,
+			knockUp = 12,
+			lunge = 9, -- studs extra hacia adelante (sale del impulso del Paso)
+			limb = "RightFoot",
+			shake = 0.25,
+			posture = 20,
+			hitstun = 0.5,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+		PatadaPicada = {
+			label = "Patada en picada",
+			weapon = "Punos",
+			special = "plunge", -- atacar cayendo desde altura
+			finisher = true,
+			startup = 0.08,
+			active = 0.4,
+			recovery = 0.3,
+			damage = 10,
+			range = 4.5,
+			hitboxSize = Vector3.new(6, 10, 5), -- alta: alcanza a los de abajo mientras cae
+			hitstop = 0.07,
+			knockback = 18,
+			knockUp = 28,
+			plungeSpeed = 75,
+			limb = "RightFoot",
+			shake = 0.35,
+			posture = 22,
+			hitstun = 0.5,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = false,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+
+		-- ---------- Espada: más alcance y daño, algo más lenta ----------
+		Tajo = {
+			label = "Tajo",
+			weapon = "Espada",
+			startup = 0.09,
+			active = 0.07,
+			recovery = 0.16,
+			damage = 7,
+			range = 7,
+			hitboxSize = Vector3.new(8, 5, 7),
+			idealDistance = 5, -- se acerca menos: la espada llega lejos
+			hitstop = 0.06,
+			knockback = 8,
+			knockUp = 0,
+			limb = "UmbralEspadaHoja",
+			shake = 0.05,
+			posture = 12,
+			hitstun = 0.32,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = true,
+			cancelInto = { "Paso", "Salto", "Guardia" },
+		},
+		Reves = {
+			label = "Revés",
+			weapon = "Espada",
+			startup = 0.09,
+			active = 0.07,
+			recovery = 0.18,
+			damage = 8,
+			range = 7,
+			hitboxSize = Vector3.new(8, 5, 7),
+			idealDistance = 5,
+			hitstop = 0.065,
+			knockback = 10,
+			knockUp = 0,
+			limb = "UmbralEspadaHoja",
+			shake = 0.1,
+			posture = 14,
+			hitstun = 0.34,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = true,
+			cancelInto = { "Paso", "Salto", "Guardia" },
+		},
+		Estocada = {
+			label = "Estocada",
+			weapon = "Espada",
+			finisher = true,
+			startup = 0.13,
+			active = 0.09,
+			recovery = 0.3,
+			damage = 12,
+			range = 8.5,
+			hitboxSize = Vector3.new(4.5, 5, 8.5),
+			idealDistance = 5.5,
+			hitstop = 0.09,
+			knockback = 42,
+			knockUp = 8,
+			limb = "UmbralEspadaHoja",
+			shake = 0.3,
+			posture = 22,
+			hitstun = 0.5,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+		TajoFuerte = {
+			label = "Tajo cargado",
+			weapon = "Espada",
+			heavy = true,
+			finisher = true,
+			startup = 0.06,
+			active = 0.12,
+			recovery = 0.4,
+			damage = 14,
+			chargeBonus = 12,
+			range = 8,
+			hitboxSize = Vector3.new(9, 6, 8),
+			idealDistance = 5,
+			hitstop = 0.12,
+			knockback = 60,
+			knockUp = 25,
+			limb = "UmbralEspadaHoja",
+			shake = 0.5,
+			posture = 40,
+			hitstun = 0.75,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+		EstocadaCarrera = {
+			label = "Estocada en carrera",
+			weapon = "Espada",
+			special = "dash",
+			finisher = true,
+			startup = 0.06,
+			active = 0.1,
+			recovery = 0.3,
+			damage = 10,
+			range = 8,
+			hitboxSize = Vector3.new(4.5, 5, 8),
+			idealDistance = 5,
+			hitstop = 0.08,
+			knockback = 40,
+			knockUp = 6,
+			lunge = 10,
+			limb = "UmbralEspadaHoja",
+			shake = 0.25,
+			posture = 22,
+			hitstun = 0.5,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = true,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+		Clavada = {
+			label = "Clavada",
+			weapon = "Espada",
+			special = "plunge",
+			finisher = true,
+			startup = 0.08,
+			active = 0.4,
+			recovery = 0.32,
+			damage = 13,
+			range = 5,
+			hitboxSize = Vector3.new(6, 10, 5.5),
+			hitstop = 0.08,
+			knockback = 20,
+			knockUp = 30,
+			plungeSpeed = 80,
+			limb = "UmbralEspadaHoja",
+			shake = 0.4,
+			posture = 26,
+			hitstun = 0.55,
+			shape = "box",
+			deflectable = true,
+			guardable = true,
+			contrapaso = false,
+			cancelOnHit = false,
+			cancelInto = { "Paso", "Salto" },
+		},
+
 		Fuerte = {
 			label = "Golpe fuerte",
 			heavy = true,
@@ -209,12 +430,25 @@ local CombatConfig = {
 		ExposedDamageMultiplier = 1.25,
 	},
 
+	-- Postura enemiga y Golpe de Gracia (EXPERIMENTAL, inspirado en los juegos de duelos con espada): desviar y
+	-- golpear llena la postura de un enemigo; si se llena, queda QUEBRADO unos segundos y atacar cerca de él hace un
+	-- Golpe de Gracia (mucho daño). La postura baja sola si se le deja respirar.
+	EnemyPosture = {
+		Max = 100,
+		GuardianMax = 170,
+		DecayDelay = 2.5, -- sin recibir presión este tiempo, empieza a recuperarse...
+		DecayPerSecond = 14, -- ...a este ritmo
+		BreakTime = 2.6, -- s quebrado (abierto al Golpe de Gracia)
+		Gains = { DesvioPerfecto = 35, Desvio = 16, Eco = 8, ComboScale = 0.6 }, -- ComboScale × postura del golpe
+		Execute = { range = 9, damageRatio = 0.35, guardianRatio = 0.22, minDamage = 30 },
+	},
+
 	-- Resonancia: recurso que se gana jugando bien. Fase 3: se gana y se gasta en un Paso extra.
 	-- Anti-abuso: los muñecos que no pelean NO dan Resonancia; repetir el mismo golpe al mismo rival da
 	-- cada vez menos; y cada rival da como máximo SourceCap cada SourceWindow segundos.
 	Resonance = {
 		Max = 100,
-		Gains = { Golpe = 5, Desvio = 5, DesvioPerfecto = 15, Esquiva = 10, Contrapaso = 20, Contratiempo = 25, VencerComun = 20, VencerGuardian = 40 },
+		Gains = { Golpe = 5, Desvio = 5, DesvioPerfecto = 15, Esquiva = 10, Contrapaso = 20, Contratiempo = 25, VencerComun = 20, VencerGuardian = 40, Sinergia = 10, GolpeDeGracia = 30 },
 		MaxGainPerSecond = 40,
 		RepeatDecay = 0.5, -- el mismo golpe seguido al mismo rival: ×0,5 cada repetición
 		RepeatWindow = 3,
@@ -387,20 +621,143 @@ local CombatConfig = {
 		SafetyDrop = 40,
 	},
 
-	-- Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento (botón Eco: Q / Y / ECO).
-	-- Cuestan Resonancia y no la devuelven. El servidor decide alcance y daño (EcoService).
+	-- Habilidades del Eco (EXPERIMENTAL, v2). Cada habilidad tiene SU tecla y un enfriamiento visible en la barra.
+	-- Las básicas (Z, X, C) no cuestan nada: salen siempre que estén listas. La definitiva (V) gasta Resonancia,
+	-- que se carga peleando bien (golpes, defensas y sinergias). Se lanzan al pulsar, sin quedarte quieto, y
+	-- cortan tus golpes. El servidor decide alcance, daño y efectos (EcoService); el cliente solo los muestra.
 	Eco = {
-		Name = "Eco del Viento",
-		Techniques = {
-			-- En el suelo: onda frontal. Atraviesa corazas e interrumpe al enemigo que prepara un ataque.
-			Rafaga = { cost = 35, cooldown = 2.5, damage = 12, range = 12, hitboxSize = Vector3.new(7, 6, 12), knockback = 45, knockUp = 8, maxHeight = 4.5 }, -- maxHeight: altura máxima sobre el suelo (de pie ≈ 3)
-			-- En el aire: picada y onda circular al aterrizar.
-			-- Mantener Eco en el suelo: giro que golpea todo alrededor.
-			Torbellino = { cost = 50, cooldown = 4, damage = 9, radius = 7, knockback = 35, knockUp = 10, holdTime = 0.35, maxHeight = 4.5 },
-			-- Eco justo después de un Paso: el Paso deja un corte de viento que daña a quien atravesaste.
-			Estela = { cost = 30, cooldown = 2.5, damage = 10, width = 3.5, afterDash = 0.45, knockback = 20, knockUp = 6 },
-			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 90, minHeight = 3.5 }, -- minHeight: altura mínima sobre el suelo para empezarlo
+		-- Kits: cada Eco pone sus 4 habilidades en Z X C V (y alguna variante en el aire). Se elige en el menú o
+		-- con las teclas 1-5. Al cambiar de Eco, las 4 teclas quedan en enfriamiento al menos SwapCooldown.
+		Default = "Viento",
+		SwapCooldown = 2,
+		SlotOrder = { "Z", "X", "C", "V" },
+		Gamepad = { Z = "Y", X = "L1", C = "L2", V = "R2" }, -- botón del mando de cada tecla
+		Order = { "Viento", "Agua", "Oscuridad", "Fuego", "Trueno" },
+		Kits = {
+			-- Control y combos aéreos
+			Viento = {
+				name = "Eco del Viento",
+				color = Color3.fromRGB(150, 255, 230),
+				slots = { Z = "Cuchilla", X = "Ciclon", C = "Levante", V = "Tempestad" },
+				air = { C = "Descenso" },
+			},
+			-- Fluir, atrapar y sostener la vida
+			Agua = {
+				name = "Eco del Agua",
+				color = Color3.fromRGB(80, 175, 255),
+				slots = { Z = "Burbuja", X = "Oleaje", C = "Geiser", V = "Diluvio" },
+			},
+			-- Asesino: saltos de sombra y marcas
+			Oscuridad = {
+				name = "Eco de la Oscuridad",
+				color = Color3.fromRGB(175, 95, 255),
+				slots = { Z = "PasoSombrio", X = "Daga", C = "Fauces", V = "Eclipse" },
+			},
+			-- Daño sostenido y explosiones
+			Fuego = {
+				name = "Eco del Fuego Infernal",
+				color = Color3.fromRGB(255, 110, 40),
+				slots = { Z = "BolaInfernal", X = "EstelaArdiente", C = "PunoVolcanico", V = "Infierno" },
+				air = { C = "Meteoro" },
+			},
+			-- Velocidad, cadenas y torretas
+			Trueno = {
+				name = "Eco del Trueno",
+				color = Color3.fromRGB(255, 235, 90),
+				slots = { Z = "Rayo", X = "Relampago", C = "Pararrayos", V = "Juicio" },
+			},
 		},
+		Skills = {
+			-- Z · proyectil: una cuchilla de viento que vuela recto hacia donde apuntas, atraviesa enemigos (cada uno
+			-- recibe un corte) y se detiene en las paredes. Aturde un instante e interrumpe preparaciones.
+			-- En el aire puede apuntar hacia abajo y te sostiene un instante (airStall).
+			Cuchilla = { slot = "Z", label = "Cuchilla", cooldown = 3, damage = 9, speed = 120, range = 60, radius = 2.5, knockback = 14, knockUp = 0, stun = 0.45, maxPitch = 50, airMaxPitch = 75, airStall = 0.25 },
+			-- X · atrae a los cercanos hasta tu frente y los aturde. En el aire: los sube hasta ti y los deja flotando.
+			Ciclon = { slot = "X", label = "Ciclón", cooldown = 6, damage = 7, radius = 12, pullTo = 3.5, airHeight = 14, stun = 0.9, airStun = 1.2, airSuspend = 0.7 },
+			-- C · columna que lanza al aire (≈10 studs). Pulsar C otra vez enseguida: Ascenso (subes tras el lanzado).
+			Levante = { slot = "C", label = "Levante", cooldown = 5, damage = 8, range = 8, hitboxSize = Vector3.new(7, 8, 8), knockUp = 68, stun = 1.1, suspend = 0.6, juggle = 1.8, recastWindow = 1.2 },
+			-- C en el aire · picada; al aterrizar, onda que rebota a los enemigos hacia arriba. Antes arrastra consigo a
+			-- los enemigos que flotan cerca (los estampa contra el suelo).
+			Descenso = { slot = "C", label = "Descenso", cooldown = 5, damage = 11, radius = 9, knockback = 25, knockUp = 34, stun = 0.7, window = 1.5, plungeSpeed = 90, minHeight = 1.6, spikeRadius = 9, juggle = 1.0 }, -- minHeight: pies sobre el suelo (el cliente pide 2,2)
+			-- V · definitiva: un tornado frente a ti que atrae, sostiene y golpea a todos los de adentro; al terminar
+			-- estalla y los lanza. Mientras dura puedes moverte y seguir golpeando.
+			Tempestad = { slot = "V", label = "Tempestad", cooldown = 15, cost = 60, distance = 7, radius = 11, duration = 2.2, tick = 0.25, tickDamage = 2.5, holdHeight = 3, finalDamage = 12, finalKnockUp = 60, finalKnockback = 40, stun = 0.45 },
+
+			-- ---------- Agua ----------
+			-- Z · burbuja lenta: atrapa al primer enemigo y lo sube flotando dentro (combo aéreo)
+			Burbuja = { slot = "Z", label = "Burbuja", cooldown = 4, damage = 6, speed = 70, range = 45, radius = 2.2, lift = 4, trap = 1.3, stun = 1.4, maxPitch = 40, airMaxPitch = 70 },
+			-- X · surfeas sobre una ola: arrastras a los del camino y los sueltas al final
+			Oleaje = { slot = "X", label = "Oleaje", cooldown = 6, damage = 8, distance = 16, duration = 0.32, width = 4.5, carry = 2.5, stun = 0.6, knockUp = 14 },
+			-- C · géiser en el punto apuntado: aviso y erupción que lanza
+			Geiser = { slot = "C", label = "Géiser", cooldown = 6, damage = 10, range = 18, radius = 5, delay = 0.45, knockUp = 62, stun = 1.0, suspend = 0.5, juggle = 1.6 },
+			-- V · gran ola frontal que barre y empuja, y lluvia que te cura
+			Diluvio = { slot = "V", label = "Diluvio", cooldown = 15, cost = 60, damage = 18, length = 22, width = 11, delay = 0.3, knockback = 70, knockUp = 16, stun = 0.8, heal = 32, healTime = 4 },
+
+			-- ---------- Oscuridad ----------
+			-- Z · salto de sombra (nunca atraviesa paredes): cortas a quien cruzas; Z otra vez: vuelves a tu sombra
+			PasoSombrio = { slot = "Z", label = "Paso Sombrío", cooldown = 5, damage = 5, distance = 16, duration = 0.12, width = 3.5, stun = 0.4, recastWindow = 2.5, returnMax = 34 },
+			-- X · daga que marca 4 s: golpear al marcado lo detona (daño extra) y recarga el Paso Sombrío
+			Daga = { slot = "X", label = "Daga Marcada", cooldown = 5, damage = 6, speed = 140, range = 40, radius = 1.6, mark = 4, detonate = 12, stun = 0.3, maxPitch = 40, airMaxPitch = 70 },
+			-- C · fauces de sombra en un cono al frente: inmovilizan y bajan a los que flotan
+			Fauces = { slot = "C", label = "Fauces", cooldown = 6, damage = 9, range = 11, angle = 50, stun = 1.3 },
+			-- V · forma sombría: los ataques te atraviesan, corres más y cada golpe suma un corte; estalla al final
+			Eclipse = { slot = "V", label = "Eclipse", cooldown = 16, cost = 60, duration = 4, speedBoost = 1.3, cut = 4, burstDamage = 15, burstRadius = 9, burstStun = 0.8 },
+
+			-- ---------- Fuego infernal ----------
+			-- Z · bola que explota al chocar y deja el suelo ardiendo
+			BolaInfernal = { slot = "Z", label = "Bola Infernal", cooldown = 4, damage = 10, speed = 90, range = 50, radius = 2, blast = 6, burn = 3, groundTime = 2, groundRadius = 5, knockback = 30, knockUp = 10, stun = 0.4, maxPitch = 40, airMaxPitch = 75 },
+			-- X · Paso de fuego que deja un rastro ardiente
+			EstelaArdiente = { slot = "X", label = "Estela Ardiente", cooldown = 6, damage = 6, distance = 14, duration = 0.24, width = 3.5, trailTime = 2.5, burn = 2, stun = 0.3 },
+			-- C · embestida corta y puñetazo que explota
+			PunoVolcanico = { slot = "C", label = "Puño Volcánico", cooldown = 6, damage = 14, lunge = 7, duration = 0.16, range = 6, hitboxSize = Vector3.new(7, 6, 7), knockback = 75, knockUp = 20, burn = 3, stun = 0.7 },
+			-- C en el aire · picada en diagonal hacia donde apuntas; cráter ardiente
+			Meteoro = { slot = "C", label = "Meteoro", cooldown = 6, damage = 16, speed = 110, radius = 9, knockUp = 30, burn = 3, craterTime = 3, craterRadius = 7, stun = 0.7, window = 1.5, minHeight = 1.6, maxPitch = 80 },
+			-- V · anillo de fuego: quema a los de adentro; tus golpes arden
+			Infierno = { slot = "V", label = "Infierno", cooldown = 16, cost = 60, duration = 4.5, radius = 10, tick = 0.5, tickDamage = 4, extra = 3 },
+
+			-- ---------- Trueno ----------
+			-- Z · rayo instantáneo al enemigo apuntado que salta a 2 más cercanos
+			Rayo = { slot = "Z", label = "Rayo", cooldown = 3, damage = 8, range = 26, cone = 30, jumps = 2, jumpRange = 13, falloff = 0.75, stun = 0.5 },
+			-- X · te vuelves rayo y cruzas: daña y aturde a todos en el camino
+			Relampago = { slot = "X", label = "Relámpago", cooldown = 6, damage = 9, distance = 16, duration = 0.12, width = 3.5, stun = 0.8 },
+			-- C · tótem que electrocuta al más cercano cada medio segundo
+			Pararrayos = { slot = "C", label = "Pararrayos", cooldown = 8, range = 14, duration = 4, tick = 0.5, radius = 9, damage = 3, stun = 0.3 },
+			-- V · rayos que caen sobre los enemigos a tu alrededor
+			Juicio = { slot = "V", label = "Juicio", cooldown = 15, cost = 60, strikes = 6, interval = 0.25, radius = 18, damage = 8, knockUp = 25, stun = 0.6 },
+		},
+		-- Estados: quemadura (daño cada medio segundo) y marca de la Daga
+		Burn = { tick = 0.5, damage = 2 },
+		-- Combos con nombre: una habilidad que conecta poco después de otra técnica en el MISMO enemigo.
+		-- `first` puede ser un golpe del combo (Jab, Cross, Patada, Fuerte) o una habilidad.
+		Synergies = {
+			{ first = "Ciclon", next = "Cuchilla", window = 2, name = "REMOLINO CORTANTE", damage = 1.5 },
+			{ first = "Cuchilla", next = "Ciclon", window = 2, name = "VENDAVAL", stun = 1.5 },
+			{ first = "Patada", next = "Levante", window = 1.2, name = "ALZADA", damage = 1.25, launch = 1.15 },
+			{ first = "Ciclon", next = "Levante", window = 2, name = "TROMBA", damage = 1.2, launch = 1.1 },
+			{ first = "Levante", next = "Descenso", window = 3, name = "CAÍDA DEL CIELO", damage = 1.6 },
+			{ first = "Ciclon", next = "Tempestad", window = 2.5, name = "OJO DE LA TORMENTA", damage = 1.4 },
+			-- Agua
+			{ first = "Burbuja", next = "Geiser", window = 2, name = "MAREA ALTA", damage = 1.3, launch = 1.25 },
+			{ first = "Oleaje", next = "Burbuja", window = 2, name = "RESACA", damage = 1.5 },
+			{ first = "Geiser", next = "Oleaje", window = 2.5, name = "CASCADA", damage = 1.4 },
+			-- Oscuridad
+			{ first = "Daga", next = "PasoSombrio", window = 4, name = "EMBOSCADA", damage = 2.5 },
+			{ first = "Fauces", next = "Daga", window = 2, name = "PRESA", damage = 1.5 },
+			{ first = "PasoSombrio", next = "Fauces", window = 2, name = "SOMBRA VORAZ", stun = 1.5, damage = 1.2 },
+			-- Fuego
+			{ first = "BolaInfernal", next = "PunoVolcanico", window = 2, name = "ESTALLIDO", damage = 1.5 },
+			{ first = "EstelaArdiente", next = "BolaInfernal", window = 2.5, name = "LLAMARADA", damage = 1.4 },
+			{ first = "PunoVolcanico", next = "Meteoro", window = 3, name = "CAÍDA ÍGNEA", damage = 1.4 },
+			-- Trueno
+			{ first = "Relampago", next = "Rayo", window = 2, name = "SOBRECARGA", damage = 1.5 },
+			{ first = "Pararrayos", next = "Relampago", window = 2.5, name = "DESCARGA", stun = 1.5, damage = 1.2 },
+			{ first = "Rayo", next = "Juicio", window = 2.5, name = "TORMENTA PERFECTA", damage = 1.3 },
+		},
+		-- Combos aéreos: un enemigo lanzado queda "en el aire" (juggle) y cada golpe que recibe así lo sostiene
+		-- flotando un instante. Quien golpea en el aire también flota un instante (AirStall) para seguir el combo.
+		Juggle = { HitSuspend = 0.4, HitStun = 0.5, HitKnockbackScale = 0.3, HitKnockUp = 3, AirStall = 0.3, MinHeight = 2 },
+		GuardianStunScale = 0.5, -- el Guardián resiste: aturdimientos a la mitad...
+		GuardianLaunchScale = 0.6, -- ...y lo lanzan más bajo
 	},
 
 	-- IDs de animaciones publicadas en Roblox (rbxassetid://...). Vacío = se usan las generadas

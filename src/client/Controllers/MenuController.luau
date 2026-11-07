@@ -1,5 +1,6 @@
 -- MenuController: menú del juego (botón "MENÚ" arriba al centro, o tecla M / Select del mando).
---   · Controles: qué hace cada botón en PC, mando y celular (incluye Eco y paredes).
+--   · Controles: qué hace cada botón en PC, mando y celular (incluye habilidades y paredes).
+--   · Ecos: elegir el Eco (sus 4 habilidades van en Z X C V). También con las teclas 1-5.
 --   · Ajustes de accesibilidad, en vivo: vibración de cámara, destellos, números de daño, panel de
 --     depuración. Cambian CombatConfig.Feedback en este cliente (se leen en el momento de usarse).
 -- El mundo sigue en marcha (es un juego en línea): el menú no pausa la partida.
@@ -10,6 +11,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local configFolder = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local CombatConfig = require(configFolder:WaitForChild("CombatConfig"))
+
+local CameraController = require(script.Parent:WaitForChild("CameraController"))
 
 local MenuController = {}
 
@@ -24,7 +27,15 @@ local CONTROLS = {
 	{ "Defender (a tiempo: desvío · mantener: guardia)", "F", "R1", "DEFENDER" },
 	{ "Paso · de lado justo antes de un golpe: Contrapaso", "Shift", "B", "PASO" },
 	{ "Saltar · doble salto · junto a un muro: salto de pared", "Espacio", "A", "Saltar" },
-	{ "Eco · suelo: Ráfaga · aire: Descenso (cuesta Resonancia)", "Q", "Y", "ECO" },
+	{ "Habilidad 1 del Eco (Viento: Cuchilla)", "Z", "Y", "Z" },
+	{ "Habilidad 2 (Viento: Ciclón)", "X", "L1", "X" },
+	{ "Habilidad 3 (Viento: Levante · otra vez: subir · aire: Descenso)", "C", "L2", "C" },
+	{ "Definitiva (gasta Resonancia; Viento: Tempestad)", "V", "R2", "V" },
+	{ "Cambiar de Eco", "1-5", "Cruceta", "Menú" },
+	{ "Arma: Puños ↔ Espada", "Q", "Cruceta arriba", "ARMA" },
+	{ "Gancho al orbe o enemigo marcado", "E", "Cruceta abajo", "GANCHO" },
+	{ "Cámara fija (el personaje mira a la mira) / ratón libre", "Ctrl", "—", "—" },
+	{ "Fijar enemigo (la cámara lo sigue) · tirón del ratón: cambiar", "R", "R3", "—" },
 	{ "Menú", "M", "Select", "MENÚ" },
 }
 
@@ -48,7 +59,7 @@ local function label(parent, text, size, color, font, align)
 	return l
 end
 
-function MenuController.Start(movement, combat, debugHud, tutorial)
+function MenuController.Start(movement, combat, debugHud, tutorial, ecoController)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "UmbralMenu"
 	gui.ResetOnSpawn = false
@@ -128,6 +139,63 @@ function MenuController.Start(movement, combat, debugHud, tutorial)
 		line.Parent = content
 	end
 
+	-- Ecos: cada uno pone sus 4 habilidades en Z X C V
+	if ecoController then
+		local eco = CombatConfig.Eco
+		nextOrder(label(content, "ECOS   (elige uno · también con las teclas 1-" .. #eco.Order .. ")", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
+		local ecoButtons = {}
+		local function refreshEcos()
+			for name, button in pairs(ecoButtons) do
+				local kit = eco.Kits[name]
+				local current = ecoController.KitName() == name
+				button.BackgroundColor3 = if current then Color3.fromRGB(40, 52, 70) else Color3.fromRGB(24, 28, 42)
+				button.TextColor3 = if current then kit.color else Color3.fromRGB(180, 186, 200)
+				local stroke = button:FindFirstChildOfClass("UIStroke")
+				if stroke then
+					stroke.Enabled = current
+					stroke.Color = kit.color
+				end
+			end
+		end
+		for index, name in ipairs(eco.Order) do
+			local kit = eco.Kits[name]
+			local parts = {}
+			for _, slot in ipairs(eco.SlotOrder) do
+				local skill = eco.Skills[kit.slots[slot]]
+				local text = slot .. " " .. (skill and skill.label or "?")
+				if kit.air and kit.air[slot] and eco.Skills[kit.air[slot]] then
+					text ..= " (aire: " .. eco.Skills[kit.air[slot]].label .. ")"
+				end
+				table.insert(parts, text)
+			end
+			local button = Instance.new("TextButton")
+			button.Name = "Eco" .. name
+			button.Size = UDim2.new(1, 0, 0, 34)
+			button.Font = Enum.Font.GothamBold
+			button.TextScaled = true
+			button.TextWrapped = true
+			button.Text = string.format("%d · %s  —  %s", index, string.upper(kit.name), table.concat(parts, " · "))
+			corner(button, 8)
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 2
+			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			stroke.Parent = button
+			local padding = Instance.new("UIPadding")
+			padding.PaddingLeft = UDim.new(0, 8)
+			padding.PaddingRight = UDim.new(0, 8)
+			padding.Parent = button
+			button.Activated:Connect(function()
+				ecoController.Equip(name)
+				task.defer(refreshEcos)
+			end)
+			ecoButtons[name] = button
+			nextOrder(button)
+			button.Parent = content
+		end
+		refreshEcos()
+		ecoController.KitChanged:Connect(refreshEcos)
+	end
+
 	nextOrder(label(content, "AJUSTES", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
 	local feedback = CombatConfig.Feedback
 	local debugStarted = false
@@ -157,6 +225,26 @@ function MenuController.Start(movement, combat, debugHud, tutorial)
 			end,
 			set = function(on)
 				feedback.DamageNumbers = on
+			end,
+		},
+		{
+			name = "Cámara fija: el personaje mira a la mira (Ctrl)",
+			get = function()
+				return CameraController.IsLocked()
+			end,
+			set = function(on)
+				CameraController.SetLocked(on)
+			end,
+		},
+		{
+			name = "Apuntar habilidades al ratón (NO = al frente)",
+			get = function()
+				return ecoController ~= nil and ecoController.State.aimMode == "raton"
+			end,
+			set = function(on)
+				if ecoController then
+					ecoController.SetAimMode(if on then "raton" else "frente")
+				end
 			end,
 		},
 		{
@@ -231,6 +319,8 @@ function MenuController.Start(movement, combat, debugHud, tutorial)
 	local function toggle(force)
 		local visible = if force ~= nil then force else not panel.Visible
 		panel.Visible = visible
+		-- Con el menú abierto el ratón queda libre (la cámara fija se suspende)
+		CameraController.SetMouseFree("menu", visible)
 	end
 	open.Activated:Connect(function()
 		toggle()

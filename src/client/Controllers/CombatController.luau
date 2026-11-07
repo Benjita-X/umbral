@@ -34,7 +34,12 @@ local defense = Config.Defense
 local player = Players.LocalPlayer
 local KEY = "combate" -- clave de los bloqueos que este sistema pone al movimiento
 local STUN_KEY = "aturdido"
-local TRACK_NAMES = { "Jab", "Cross", "Patada", "CargaFuerte", "Fuerte", "Guardia", "Desvio", "Aturdido", "Reaccion" }
+local TRACK_NAMES = {
+	"Jab", "Cross", "Patada", "CargaFuerte", "Fuerte", "Guardia", "Desvio", "Aturdido", "Reaccion",
+	-- Armas y golpes especiales (EXPERIMENTAL)
+	"PatadaVoladora", "PatadaPicada", "Tajo", "Reves", "Estocada", "TajoFuerte", "CargaEspada", "EstocadaCarrera", "Clavada", "DesenvainarEspada",
+}
+local weapons = Config.Weapons
 
 local CombatController = {}
 
@@ -63,6 +68,10 @@ local state = {
 	counterUntil = -math.huge, -- reloj local: hasta cuándo el siguiente golpe es Contraataque
 	stunnedUntil = -math.huge,
 	lastResult = nil,
+	-- Armas (EXPERIMENTAL)
+	weapon = "Punos",
+	switchUntil = -math.huge,
+	lastDash = -math.huge,
 }
 CombatController.State = state
 
@@ -207,6 +216,10 @@ local function onHit(a, model, targetRoot)
 		end
 		movement.HoldLunge(def.hitstop)
 	end
+	-- Combo aéreo: conectar en el aire te sostiene flotando un instante para seguir golpeando
+	if firstHit and not movement.State.grounded then
+		movement.AirStall(Config.Eco.Juggle.AirStall)
+	end
 
 	local toAttacker = flat(root.Position - targetRoot.Position)
 	local hitPosition = targetRoot.Position + Vector3.new(0, 0.6, 0)
@@ -256,7 +269,13 @@ local function startAttack(name, charge)
 	state.sequence += 1
 	-- El servidor valida la secuencia de ataques: se le avisa cada inicio con su hora
 	if remotes.start then
-		remotes.start:FireServer(state.sequence, name, serverNow())
+		if def.special then
+			-- Los especiales mandan también la posición (el servidor comprueba la altura de la picada)
+			local t, position, look = PositionReporter.Sample()
+			remotes.start:FireServer(state.sequence, name, t, position, look)
+		else
+			remotes.start:FireServer(state.sequence, name, serverNow())
+		end
 	end
 	local desired = movement.DesiredDirection()
 	local target, distance
@@ -276,13 +295,21 @@ local function startAttack(name, charge)
 	-- alarga lo justo para recorrerlo sin pasar de MAX_LUNGE_SPEED (el servidor vigila las velocidades).
 	local MAX_LUNGE_SPEED = 120
 	local maxLunge = if counter then defense.CounterMaxLunge else Config.MaxLunge
-	local lungeDistance = if target then math.clamp(distance - Config.IdealDistance, 0, maxLunge) else Config.LungeWithoutTarget
+	local ideal = def.idealDistance or Config.IdealDistance
+	local lungeDistance = if target then math.clamp(distance - ideal, 0, maxLunge) else Config.LungeWithoutTarget
+	if def.special == "dash" and def.lunge then
+		-- Golpe tras el Paso: sale con el impulso del Paso (más recorrido, aunque no haya rival)
+		lungeDistance = if target then math.clamp(distance - ideal, 0, def.lunge) else def.lunge * 0.6
+	end
 	local lungeTime = startup + def.active * 0.5
 	if lungeDistance / lungeTime > MAX_LUNGE_SPEED then
 		lungeTime = lungeDistance / MAX_LUNGE_SPEED
 		startup = math.max(startup, lungeTime - def.active * 0.5)
 	end
-	if lungeDistance > 0.05 then
+	if def.special == "plunge" then
+		-- Picada: cae en línea hacia abajo y un poco hacia adelante
+		movement.Launch(direction * 14 + Vector3.new(0, -(def.plungeSpeed or 70), 0))
+	elseif lungeDistance > 0.05 then
 		movement.Lunge(direction, lungeDistance / lungeTime, lungeTime)
 	end
 
@@ -318,8 +345,9 @@ local function nextLightName()
 	if state.mode == "Libre" and os.clock() - state.lastAttackEnd > Config.ComboResetTime then
 		state.comboIndex = 0
 	end
-	state.comboIndex = state.comboIndex % #Config.LightChain + 1
-	return Config.LightChain[state.comboIndex]
+	local chain = (weapons[state.weapon] or weapons.Punos).chain
+	state.comboIndex = state.comboIndex % #chain + 1
+	return chain[state.comboIndex]
 end
 
 local function enterActive(a)
@@ -382,12 +410,12 @@ local function startCharge()
 	clearLocks()
 	movement.SetJumpBlocked(KEY, true) -- el Paso sí se permite: cancela la carga (amague)
 	movement.SetSpeedMultiplier(KEY, Config.ChargeMoveMultiplier)
-	playTrack("CargaFuerte", 0.05)
+	playTrack(if state.weapon == "Espada" then "CargaEspada" else "CargaFuerte", 0.05)
 	events.PhaseChanged:Fire("Fuerte", "carga")
 end
 
 local function releaseCharge()
-	startAttack("Fuerte", math.clamp(chargeTime / Config.HeavyMaxCharge, 0, 1))
+	startAttack((weapons[state.weapon] or weapons.Punos).heavy, math.clamp(chargeTime / Config.HeavyMaxCharge, 0, 1))
 end
 
 local function cancelToFree()
@@ -450,22 +478,139 @@ local function alive()
 	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
 end
 
+-- ¿Hay un rival a la altura del jugador cerca? (en pleno combo aéreo se golpea normal, no en picada)
+local function airborneTargetNear()
+	for _, model in ipairs(candidateTargets()) do
+		local targetRoot = targetRootOf(model)
+		if targetRoot and math.abs(targetRoot.Position.Y - root.Position.Y) < 4.5 and flat(targetRoot.Position - root.Position).Magnitude < Config.SoftTargetRange then
+			return true
+		end
+	end
+	return false
+end
+
+local feetParams = RaycastParams.new()
+feetParams.FilterType = Enum.RaycastFilterType.Exclude
+feetParams.RespectCanCollide = true
+local function feetHeight()
+	feetParams.FilterDescendantsInstances = { character }
+	local hit = Workspace:Raycast(root.Position, Vector3.new(0, -80, 0), feetParams)
+	if not hit then
+		return math.huge
+	end
+	return (root.Position.Y - hit.Position.Y) - (humanoid.HipHeight + root.Size.Y / 2)
+end
+
+-- ---------- Golpe de Gracia ----------
+-- Un enemigo QUEBRADO (postura llena) cerca: atacar hace el Golpe de Gracia en vez del golpe normal
+local function brokenTargetNear()
+	local best, bestDistance = nil, Config.EnemyPosture.Execute.range
+	local t = serverNow()
+	for _, model in ipairs(CollectionService:GetTagged("Sparring")) do
+		local untilTime = model:GetAttribute("QuebradoHasta")
+		local targetRoot = untilTime and untilTime > t and targetRootOf(model)
+		if targetRoot then
+			local distance = flat(targetRoot.Position - root.Position).Magnitude
+			if distance < bestDistance then
+				best, bestDistance = model, distance
+			end
+		end
+	end
+	return best, bestDistance
+end
+
+local function execute(model, distance)
+	local targetRoot = targetRootOf(model)
+	if not targetRoot then
+		return
+	end
+	dropAttackVisuals()
+	movement.CancelDash()
+	movement.StopLunge()
+	state.attack = nil
+	state.mode = "Gracia"
+	queued = nil
+	local dir = flat(targetRoot.Position - root.Position)
+	dir = if dir.Magnitude > 0.01 then dir.Unit else flat(root.CFrame.LookVector)
+	movement.Face(dir)
+	movement.SetAutoRotateBlocked(KEY, true)
+	movement.SetDashBlocked(KEY, true)
+	movement.SetJumpBlocked(KEY, true)
+	movement.SetSpeedMultiplier(KEY, 0.2)
+	local approach = math.max(0, distance - 2.6)
+	if approach > 0.1 then
+		movement.Lunge(dir, approach / 0.14, 0.14, true)
+	end
+	playTrack(if state.weapon == "Espada" then "TajoFuerte" else "Fuerte", 0.03)
+	Effects.Counter(character)
+	events.DefenseResult:Fire({ result = "gracia" }, "¡GOLPE DE GRACIA!")
+	task.delay(0.16, function()
+		if state.mode ~= "Gracia" then
+			return
+		end
+		if remotes.execute then
+			remotes.execute:FireServer(model)
+		end
+		local hitPosition = targetRoot.Position + Vector3.new(0, 0.6, 0)
+		Effects.Impact(hitPosition, Config.Attacks.Fuerte, model)
+		hitstop = 0.18
+		if currentTrack then
+			currentTrack:AdjustSpeed(0)
+		end
+	end)
+	task.delay(0.6, function()
+		if state.mode == "Gracia" then
+			state.mode = "Libre"
+			state.lastAttackEnd = os.clock()
+			clearLocks()
+			stopTrack(0.15)
+		end
+	end)
+end
+
+-- El golpe que toca al pulsar Atacar estando libre: tras el Paso, en picada o el siguiente del combo
+local function nextAttackName()
+	local weapon = weapons[state.weapon] or weapons.Punos
+	if os.clock() - state.lastDash <= weapons.DashWindow and weapon.dash then
+		state.lastDash = -math.huge -- un golpe especial por Paso
+		state.comboIndex = 0
+		return weapon.dash
+	end
+	if weapon.plunge and not movement.State.grounded and feetHeight() >= weapons.PlungeMinHeight and not airborneTargetNear() then
+		state.comboIndex = 0
+		return weapon.plunge
+	end
+	return nextLightName()
+end
+
 local function onAttackPressed()
-	if not alive() or state.mode == "Aturdido" then
+	if not alive() or state.mode == "Aturdido" or os.clock() < state.switchUntil then
 		return
 	end
 	attackPressTime = os.clock()
 	heavyConsumed = false
 	heavyRequested = false
+	-- Enemigo quebrado cerca: Golpe de Gracia (desde libre, guardia o la recuperación de un golpe)
+	if state.mode == "Libre" or state.mode == "Guardia" or (state.mode == "Ataque" and state.attack and state.attack.phase == "recovery") then
+		local broken, distance = brokenTargetNear()
+		if broken then
+			heavyConsumed = true
+			if state.mode == "Guardia" then
+				endGuard()
+			end
+			execute(broken, distance)
+			return
+		end
+	end
 	if state.mode == "Libre" then
-		startAttack(nextLightName())
+		startAttack(nextAttackName())
 	elseif state.mode == "Guardia" then
 		endGuard()
-		startAttack(nextLightName())
+		startAttack(nextAttackName())
 	elseif state.mode == "Ataque" then
 		local a = state.attack
 		if a.phase == "recovery" and a.cancelable then
-			startAttack(nextLightName())
+			startAttack(nextAttackName())
 		else
 			queued = "Atacar"
 		end
@@ -739,8 +884,19 @@ function CombatController.Start(inputController, movementController)
 			onAttackPressed()
 		elseif action == "Defender" then
 			onDefendPressed()
+		elseif action == "Arma" then
+			CombatController.SwitchWeapon()
 		end
 	end)
+	-- El arma que dice el servidor manda (al entrar, al reaparecer)
+	local function syncWeapon()
+		local name = player:GetAttribute("Arma")
+		if weapons[name or ""] and name ~= "Order" then
+			state.weapon = name
+		end
+	end
+	player:GetAttributeChangedSignal("Arma"):Connect(syncWeapon)
+	syncWeapon()
 	input.ActionEnded:Connect(function(action)
 		if action == "Atacar" then
 			onAttackReleased()
@@ -752,6 +908,7 @@ function CombatController.Start(inputController, movementController)
 	-- El Paso: se informa al servidor (esquiva y Contrapaso) y cancela recuperación, carga y guardia
 	movement.Dashed:Connect(function(direction)
 		report("paso", direction)
+		state.lastDash = os.clock()
 		if state.mode == "Ataque" and state.attack and state.attack.phase ~= "active" then
 			finishAttack() -- el Paso cancela la preparación (amague) o la recuperación
 		elseif state.mode == "Carga" or state.mode == "Guardia" then
@@ -774,6 +931,8 @@ function CombatController.Start(inputController, movementController)
 		remotes.start = folder:WaitForChild("InicioAtaque")
 		remotes.defense = folder:WaitForChild("Defensa")
 		remotes.spend = folder:WaitForChild("GastarResonancia")
+		remotes.weapon = folder:WaitForChild("ElegirArma", 10)
+		remotes.execute = folder:WaitForChild("GolpeDeGracia", 10)
 		folder:WaitForChild("GolpeConfirmado").OnClientEvent:Connect(function(data)
 			local mine = data.attacker == player
 			Effects.OnConfirmed(data, mine)
@@ -796,6 +955,65 @@ function CombatController.Start(inputController, movementController)
 	end)
 
 	RunService.Heartbeat:Connect(update)
+end
+
+-- Una habilidad del Eco corta lo que estés haciendo (preparación, recuperación, carga o guardia), como el Paso.
+-- El combo NO se reinicia: tras la habilidad puedes seguir con el golpe que tocaba. Devuelve false si no se
+-- puede (aturdido o sin personaje).
+function CombatController.CancelForSkill()
+	if not alive() or state.mode == "Aturdido" then
+		return false
+	end
+	if state.mode == "Ataque" or state.mode == "Carga" or state.mode == "Guardia" then
+		local keepIndex = state.comboIndex
+		movement.StopLunge()
+		cancelToFree()
+		state.comboIndex = keepIndex
+	end
+	queued = nil
+	heavyRequested = false
+	heavyConsumed = true
+	return true
+end
+
+-- Cambia de arma (Puños ↔ Espada). Solo estando libre; un instante sin poder atacar mientras se cambia.
+function CombatController.SwitchWeapon(name)
+	if not alive() or (state.mode ~= "Libre" and state.mode ~= "Guardia") then
+		return false
+	end
+	local order = weapons.Order
+	local current = table.find(order, state.weapon) or 1
+	local nextName = name or order[current % #order + 1]
+	if not weapons[nextName] or nextName == state.weapon then
+		return false
+	end
+	if state.mode == "Guardia" then
+		endGuard()
+	end
+	state.weapon = nextName
+	state.comboIndex = 0
+	state.switchUntil = os.clock() + weapons.SwitchTime
+	if remotes.weapon then
+		remotes.weapon:FireServer(nextName)
+	end
+	if nextName == "Espada" then
+		playTrack("DesenvainarEspada", 0.05)
+	end
+	events.PhaseChanged:Fire("Arma", nextName)
+	return true
+end
+
+-- Un golpe de habilidad confirmado por el servidor suma al contador de combo
+function CombatController.RegisterSkillHit(damage, model)
+	local t = os.clock()
+	if t - state.lastHitTime > Config.ComboResetTime + 0.6 + 1.5 then
+		state.comboHits = 0
+		state.comboDamage = 0
+	end
+	state.comboHits += 1
+	state.comboDamage += damage or 0
+	state.lastHitTime = t
+	events.Hit:Fire("Habilidad", model)
 end
 
 -- Número total de pistas de animación cargadas (para pruebas)

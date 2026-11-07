@@ -21,8 +21,10 @@ local DONE = Color3.fromRGB(120, 255, 140)
 
 -- Pasos: texto y cómo se cumple (cada uno recibe el "contexto" con contadores)
 local STEPS = {
-	{ text = "Muévete con WASD (o el joystick)", done = function(c)
+	{ text = "Muévete con WASD y apunta moviendo el ratón (Ctrl suelta el ratón)", done = function(c)
 		return c.moved >= 8
+	end, hint = function()
+		return "Con la cámara fija el personaje mira hacia la mira: golpes y habilidades salen hacia ella"
 	end },
 	{ text = "Da un PASO: Shift (botón PASO) — te lanza 14 studs", done = function(c)
 		return c.dashes >= 1
@@ -39,15 +41,20 @@ local STEPS = {
 	{ text = "CONTRAPASO: Shift hacia un costado justo antes de su golpe", done = function(c)
 		return c.contrapasos >= 1
 	end },
-	{ text = "Usa tu ECO con Q: tocar = Ráfaga · mantener = Torbellino · en el aire = Descenso", done = function(c)
-		return c.ecos >= 1
+	{ text = "HABILIDADES: cada una en su tecla. Usa dos distintas: Z Cuchilla · X Ciclón · C Levante", done = function(c)
+		return c.skillCount >= 2
 	end, hint = function()
-		local need = CombatConfig.Eco.Techniques.Rafaga.cost
-		local have = player:GetAttribute("Resonancia") or 0
-		if have < need then
-			return string.format("Te faltan %d de Resonancia: desvía y golpea al Instructor para cargarla", math.ceil(need - have))
-		end
-		return nil
+		return "Salen al instante y puedes moverte mientras las lanzas. La barra de abajo muestra cuándo vuelven a estar listas"
+	end },
+	{ text = "COMBO: X (Ciclón) atrae al Instructor y enseguida Z o C sobre él: ¡SINERGIA!", done = function(c)
+		return c.synergies >= 1
+	end, hint = function()
+		return "Tras un Levante (C) que conecta, pulsa C otra vez para subir tras él y sigue golpeando en el aire. V: la definitiva (gasta Resonancia)"
+	end },
+	{ text = "ARMAS: pulsa Q para sacar la ESPADA y golpea 2 veces al Instructor con ella", done = function(c)
+		return c.swordHits >= 2
+	end, hint = function()
+		return "Q otra vez: puños. Atacar justo tras un Paso: golpe en carrera · cayendo desde alto: picada · E: gancho a los orbes brillantes"
 	end },
 }
 
@@ -57,7 +64,7 @@ local gui, title, body, hintLabel = nil, nil, nil, nil
 local active = false
 
 local function newContext()
-	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, ecos = 0, start = nil }
+	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, skillsUsed = {}, skillCount = 0, synergies = 0, swordHits = 0, start = nil }
 end
 
 local function show()
@@ -208,6 +215,10 @@ function TutorialController.Start(movement, combat, eco)
 	combat.Confirmed:Connect(function(data)
 		if type(data) == "table" and typeof(data.target) == "Instance" and data.target:HasTag("Instructor") then
 			context.instructorHits += 1
+			local def = CombatConfig.Attacks[data.attack]
+			if def and def.weapon == "Espada" then
+				context.swordHits += 1
+			end
 			advance()
 		end
 	end)
@@ -223,8 +234,17 @@ function TutorialController.Start(movement, combat, eco)
 		advance()
 	end)
 	if eco and eco.Used then
-		eco.Used:Connect(function()
-			context.ecos += 1
+		eco.Used:Connect(function(skillName)
+			if type(skillName) == "string" and not context.skillsUsed[skillName] then
+				context.skillsUsed[skillName] = true
+				context.skillCount += 1
+			end
+			advance()
+		end)
+	end
+	if eco and eco.Synergy then
+		eco.Synergy:Connect(function()
+			context.synergies += 1
 			advance()
 		end)
 	end

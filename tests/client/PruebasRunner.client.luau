@@ -14,6 +14,9 @@ local SUITES = {
 	{ "Habilidad", "Habilidad" },
 	{ "Enemigos", "Enemigos" },
 	{ "Eco", "Eco" },
+	{ "Ecos", "Ecos" },
+	{ "Armas", "Armas" },
+	{ "GanchoYGracia", "GanchoYGracia" },
 	{ "RevisionCodex", "RevisionCodex" },
 }
 

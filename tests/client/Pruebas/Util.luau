@@ -171,6 +171,11 @@ function ctx.start()
 	end, 15)
 	ctx.controls = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls()
 	ctx.controls:Disable()
+	-- Las pruebas no usan el ratón: sin cámara fija (el personaje mira hacia donde lo pone la prueba)
+	local camera = controllers:FindFirstChild("CameraController")
+	if camera then
+		require(camera).SetLocked(false)
+	end
 	ctx.settle()
 	return ready
 end

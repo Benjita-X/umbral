@@ -245,6 +245,13 @@ local function reportedAt(player, t)
 	return nil
 end
 
+-- Posición INFORMADA por el cliente en la hora `t` (sin confirmar todavía): solo para comprobaciones que no dan
+-- ventaja de alcance (p. ej. si empezó una picada en el aire). Devuelve Vector3 o nil.
+function PositionService.ReportedAt(player, t)
+	local sample = reportedAt(player, t)
+	return sample and sample.position
+end
+
 -- Posición del jugador en la hora `t`, CONFIRMADA por la física observada. Espera (acotado, por
 -- cuadros del servidor, no un tiempo fijo) a que lleguen los datos. Devuelve CFrame o nil: sin
 -- confirmación no se le da ventaja a nadie.

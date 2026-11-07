@@ -219,7 +219,42 @@ local function isLateral(dir, fromAttacker)
 	return angle >= defense.ContrapasoMinAngle and angle <= defense.ContrapasoMaxAngle
 end
 
-local function stagger(s, duration)
+-- ---------- Postura enemiga y Golpe de Gracia ----------
+local postureCfg = CombatConfig.EnemyPosture
+
+local function broken(s)
+	return (s.model:GetAttribute("QuebradoHasta") or 0) > now()
+end
+
+local stagger -- (definida abajo)
+
+-- Suma postura; si se llena, el enemigo queda QUEBRADO (abierto al Golpe de Gracia)
+local function addPosture(s, amount)
+	if not s.model.Parent or not s.postureMax or amount <= 0 or broken(s) then
+		return
+	end
+	local humanoid = s.model:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health <= 0 then
+		return
+	end
+	s.posture = math.min(s.postureMax, (s.posture or 0) + amount)
+	s.lastPostureHit = now()
+	s.model:SetAttribute("Postura", s.posture)
+	if s.posture >= s.postureMax then
+		local untilTime = now() + postureCfg.BreakTime
+		s.model:SetAttribute("QuebradoHasta", untilTime)
+		stagger(s, postureCfg.BreakTime)
+		task.delay(postureCfg.BreakTime, function()
+			if s.model.Parent and s.model:GetAttribute("QuebradoHasta") == untilTime then
+				s.model:SetAttribute("QuebradoHasta", nil)
+				s.posture = s.postureMax * 0.5
+				s.model:SetAttribute("Postura", s.posture)
+			end
+		end)
+	end
+end
+
+stagger = function(s, duration)
 	if RunService:IsStudio() then
 		print(string.format("[UMBRAL] Compañero aturdido %.2f s en %s (ataque %d)", duration, tostring(s.state), s.attackId))
 	end
@@ -276,8 +311,13 @@ local function resolve(s, info, player)
 
 	local result, damage, exposed = nil, 0, false
 	local stunApplied = nil -- duración real del aturdimiento (el cliente usa la misma)
+	-- 0. Eclipse (definitiva de la Oscuridad): los ataques te atraviesan
+	local eclipseUntil = player:GetAttribute("EclipseHasta")
+	if type(eclipseUntil) == "number" and perceived <= eclipseUntil then
+		result = "esquiva"
+	end
 	-- 1. Desvío (el pesado solo con desvío perfecto)
-	if attack.deflectable then
+	if not result and attack.deflectable then
 		local kind, press = DefenseService.FindDeflect(player, perceived)
 		if kind == "perfecto" or (kind == "normal" and not attack.perfectOnly) then
 			DefenseService.Consume(press)
@@ -326,6 +366,9 @@ local function resolve(s, info, player)
 	end
 
 	-- Consecuencias (la Resonancia de defensa ya está limitada por el ritmo de ataques del rival)
+	if result == "desvio_perfecto" or result == "desvio" then
+		addPosture(s, if result == "desvio_perfecto" then postureCfg.Gains.DesvioPerfecto else postureCfg.Gains.Desvio)
+	end
 	if result == "desvio_perfecto" then
 		ResonanceService.Gain(player, "DesvioPerfecto")
 		DefenseService.OpenCounter(player)
@@ -477,6 +520,13 @@ local function update(s, dt)
 		return
 	end
 	local t = now()
+	-- La postura se recupera si se le deja respirar
+	if (s.posture or 0) > 0 and t - (s.lastPostureHit or 0) > postureCfg.DecayDelay and not broken(s) then
+		s.posture = math.max(0, s.posture - postureCfg.DecayPerSecond * dt)
+		if s.posture == 0 or math.abs(s.posture - (s.model:GetAttribute("Postura") or 0)) >= 2 then
+			s.model:SetAttribute("Postura", s.posture)
+		end
+	end
 	if s.root and s.root.Position.Y < s.spawn.Position.Y - 12 then
 		drive(s, nil)
 		s.model:PivotTo(s.spawn) -- se cayó (al abismo): vuelve a su sitio
@@ -662,6 +712,60 @@ function SparringService.Start()
 	waveRemote.Name = "OndaReflejo"
 	waveRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 
+	-- GOLPE DE GRACIA: atacar cerca de un enemigo QUEBRADO. El servidor comprueba que siga quebrado, que el
+	-- jugador esté cerca (posición observada) y que no esté aturdido.
+	local executeRemote = Instance.new("RemoteEvent")
+	executeRemote.Name = "GolpeDeGracia"
+	executeRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
+	local lastExecute = {}
+	executeRemote.OnServerEvent:Connect(function(player, target)
+		local s = typeof(target) == "Instance" and npcs[target]
+		if not s or not s.root then
+			return
+		end
+		local clock = os.clock()
+		if clock - (lastExecute[player] or -math.huge) < 0.4 then
+			return
+		end
+		lastExecute[player] = clock
+		local untilTime = target:GetAttribute("QuebradoHasta")
+		if not untilTime or now() > untilTime + 0.3 then
+			player:SetAttribute("UltimoRechazo", "golpe de gracia sin enemigo quebrado")
+			return
+		end
+		if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
+			return
+		end
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root or flat(root.Position - s.root.Position).Magnitude > postureCfg.Execute.range + 4 then
+			player:SetAttribute("UltimoRechazo", "golpe de gracia lejos")
+			return
+		end
+		local humanoid = target:FindFirstChildOfClass("Humanoid")
+		if not humanoid or humanoid.Health <= 0 then
+			return
+		end
+		local ratio = if target:HasTag("Guardian") then postureCfg.Execute.guardianRatio else postureCfg.Execute.damageRatio
+		local damage = math.max(postureCfg.Execute.minDamage, humanoid.MaxHealth * ratio)
+		target:SetAttribute("QuebradoHasta", nil)
+		s.posture = 0
+		target:SetAttribute("Postura", 0)
+		local away = flat(s.root.Position - root.Position)
+		DamageService.ApplyExternalHit(player, target, {
+			attackName = "GolpeDeGracia",
+			damage = damage,
+			direction = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, -1),
+			knockback = 45,
+			knockUp = 18,
+			launch = true,
+			ignoreModifier = true,
+			stun = 1.2,
+		})
+		ResonanceService.Gain(player, "GolpeDeGracia")
+		player:SetAttribute("GolpesDeGracia", (player:GetAttribute("GolpesDeGracia") or 0) + 1)
+	end)
+
 	-- Coraza frontal (Centinela): de frente no hace daño, por la espalda más; aturdido no protege
 	DamageService.SetModifier(function(_, target, _, b, geometry)
 		local s = npcs[target]
@@ -715,15 +819,38 @@ function SparringService.Start()
 		end
 	end)
 
-	-- Un golpe fuerte que conecta mientras prepara su ataque lo interrumpe (los golpes rápidos no)
-	DamageService.HitApplied:Connect(function(attacker, target, attackName)
+	-- Un golpe fuerte que conecta mientras prepara su ataque lo interrumpe (los golpes rápidos no).
+	-- Las habilidades del Eco (y los golpes a un enemigo en pleno combo aéreo) lo ATURDEN el tiempo que
+	-- indican, esté haciendo lo que esté haciendo: son la herramienta para abrir y sostener combos.
+	DamageService.HitApplied:Connect(function(attacker, target, attackName, extra)
 		local s = npcs[target]
-		if s then
-			s.lastHitter = attacker
+		if not s then
+			return
 		end
+		s.lastHitter = attacker
 		local attack = CombatConfig.Attacks[attackName]
 		local isEco = type(attackName) == "string" and string.sub(attackName, 1, 3) == "Eco"
-		if s and s.state == "Preparando" and ((attack and attack.heavy) or isEco) then
+		local stun = type(extra) == "table" and tonumber(extra.stun) or 0
+		if type(extra) == "table" and extra.dot then
+			return -- daño de estado (quemadura, cortes extra): no interrumpe ni aturde
+		end
+		if attackName ~= "GolpeDeGracia" then
+			if attack then
+				addPosture(s, (attack.posture or 10) * postureCfg.Gains.ComboScale)
+			elseif isEco then
+				addPosture(s, postureCfg.Gains.Eco)
+			end
+		end
+		if stun > 0 then
+			if target:HasTag("Guardian") then
+				stun *= CombatConfig.Eco.GuardianStunScale
+			end
+			-- No acorta un aturdimiento más largo que ya tenga
+			local remaining = if s.state == "Aturdido" then (s.phaseEnd or 0) - now() else 0
+			if stun > remaining then
+				stagger(s, stun)
+			end
+		elseif s.state == "Preparando" and ((attack and attack.heavy) or isEco) then
 			stagger(s, sparring.StaggerOnInterrupt) -- los golpes fuertes y los Ecos interrumpen la preparación
 		end
 	end)
@@ -768,6 +895,10 @@ function SparringService.Start()
 					random = Random.new(1234),
 					kind = kind,
 				}
+				s.postureMax = if isGuardian then postureCfg.GuardianMax else postureCfg.Max
+				s.posture = 0
+				model:SetAttribute("PosturaMax", s.postureMax)
+				model:SetAttribute("Postura", 0)
 				model:SetAttribute("AtaqueId", 0)
 				model:SetAttribute("Perfil", if isGuardian then guardian.Profile elseif kind then kind.profile else sparring.DefaultProfile)
 				setPhase(s, "Quieto", nil, pauseFor(s))
@@ -825,6 +956,18 @@ function SparringService.Start()
 			end
 		end
 	end)
+end
+
+-- Para pruebas: fija la postura de un enemigo (si llega al máximo, queda quebrado)
+function SparringService.SetPosture(model, value)
+	local s = npcs[model]
+	if not s or not s.postureMax then
+		return
+	end
+	s.posture = 0
+	model:SetAttribute("QuebradoHasta", nil)
+	model:SetAttribute("Postura", 0)
+	addPosture(s, value)
 end
 
 return SparringService

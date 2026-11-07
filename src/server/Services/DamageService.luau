@@ -30,7 +30,8 @@ local PositionService = require(script.Parent:WaitForChild("PositionService"))
 
 local DamageService = {}
 
--- Se dispara con cada golpe aplicado: (jugador, objetivo, nombreDelAtaque)
+-- Se dispara con cada golpe aplicado: (jugador, objetivo, nombreDelAtaque, extra)
+-- extra: { stun = segundos } cuando el golpe aturde (habilidades, golpes a un enemigo en el aire)
 local hitApplied = Instance.new("BindableEvent")
 DamageService.HitApplied = hitApplied.Event
 
@@ -69,6 +70,131 @@ local function recordFor(player)
 		records[player] = record
 	end
 	return record
+end
+
+-- ---------- Combos aéreos (habilidades) ----------
+-- Un enemigo lanzado queda "en el aire" un rato (juggle): cada golpe que recibe así lo sostiene flotando un
+-- instante en vez de empujarlo lejos. Solo para personajes que simula el servidor (muñecos y enemigos).
+local juggle = CombatConfig.Eco.Juggle
+local juggles = setmetatable({}, { __mode = "k" }) -- [modelo] = os.clock() hasta el que sigue en el aire
+
+local floorParams = RaycastParams.new()
+floorParams.FilterType = Enum.RaycastFilterType.Exclude
+floorParams.RespectCanCollide = true
+
+-- Altura de los pies sobre el suelo (0 = de pie; math.huge = no hay suelo debajo)
+function DamageService.HeightAboveFloor(model)
+	local root = model and model:FindFirstChild("HumanoidRootPart")
+	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return 0
+	end
+	floorParams.FilterDescendantsInstances = { model }
+	local hit = Workspace:Raycast(root.Position, Vector3.new(0, -80, 0), floorParams)
+	if not hit then
+		return math.huge
+	end
+	return (root.Position.Y - hit.Position.Y) - (humanoid.HipHeight + root.Size.Y / 2)
+end
+
+function DamageService.MarkJuggle(model, seconds)
+	juggles[model] = math.max(juggles[model] or 0, os.clock() + seconds)
+end
+
+-- ¿Está en el aire por un lanzamiento (y todavía lejos del suelo)?
+function DamageService.IsJuggled(model)
+	local untilTime = juggles[model]
+	if not untilTime or os.clock() > untilTime then
+		return false
+	end
+	return DamageService.HeightAboveFloor(model) > juggle.MinHeight
+end
+
+local function constraintOn(targetRoot, name, axes)
+	local attachment = targetRoot:FindFirstChild("UmbralEmpujeA")
+	if not attachment then
+		attachment = Instance.new("Attachment")
+		attachment.Name = "UmbralEmpujeA"
+		attachment.Parent = targetRoot
+	end
+	local constraint = targetRoot:FindFirstChild(name)
+	if not constraint then
+		constraint = Instance.new("LinearVelocity")
+		constraint.Name = name
+		constraint.Attachment0 = attachment
+		constraint.RelativeTo = Enum.ActuatorRelativeTo.World
+		constraint.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		constraint.ForceLimitsEnabled = true
+		constraint.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+		constraint.Enabled = false
+		constraint.Parent = targetRoot
+	end
+	constraint.MaxAxesForce = axes
+	return constraint
+end
+
+-- Sostiene al objetivo en el aire durante duration s (sin gravedad; riseSpeed > 0 lo sube despacio)
+function DamageService.Suspend(targetRoot, duration, riseSpeed)
+	if not targetRoot or duration <= 0 then
+		return
+	end
+	local hold = constraintOn(targetRoot, "UmbralSuspension", Vector3.new(0, FORCE, 0))
+	local token = (hold:GetAttribute("Token") or 0) + 1
+	hold:SetAttribute("Token", token)
+	hold.VectorVelocity = Vector3.new(0, riseSpeed or 0, 0)
+	hold.Enabled = true
+	task.delay(duration, function()
+		if hold.Parent and hold:GetAttribute("Token") == token then
+			hold.Enabled = false
+		end
+	end)
+end
+
+-- Suelta al objetivo (deja de flotar)
+function DamageService.Release(targetRoot)
+	local hold = targetRoot and targetRoot:FindFirstChild("UmbralSuspension")
+	if hold then
+		hold:SetAttribute("Token", (hold:GetAttribute("Token") or 0) + 1)
+		hold.Enabled = false
+	end
+end
+
+-- Lleva al objetivo hacia un punto en duration s (atraer, subir, estampar). Se acorta antes de una pared o
+-- del suelo: nunca lo mete dentro de nada.
+function DamageService.DragTo(targetRoot, point, duration)
+	if not targetRoot or duration <= 0 then
+		return
+	end
+	local offset = point - targetRoot.Position
+	local distance = offset.Magnitude
+	if distance < 0.2 then
+		return
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { targetRoot.Parent }
+	params.RespectCanCollide = true
+	local ok, hit = pcall(Workspace.Spherecast, Workspace, targetRoot.Position, 1, offset, params)
+	if ok and hit then
+		local model = hit.Instance:FindFirstAncestorOfClass("Model")
+		if not (model and model:FindFirstChildOfClass("Humanoid")) then
+			distance = math.max(0, hit.Distance - 1.2)
+		end
+	end
+	if distance < 0.2 then
+		return
+	end
+	local drag = constraintOn(targetRoot, "UmbralArrastre", Vector3.new(FORCE, FORCE, FORCE))
+	local token = (drag:GetAttribute("Token") or 0) + 1
+	drag:SetAttribute("Token", token)
+	drag.VectorVelocity = offset.Unit * (distance / duration)
+	drag.Enabled = true
+	task.delay(duration, function()
+		if drag.Parent and drag:GetAttribute("Token") == token then
+			drag.Enabled = false
+			targetRoot.AssemblyLinearVelocity = Vector3.new(0, math.min(targetRoot.AssemblyLinearVelocity.Y, 0), 0)
+		end
+	end)
 end
 
 local function knockback(targetRoot, direction, speed, up)
@@ -137,10 +263,81 @@ end
 
 -- ---------- Inicios de ataque (secuencia legal) ----------
 local LIGHT_NEXT = {} -- [ataque] = siguiente del combo
-for i, name in ipairs(CombatConfig.LightChain) do
-	LIGHT_NEXT[name] = CombatConfig.LightChain[i % #CombatConfig.LightChain + 1]
+local CHAIN_START = {} -- [ataque] = true si empieza el combo de su arma
+local function addChain(chain)
+	for i, name in ipairs(chain) do
+		LIGHT_NEXT[name] = chain[i % #chain + 1]
+	end
+	CHAIN_START[chain[1]] = true
+end
+addChain(CombatConfig.LightChain)
+for key, weapon in pairs(CombatConfig.Weapons) do
+	if key ~= "Order" and type(weapon) == "table" and type(weapon.chain) == "table" then
+		addChain(weapon.chain)
+	end
 end
 local FIRST_LIGHT = CombatConfig.LightChain[1]
+
+-- Golpes especiales (EXPERIMENTAL): el golpe tras el Paso exige un Paso reciente y el golpe en picada exige
+-- estar en el aire con altura. Lo comprueba el servidor con SUS registros (Pasos informados, física observada).
+local plungeParams = RaycastParams.new()
+plungeParams.FilterType = Enum.RaycastFilterType.Exclude
+plungeParams.RespectCanCollide = true
+local function specialAllowed(player, def, t)
+	if def.special == "dash" then
+		local window = CombatConfig.Weapons.DashWindow
+		-- Un Paso reciente, o llegar con el gancho (WeaponService registra la hora del gancho)
+		local hook = player:GetAttribute("GanchoHora")
+		local hooked = type(hook) == "number" and t >= hook - 0.05 and t - hook <= window + 1.2
+		if not hooked and not DefenseService.FindPaso(player, t - window - 0.12, t + 0.05) then
+			return false, "golpe tras el Paso sin Paso"
+		end
+	elseif def.special == "plunge" then
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not root or not humanoid then
+			return false, "picada sin personaje"
+		end
+		-- La física replicada llega con retraso (décimas): se usa la posición que el cliente informó con el
+		-- inicio, siempre que sea coherente con lo observado (a pocos studs), y también la mayor altura observada
+		-- en un instante corto alrededor del inicio. El suelo es la geometría, no otros personajes.
+		local standing = humanoid.HipHeight + root.Size.Y / 2
+		local best = -math.huge
+		local samples = {}
+		local reported = PositionService.ReportedAt(player, t)
+		if reported and (reported - root.Position).Magnitude <= 16 then
+			table.insert(samples, reported)
+		end
+		for _, dt in ipairs({ 0, -0.08, -0.16, -0.24, 0.06 }) do
+			local seen = PositionService.ObservedAt(character, t + dt)
+			table.insert(samples, if seen then seen.Position else root.Position)
+		end
+		for _, position in ipairs(samples) do
+			local ignore = { character }
+			local feet = math.huge
+			for _ = 1, 4 do
+				plungeParams.FilterDescendantsInstances = ignore
+				local hit = Workspace:Raycast(position, Vector3.new(0, -80, 0), plungeParams)
+				if not hit then
+					break
+				end
+				local model = hit.Instance:FindFirstAncestorOfClass("Model")
+				if model and model:FindFirstChildOfClass("Humanoid") then
+					table.insert(ignore, model)
+				else
+					feet = (position.Y - hit.Position.Y) - standing
+					break
+				end
+			end
+			best = math.max(best, feet)
+		end
+		if best < CombatConfig.Weapons.PlungeMinHeight - 2 then
+			return false, string.format("picada sin altura (%.1f studs)", best)
+		end
+	end
+	return true
+end
 
 -- Lo mínimo que dura un ataque antes de poder empezar otro: su preparación (un Paso o un salto la
 -- cancelan, así que no se exige esperar el impacto). Las horas son del reloj del cliente: el desfase de
@@ -152,7 +349,7 @@ end
 -- ¿Es legal empezar `attackName` en la hora `t`, viniendo de `previous`? Devuelve ok, motivo, cargaMáxima
 local function legalStart(previous, attackName, def, t)
 	if not previous then
-		return attackName == FIRST_LIGHT or def.heavy == true, "el combo empieza por " .. FIRST_LIGHT, 1
+		return CHAIN_START[attackName] == true or def.heavy == true or def.special ~= nil, "el combo empieza por " .. FIRST_LIGHT, 1
 	end
 	local elapsed = t - previous.t
 	-- Se usa la duración mínima posible (como Contraataque): el servidor y el cliente pueden discrepar
@@ -171,16 +368,22 @@ local function legalStart(previous, attackName, def, t)
 		return true, nil, maxCharge
 	end
 	-- Ligeros: Jab siempre (el combo se reinicia); los demás, solo después de su anterior en la cadena
-	if attackName == FIRST_LIGHT or LIGHT_NEXT[previous.name] == attackName then
+	-- Los especiales (tras el Paso, en picada) pueden salir en cualquier momento libre: sus condiciones se
+	-- comprueban aparte (specialAllowed)
+	if def.special ~= nil or CHAIN_START[attackName] or LIGHT_NEXT[previous.name] == attackName then
 		return true, nil, 0
 	end
 	return false, string.format("%s no puede seguir a %s", attackName, previous.name), 0
 end
 
-local function handleStart(player, seq, attackName, t)
+local function handleStart(player, seq, attackName, t, position, look)
 	local def = type(attackName) == "string" and CombatConfig.Attacks[attackName]
 	if not def or type(seq) ~= "number" or seq ~= seq then
 		return reject(player, "inicio inválido")
+	end
+	-- Los golpes especiales mandan la posición del inicio (la picada la necesita: la física llega con retraso)
+	if def.special and typeof(position) == "Vector3" then
+		PositionService.Report(player, t, position, look)
 	end
 	-- Hora de inicio vieja (el cliente o el servidor se trabó un instante) o inválida: se usa la hora del
 	-- servidor, que no da ventaja (solo hace más estricta la ventana del golpe, por eso se marca "clamped")
@@ -206,6 +409,16 @@ local function handleStart(player, seq, attackName, t)
 	end
 	if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
 		return reject(player, "inicio aturdido")
+	end
+	-- Cada golpe es de un arma: solo vale con el arma que lleva puesta
+	if (def.weapon or "Punos") ~= (player:GetAttribute("Arma") or "Punos") then
+		return reject(player, "golpe de otra arma")
+	end
+	if def.special then
+		local allowed, reason = specialAllowed(player, def, t)
+		if not allowed then
+			return reject(player, reason)
+		end
 	end
 	local ok, why, maxCharge = legalStart(record.lastStart, attackName, def, t)
 	if not ok then
@@ -312,11 +525,22 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 
 	local direction = flat(b.targetRoot.Position - b.attackerRoot.Position)
 	direction = if direction.Magnitude > 0.01 then direction.Unit else flat(b.attackerRoot.CFrame.LookVector).Unit
+	local juggled = false
 	if damage > 0 then
 		if not keepFacing then
 			b.targetRoot.CFrame = CFrame.lookAt(b.targetRoot.Position, b.targetRoot.Position - direction) -- mira al atacante
 		end
-		knockback(b.targetRoot, direction, def.knockback * (1 + charge * 0.5), def.knockUp * (1 + charge * 0.5))
+		if DamageService.IsJuggled(target) then
+			-- Combo aéreo: el golpe lo sostiene flotando (y aturdido) en vez de mandarlo lejos
+			knockback(b.targetRoot, direction, def.knockback * juggle.HitKnockbackScale, 0)
+			local v = b.targetRoot.AssemblyLinearVelocity
+			b.targetRoot.AssemblyLinearVelocity = Vector3.new(v.X, juggle.HitKnockUp, v.Z)
+			DamageService.Suspend(b.targetRoot, juggle.HitSuspend)
+			DamageService.MarkJuggle(target, juggle.HitSuspend + 0.3)
+			juggled = true
+		else
+			knockback(b.targetRoot, direction, def.knockback * (1 + charge * 0.5), def.knockUp * (1 + charge * 0.5))
+		end
 	end
 
 	confirmedRemote:FireAllClients({
@@ -330,18 +554,22 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		note = note, -- texto corto para quien golpea ("¡POR LA ESPALDA!", "BLOQUEADO")
 	})
 	if damage > 0 then
-		hitApplied:Fire(player, target, attackName)
+		hitApplied:Fire(player, target, attackName, if juggled then { stun = juggle.HitStun } else nil)
 	end
 end
 
--- Daño que no viene de un golpe del combo (técnicas de Eco). Ya validado por quien lo llama (EcoService):
--- aplica daño, empuje y aviso igual que un golpe, sin dar Resonancia.
--- spec: attackName, damage, direction, knockback, knockUp, ignoreModifier
+-- Daño que no viene de un golpe del combo (habilidades del Eco). Ya validado por quien lo llama (EcoService):
+-- aplica daño, empuje y aviso igual que un golpe. Devuelve el daño aplicado.
+-- spec: attackName, damage, direction, knockback, knockUp, ignoreModifier, y opcionales:
+--   stun (s: el enemigo queda aturdido) · launch (true: el knockUp lanza aunque ya esté en el aire)
+--   juggle (s: queda "en el aire" para un combo aéreo) · suspend (s flotando) · suspendDelay (s antes de flotar)
+--   dragTo (Vector3) + dragTime (s): lo lleva a ese punto · synergy (nombre del combo, se muestra)
+--   dot (true: daño de estado, sin física ni interrupciones) · noResonance (no da Resonancia)
 function DamageService.ApplyExternalHit(player, target, spec)
 	local humanoid = target:FindFirstChildOfClass("Humanoid")
 	local root = target:FindFirstChild("HumanoidRootPart")
 	if not humanoid or not root then
-		return
+		return 0
 	end
 	local damage = spec.damage
 	local note = nil
@@ -351,9 +579,49 @@ function DamageService.ApplyExternalHit(player, target, spec)
 		damage *= multiplier or 1
 	end
 	humanoid.Health = math.max(0, humanoid.Health - damage)
+	local stun = spec.stun or 0
 	if damage > 0 then
-		knockback(root, spec.direction, spec.knockback or 0, spec.knockUp or 0)
-		hitApplied:Fire(player, target, spec.attackName)
+		local direction = spec.direction
+		if typeof(direction) ~= "Vector3" or direction.Magnitude < 0.01 then
+			direction = Vector3.new(0, 0, -1)
+		end
+		local juggledNow = not spec.dot and not spec.launch and not spec.dragTo and DamageService.IsJuggled(target)
+		if spec.dot then
+			-- Daño de estado (quemadura, cortes extra): sin empuje ni cambios en el aire
+		elseif spec.dragTo then
+			DamageService.DragTo(root, spec.dragTo, spec.dragTime or 0.18)
+		elseif juggledNow then
+			-- En pleno combo aéreo: lo sostiene en vez de mandarlo lejos
+			knockback(root, direction, (spec.knockback or 0) * juggle.HitKnockbackScale, 0)
+			local v = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(v.X, juggle.HitKnockUp, v.Z)
+			DamageService.Suspend(root, math.max(juggle.HitSuspend, spec.suspend or 0))
+			DamageService.MarkJuggle(target, juggle.HitSuspend + 0.3)
+			stun = math.max(stun, juggle.HitStun)
+		else
+			DamageService.Release(root)
+			knockback(root, direction, spec.knockback or 0, spec.knockUp or 0)
+		end
+		if spec.juggle then
+			DamageService.MarkJuggle(target, spec.juggle)
+		end
+		if spec.suspend and spec.suspend > 0 and not juggledNow then
+			if spec.suspendDelay and spec.suspendDelay > 0 then
+				task.delay(spec.suspendDelay, function()
+					if root.Parent then
+						DamageService.Suspend(root, spec.suspend)
+					end
+				end)
+			else
+				DamageService.Suspend(root, spec.suspend)
+			end
+		end
+		-- Los enemigos que pelean dan Resonancia por los golpes de habilidad igual que por los del combo
+		-- (con el mismo rendimiento decreciente); la definitiva la gasta y no la devuelve
+		if target:HasTag("Sparring") and not spec.noResonance then
+			ResonanceService.Gain(player, "Golpe", target, spec.attackName)
+		end
+		hitApplied:Fire(player, target, spec.attackName, { stun = stun, dot = spec.dot == true })
 	end
 	confirmedRemote:FireAllClients({
 		attacker = player,
@@ -364,7 +632,9 @@ function DamageService.ApplyExternalHit(player, target, spec)
 		health = humanoid.Health,
 		counter = false,
 		note = note,
+		synergy = spec.synergy,
 	})
+	return damage
 end
 
 local function handleHit(player, payload)

@@ -218,8 +218,11 @@ function DummyService.Start()
 	for _, player in ipairs(Players:GetPlayers()) do
 		watchPlayer(player)
 	end
-	local dojo = Workspace:WaitForChild("Maps"):WaitForChild("MovementLab"):WaitForChild("Dojo")
-	for _, marker in ipairs(dojo:GetChildren()) do
+	-- Muñecos en cada marca PuntoMuneco* del mapa: el Dojo del laboratorio y, en el lugar de desarrollo, la sala de
+	-- entrada de la Grieta (para probar las habilidades nada más entrar)
+	local maps = Workspace:WaitForChild("Maps")
+	maps:WaitForChild("MovementLab"):WaitForChild("Dojo")
+	for _, marker in ipairs(maps:GetDescendants()) do
 		if marker:IsA("BasePart") and string.sub(marker.Name, 1, 11) == "PuntoMuneco" then
 			local tough = string.find(marker.Name, "Aguante", 1, true) ~= nil
 			task.spawn(DummyService.Spawn, marker, {

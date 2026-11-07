@@ -69,6 +69,16 @@ local function rescue(player, character, root)
 	if not target then
 		return
 	end
+	-- Si el punto guardado también quedó dentro de algo, se sube por encima de lo que lo tapa
+	overlapParams.FilterDescendantsInstances = { character }
+	for _, part in ipairs(Workspace:GetPartBoundsInRadius(target.Position, 0.15, overlapParams)) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if not (model and model:FindFirstChildOfClass("Humanoid")) then
+			local top = part.Position.Y + part.Size.Y / 2
+			target = CFrame.new(target.Position.X, top + 3.5, target.Position.Z) * target.Rotation
+			break
+		end
+	end
 	PositionService.AllowTeleport(player, 1)
 	root.AssemblyLinearVelocity = Vector3.zero
 	character:PivotTo(target)
@@ -149,17 +159,17 @@ function PersonajeService.Start()
 					rescue(player, character, root)
 				elseif now >= (nextCheck[player] or 0) then
 					nextCheck[player] = now + CHECK_INTERVAL
-					-- Atascado dentro de una pared: tras STUCK_SECONDS, de vuelta al último suelo firme
+					-- Atascado dentro de una pared: tras STUCK_SECONDS, de vuelta al último suelo firme. Mientras está
+					-- metido en algo NO se guarda como suelo seguro (si no, el rescate lo devolvería adentro).
 					if insideSolid(character, root) then
 						stuckSince[player] = stuckSince[player] or now
 						if now - stuckSince[player] >= STUCK_SECONDS then
 							stuckSince[player] = nil
 							rescue(player, character, root)
-							continue
 						end
-					else
-						stuckSince[player] = nil
+						continue
 					end
+					stuckSince[player] = nil
 					local ground = firmGround(character, root, humanoid)
 					if ground then
 						local standing = humanoid.HipHeight + root.Size.Y / 2 + 0.3

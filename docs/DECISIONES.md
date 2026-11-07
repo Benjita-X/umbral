@@ -82,6 +82,36 @@
 | 71 | El personaje del jugador no tropieza (FallingDown y Ragdoll desactivados) | Chocar fuerte lo tumbaba |
 | 72 | Si un personaje reaparece sin ropa ni accesorios, el servidor le vuelve a aplicar la apariencia de su cuenta | El jugador reapareció sin su avatar (Roblox no terminó de cargarlo) |
 
+## Habilidades v2, armas y movimiento Sekiro (2026-11-07, pedido del jugador tras probar el prototipo)
+El jugador encontró el sistema de habilidades "básico, raro y que a veces no salía", y pidió un sistema al estilo de
+los juegos de peleas de Roblox (una tecla por habilidad, combos combinando habilidades), mínimo 20 poderes, kits de
+viento, agua, oscuridad y fuego infernal, armas (espada), patadas y movimiento con sensación de Sekiro / Elden Ring.
+Diseño completo: [HABILIDADES-V2.md](HABILIDADES-V2.md). Rama `experimental/habilidades-v2`.
+
+| # | Decisión | Por qué |
+|---|---|---|
+| 73 | Una tecla por habilidad (Z X C V; mando Y L1 L2 R2; un botón por habilidad en el celular) que sale AL PULSAR | El botón único contextual (tocar/mantener/tras Paso/aire) sacaba otra cosa o nada |
+| 74 | Las básicas (Z, X, C) no cuestan Resonancia; solo la definitiva (V) | Costar Resonancia desde 0 hacía que "a veces no saliera" sin aviso claro |
+| 75 | Barra de habilidades con tecla, nombre, enfriamiento con segundos, destello al quedar lista y sacudida roja si no está lista | El jugador no sabía por qué no salía |
+| 76 | Se lanzan sin quedarte quieto (animación solo del tronco) y cortan la preparación y la recuperación de tus golpes; el combo no se reinicia | "Que se puedan tirar rápido y moverse mientras se tiran" |
+| 77 | Enfriamiento por tecla medido entre las horas validadas de los pedidos (margen 0,05 s); reserva antes de cualquier espera | La variación de la red no rechaza un uso legítimo; dos pedidos en el mismo cuadro no salen dos veces (Codex #1) |
+| 78 | Suelo/aire por la altura de los pies con márgenes que se solapan (el cliente pide la variante aérea a 2,2; el servidor acepta aire desde 1 y suelo hasta 3) | Antes cliente y servidor discrepaban en el límite y la habilidad se rechazaba en silencio |
+| 79 | 5 Ecos intercambiables (teclas 1-5 o menú), 4 habilidades cada uno; cambiar de Eco deja las teclas 2 s en enfriamiento | 20+ poderes sin 20 teclas; no se encadenan definitivas cambiando |
+| 80 | Proyectiles simulados por el servidor desde la hora del pedido (primero lo ya recorrido, con el historial; luego cuadro a cuadro) y frenados por las paredes | Justo con la latencia y sin atravesar paredes |
+| 81 | Arrastrar (atraer, subir, estampar) y sostener en el aire con restricciones propias, con barrido de esfera antes de mover | Nada mete a un enemigo dentro de una pared |
+| 82 | Combos aéreos: un enemigo lanzado queda "en el aire"; cada golpe lo sostiene flotando; quien golpea en el aire flota un instante | Los combos de los juegos del género viven en el aire |
+| 83 | Sinergias con nombre (14) entre técnicas en el mismo enemigo: más daño/lanzamiento/aturdimiento y Resonancia | "Combos combinando habilidades" con premio visible |
+| 84 | Quemadura y cortes extra son daño de estado: sin física, sin interrumpir, no cuentan para sinergias | Si no, cada tic interrumpía al enemigo y rompía los combos |
+| 85 | Armas: Q cambia Puños ↔ Espada; el servidor valida que cada golpe sea del arma que llevas | Variedad de combate sin abrir trampas de daño |
+| 86 | Golpe tras el Paso (exige un Paso registrado) y golpe en picada (exige altura en la física observada, con ventana corta) | Patadas nuevas validadas por el servidor |
+| 87 | Gancho (E) a orbes del mapa y a enemigos; al llegar a un orbe, impulso y saltos recargados; a un enemigo, abre el golpe tras el Paso | Movimiento con sensación de Sekiro |
+| 88 | Postura enemiga: desvíos y golpes la llenan; llena = QUEBRADO 2,6 s; atacar cerca = Golpe de Gracia (35 % de la vida, Guardián 22 %) | El ciclo desviar → quebrar → rematar de los juegos de duelo con espada |
+| 89 | Las embestidas de habilidad frenan en seco al terminar | El impulso las alargaba al doble de lo previsto |
+| 90 | Cámara fija en PC (Ctrl): ratón al centro con mira, cámara sobre el hombro, el personaje mira hacia la cámara; golpes y habilidades salen hacia la mira; el menú suelta el ratón | "Muy incómodo" jugar con la cámara libre; es lo habitual en los juegos de pelea |
+| 91 | Fijar enemigo (R / R3): cámara que lo sigue (Scriptable mientras dura), el personaje lo encara, tirón del ratón para cambiar; se suelta si cae, se aleja o queda tapado | Comodidad de los juegos de acción con espada en peleas movidas |
+| 92 | Polvo y sacudida al caer desde alto, silueta fantasma en el Paso, golpe de FOV en gancho y definitivas | Que el movimiento "se sienta" |
+| 93 | El golpe tras el Paso también vale al llegar con el gancho (el servidor registra la hora del gancho); la picada usa la posición informada con el inicio, comprobada contra lo observado | La física replicada llega con décimas de retraso: el servidor veía al jugador todavía en el suelo |
+
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)
 - **Antes de publicar:** subir las animaciones a Roblox (o reemplazarlas por otras de un animador) y poner sus IDs en `CombatConfig.AnimationIds`; las generadas por código no funcionan fuera de Studio.

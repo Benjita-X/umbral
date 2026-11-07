@@ -1,7 +1,8 @@
--- Suite del primer Eco (EXPERIMENTAL): Eco del Viento. Mide lo que decide el servidor (vida, Resonancia,
--- rechazos), no el efecto visual.
+-- Suite de las habilidades del Eco (EXPERIMENTAL, v2): Eco del Viento, una habilidad por tecla.
+-- Mide lo que decide el servidor (vida, posiciones, Resonancia, rechazos), no el efecto visual.
 
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -9,12 +10,14 @@ return function(ctx)
 	local Config, Input, Combat = ctx.CombatConfig, ctx.Input, ctx.Combat
 	local record, waitUntil = ctx.record, ctx.waitUntil
 	local player = ctx.player
-	local techniques = Config.Eco.Techniques
+	local skills = Config.Eco.Skills
 	local ecoRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Eco", 10)
 	if not ecoRemote then
-		ctx.skip("[Eco] Suite del Eco", "no existe el remote Eco")
+		ctx.skip("[Eco] Suite de habilidades", "no existe el remote Eco")
 		return
 	end
+	local Eco = require(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers"):WaitForChild("EcoController"))
+	Eco.SetAimMode("frente") -- las pruebas apuntan al frente (el ratón está donde sea)
 
 	local function byName(tag, name)
 		for _, model in ipairs(CollectionService:GetTagged(tag)) do
@@ -22,7 +25,7 @@ return function(ctx)
 				return model
 			end
 		end
-		return CollectionService:GetTagged(tag)[1]
+		return nil
 	end
 	local function resonance()
 		return player:GetAttribute("Resonancia") or 0
@@ -33,6 +36,22 @@ return function(ctx)
 			return math.abs(resonance() - value) < 0.5
 		end, 1)
 	end
+	-- Enfriamientos a cero en el servidor y en esta pantalla
+	local function resetEco()
+		ctx.remote:FireServer("reiniciar_eco")
+		table.clear(Eco.State.cooldownEnd)
+		table.clear(Eco.State.recast)
+		Eco.State.swapUntil = 0
+		task.wait(0.15)
+	end
+	local function healthy(model)
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		waitUntil(function()
+			return humanoid.Health >= humanoid.MaxHealth
+		end, 8)
+		return humanoid
+	end
+	-- Párate a `distance` studs delante del modelo, mirándolo
 	local function standFacing(model, distance)
 		local root = model:WaitForChild("HumanoidRootPart")
 		local look = root.CFrame.LookVector
@@ -42,203 +61,259 @@ return function(ctx)
 		ctx.teleport(Vector3.new(position.X, root.Position.Y + 0.5, position.Z), -flatLook)
 		return root
 	end
+	local function flatDistance(a, b)
+		return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+	end
+	local function rejection()
+		local count = player:GetAttribute("EcosRechazados") or 0
+		return function()
+			waitUntil(function()
+				return (player:GetAttribute("EcosRechazados") or 0) > count
+			end, 1.5)
+			return player:GetAttribute("EcoRechazado")
+		end
+	end
+	local function now()
+		return Workspace:GetServerTimeNow()
+	end
 
-	-- ---------- 1. Ráfaga: daña y cobra exactamente su costo ----------
-	local dummy = byName("Objetivo", "Muneco2")
-	local dummyHumanoid = dummy:FindFirstChildOfClass("Humanoid")
+	local muneco1, muneco2, muneco3 = byName("Objetivo", "Muneco1"), byName("Objetivo", "Muneco2"), byName("Objetivo", "Muneco3")
+	if not (muneco1 and muneco2 and muneco3) then
+		ctx.skip("[Eco] Suite de habilidades", "faltan los muñecos del Dojo")
+		return
+	end
+	resetEco()
+
+	-- ---------- 1. Z · Cuchilla: proyectil que daña a distancia, sin costo ----------
+	local h2 = healthy(muneco2)
+	standFacing(muneco2, 20)
+	setResonance(0)
+	local before = h2.Health
+	local used = nil
+	local usedConnection = Eco.Used:Connect(function(name)
+		used = name
+	end)
+	Input.Trigger("HabilidadZ")
 	waitUntil(function()
-		return dummyHumanoid.Health >= dummyHumanoid.MaxHealth
-	end, 6)
-	standFacing(dummy, 6)
-	setResonance(100)
-	local h0 = dummyHumanoid.Health
-	local r0 = resonance() -- la Resonancia se apaga sola fuera de combate: se mide lo COBRADO
-	Input.Trigger("Eco")
-	waitUntil(function()
-		return dummyHumanoid.Health < h0
+		return h2.Health < before
 	end, 1.5)
 	task.wait(0.2)
-	local dealt = h0 - dummyHumanoid.Health
-	local spent = r0 - resonance()
+	local dealt = before - h2.Health
 	record(
-		"[Eco] Ráfaga: daña al frente y cobra su costo",
-		math.abs(dealt - techniques.Rafaga.damage) < 0.01 and spent >= techniques.Rafaga.cost - 0.5 and spent <= techniques.Rafaga.cost + 3,
-		string.format("%.1f de daño (objetivo %d) · cobró %.1f de Resonancia (costo %d; el resto es el apagado natural)", dealt, techniques.Rafaga.damage, spent, techniques.Rafaga.cost)
+		"[Eco] Z Cuchilla: el proyectil daña a 20 studs y no cuesta Resonancia",
+		math.abs(dealt - skills.Cuchilla.damage) < 0.01 and used == "Cuchilla" and resonance() < 0.5,
+		string.format("%.1f de daño (objetivo %d) · usada %s · Resonancia %d (cero: las básicas no cuestan) · último %s", dealt, skills.Cuchilla.damage, tostring(used), math.floor(resonance()), tostring(player:GetAttribute("UltimoEco")))
 	)
 
-	-- ---------- 2. Enfriamiento comprobado en el servidor ----------
-	local rejected0 = player:GetAttribute("EcosRechazados") or 0
-	local root = ctx.root
-	ecoRemote:FireServer("rafaga", Workspace:GetServerTimeNow(), root.Position, root.CFrame.LookVector)
-	waitUntil(function()
-		return (player:GetAttribute("EcosRechazados") or 0) > rejected0
-	end, 1)
-	record("[Eco] El servidor respeta el enfriamiento", player:GetAttribute("EcoRechazado") == "enfriamiento", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
+	-- ---------- 2. El servidor respeta el enfriamiento ----------
+	local why = rejection()
+	ecoRemote:FireServer("cuchilla", now(), ctx.root.Position, ctx.root.CFrame.LookVector, ctx.root.CFrame.LookVector)
+	record("[Eco] El servidor respeta el enfriamiento de cada tecla", why() == "enfriamiento", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
 
-	-- ---------- 3. Sin Resonancia no hay Eco ----------
-	task.wait(techniques.Rafaga.cooldown + 0.2)
-	setResonance(10)
-	h0 = dummyHumanoid.Health
-	rejected0 = player:GetAttribute("EcosRechazados") or 0
-	ecoRemote:FireServer("rafaga", Workspace:GetServerTimeNow(), root.Position, root.CFrame.LookVector)
-	waitUntil(function()
-		return (player:GetAttribute("EcosRechazados") or 0) > rejected0
-	end, 1)
+	-- ---------- 3. Barra de habilidades: 4 casillas y el enfriamiento a la vista ----------
+	local bar = player.PlayerGui:FindFirstChild("UmbralHabilidades")
+	bar = bar and bar:FindFirstChild("Barra")
+	local zSlot = bar and bar:FindFirstChild("Z")
+	local zSeconds = zSlot and zSlot:FindFirstChild("Segundos")
+	local zName = zSlot and zSlot:FindFirstChild("Nombre")
 	record(
-		"[Eco] Sin Resonancia suficiente no sale",
-		dummyHumanoid.Health == h0 and player:GetAttribute("EcoRechazado") == "Resonancia insuficiente",
-		"motivo: " .. tostring(player:GetAttribute("EcoRechazado"))
+		"[Eco] La barra muestra las 4 habilidades y el enfriamiento",
+		bar ~= nil and bar:FindFirstChild("X") ~= nil and bar:FindFirstChild("C") ~= nil and bar:FindFirstChild("V") ~= nil and zSeconds ~= nil and zSeconds.Text ~= "" and zName ~= nil and string.find(zName.Text, "CUCHILLA", 1, true) ~= nil,
+		string.format("barra %s · Z dice '%s' · enfriamiento '%s'", tostring(bar ~= nil), zName and zName.Text or "-", zSeconds and zSeconds.Text or "-")
+	)
+	usedConnection:Disconnect()
+
+	-- ---------- 4. La Cuchilla se frena en las paredes ----------
+	resetEco()
+	ctx.teleport(Vector3.new(-60, 4, 58), Vector3.new(0, 0, 1)) -- el Muro del laboratorio: su cara está en z = 69
+	local finished = player:GetAttribute("CuchillasTerminadas") or 0
+	Input.Trigger("HabilidadZ")
+	waitUntil(function()
+		return (player:GetAttribute("CuchillasTerminadas") or 0) > finished
+	end, 2)
+	local traveled = player:GetAttribute("UltimaCuchilla") or -1
+	record("[Eco] La Cuchilla se frena en la pared (no la atraviesa)", traveled > 6 and traveled < 13, string.format("recorrió %.1f studs (la pared está a ~11; su alcance es %d)", traveled, skills.Cuchilla.range))
+
+	-- ---------- 5. X · Ciclón: atrae al muñeco hasta tu frente ----------
+	resetEco()
+	local h1 = healthy(muneco1)
+	local r1 = standFacing(muneco1, 9)
+	local d0 = flatDistance(r1.Position, ctx.root.Position)
+	before = h1.Health
+	Input.Trigger("HabilidadX")
+	waitUntil(function()
+		return h1.Health < before
+	end, 1.5)
+	task.wait(0.4)
+	local d1 = flatDistance(r1.Position, ctx.root.Position)
+	record(
+		"[Eco] X Ciclón: atrae al enemigo hasta tu frente y lo daña",
+		math.abs((before - h1.Health) - skills.Ciclon.damage) < 0.01 and d1 < d0 - 3 and d1 < 6.5,
+		string.format("distancia %.1f → %.1f studs · %.1f de daño (objetivo %d)", d0, d1, before - h1.Health, skills.Ciclon.damage)
 	)
 
-	-- ---------- 4. Un impacto de Descenso inventado se rechaza ----------
-	rejected0 = player:GetAttribute("EcosRechazados") or 0
-	ecoRemote:FireServer("impacto", Workspace:GetServerTimeNow(), root.Position, root.CFrame.LookVector)
+	-- ---------- 6. Sinergia: Ciclón y enseguida Cuchilla = REMOLINO CORTANTE ----------
+	task.wait(0.1)
+	before = h1.Health
+	Input.Trigger("HabilidadZ")
 	waitUntil(function()
-		return (player:GetAttribute("EcosRechazados") or 0) > rejected0
-	end, 1)
-	record("[Eco] Rechaza un impacto sin Descenso", player:GetAttribute("EcoRechazado") == "impacto sin descenso", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
+		return h1.Health < before
+	end, 1.5)
+	task.wait(0.2)
+	local synergyDamage = before - h1.Health
+	local expected = skills.Cuchilla.damage * 1.5
+	record(
+		"[Eco] Sinergia: Ciclón → Cuchilla es REMOLINO CORTANTE (más daño)",
+		player:GetAttribute("UltimaSinergia") == "REMOLINO CORTANTE" and math.abs(synergyDamage - expected) < 0.01,
+		string.format("sinergia '%s' · %.1f de daño (normal %d, combo %.1f)", tostring(player:GetAttribute("UltimaSinergia")), synergyDamage, skills.Cuchilla.damage, expected)
+	)
 
-	-- ---------- 5. Descenso: picada y onda al aterrizar ----------
-	waitUntil(function()
-		return dummyHumanoid.Health >= dummyHumanoid.MaxHealth
-	end, 6)
-	standFacing(dummy, 4)
-	setResonance(100)
-	h0 = dummyHumanoid.Health
+	-- ---------- 7. El Ciclón aturde a un enemigo (interrumpe lo que hacía) ----------
+	local partner = CollectionService:GetTagged("Companero")[1]
+	if partner then
+		resetEco()
+		ctx.remote:FireServer("reiniciar_defensa")
+		standFacing(partner, 8)
+		Input.Trigger("HabilidadX")
+		local stunned = waitUntil(function()
+			return partner:GetAttribute("Estado") == "Aturdido"
+		end, 1.2)
+		record("[Eco] El Ciclón aturde al enemigo", stunned == true, "estado: " .. tostring(partner:GetAttribute("Estado")))
+		ctx.remote:FireServer("reiniciar_defensa")
+	else
+		ctx.skip("[Eco] El Ciclón aturde al enemigo", "no hay compañero de combate")
+	end
+
+	-- ---------- 8. C · Levante: lanza al aire y lo deja flotando arriba ----------
+	resetEco()
+	local h3 = healthy(muneco3)
+	local r3 = standFacing(muneco3, 5)
+	local y0 = r3.Position.Y
+	before = h3.Health
+	Input.Trigger("HabilidadC")
+	local peak, heightAtHold = 0, 0
+	local t0 = os.clock()
+	while os.clock() - t0 < 0.9 do
+		task.wait()
+		peak = math.max(peak, r3.Position.Y - y0)
+		if os.clock() - t0 >= 0.6 and heightAtHold == 0 then
+			heightAtHold = r3.Position.Y - y0
+		end
+	end
+	record(
+		"[Eco] C Levante: lanza al enemigo y flota arriba (combo aéreo)",
+		peak >= 6 and heightAtHold >= 4 and math.abs((before - h3.Health) - skills.Levante.damage) < 0.01,
+		string.format("subió %.1f studs · a los 0,6 s seguía a %.1f · %.1f de daño (objetivo %d)", peak, heightAtHold, before - h3.Health, skills.Levante.damage)
+	)
+
+	-- ---------- 9. C otra vez: Ascenso (subes tras el lanzado) ----------
+	-- (el relanzamiento se abre cuando el servidor confirma el Levante)
+	local recast = waitUntil(function()
+		return Eco.State.recast.C ~= nil
+	end, 0.3) or Eco.State.recast.C ~= nil
+	local playerY0 = ctx.root.Position.Y
+	local rose = 0
+	if recast then
+		Input.Trigger("HabilidadC")
+		local t1 = os.clock()
+		while os.clock() - t1 < 0.45 do
+			task.wait()
+			rose = math.max(rose, ctx.root.Position.Y - playerY0)
+		end
+	end
+	record("[Eco] C otra vez tras el Levante: Ascenso (subes tras él)", recast and rose >= 5, string.format("relanzamiento disponible %s · subiste %.1f studs", tostring(recast), rose))
+	ctx.settle()
+
+	-- ---------- 10. C en el aire: Descenso (picada y onda al aterrizar) ----------
+	resetEco()
+	task.wait(1) -- que el muñeco 3 baje
+	local hd = healthy(muneco2)
+	standFacing(muneco2, 4)
+	before = hd.Health
 	ctx.humanoid.Jump = true
 	waitUntil(function()
 		return not ctx.grounded() and ctx.root.AssemblyLinearVelocity.Y <= 2
 	end, 1.5)
-	Input.Trigger("Eco")
+	Input.Trigger("HabilidadC")
 	waitUntil(function()
-		return dummyHumanoid.Health < h0
+		return hd.Health < before
 	end, 2)
 	task.wait(0.2)
-	dealt = h0 - dummyHumanoid.Health
 	record(
-		"[Eco] Descenso: la onda al aterrizar daña alrededor",
-		math.abs(dealt - techniques.Descenso.damage) < 0.01,
-		string.format("%.1f de daño (objetivo %d) · último Eco %s", dealt, techniques.Descenso.damage, tostring(player:GetAttribute("UltimoEco")))
+		"[Eco] C en el aire: Descenso daña al aterrizar",
+		math.abs((before - hd.Health) - skills.Descenso.damage) < 0.01,
+		string.format("%.1f de daño (objetivo %d) · último %s · motivo si falló: %s", before - hd.Health, skills.Descenso.damage, tostring(player:GetAttribute("UltimoEco")), tostring(player:GetAttribute("EcoRechazado")))
+	)
+	ctx.settle()
+
+	-- ---------- 11. V · Tempestad: sin Resonancia no sale; con ella atrapa y golpea varias veces ----------
+	resetEco()
+	setResonance(10)
+	why = rejection()
+	ecoRemote:FireServer("tempestad", now(), ctx.root.Position, ctx.root.CFrame.LookVector, ctx.root.CFrame.LookVector)
+	record("[Eco] V Tempestad sin Resonancia suficiente no sale", why() == "Resonancia insuficiente", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
+	resetEco()
+	local ht = healthy(muneco2)
+	standFacing(muneco2, 6)
+	setResonance(100)
+	local r0 = resonance()
+	before = ht.Health
+	Input.Trigger("HabilidadV")
+	task.wait(skills.Tempestad.duration + 0.6)
+	local total = before - ht.Health
+	local spent = r0 - resonance()
+	record(
+		"[Eco] V Tempestad: gasta Resonancia y golpea muchas veces",
+		total >= skills.Tempestad.tickDamage * 4 + skills.Tempestad.finalDamage and spent >= skills.Tempestad.cost - 1 and spent <= skills.Tempestad.cost + 6,
+		string.format("%.1f de daño en total · gastó %.0f de Resonancia (costo %d)", total, spent, skills.Tempestad.cost)
+	)
+	setResonance(0)
+	ctx.settle()
+
+	-- ---------- 12. Una habilidad corta tu golpe (y se puede seguir combinando) ----------
+	resetEco()
+	task.wait(1)
+	healthy(muneco1)
+	standFacing(muneco1, 4)
+	used = nil
+	usedConnection = Eco.Used:Connect(function(name)
+		used = name
+	end)
+	Input.Trigger("Atacar")
+	task.wait(0.03)
+	local modeBefore = Combat.State.mode
+	Input.Trigger("HabilidadZ")
+	local modeAfter = Combat.State.mode
+	usedConnection:Disconnect()
+	record(
+		"[Eco] Una habilidad corta la preparación de tu golpe",
+		modeBefore == "Ataque" and used == "Cuchilla" and modeAfter == "Libre",
+		string.format("antes: %s · habilidad: %s · después: %s", tostring(modeBefore), tostring(used), tostring(modeAfter))
 	)
 
-	-- ---------- 6. Atraviesa la coraza del Centinela ----------
-	local centinela = CollectionService:GetTagged("Centinela")[1]
-	if centinela then
-		local cHumanoid = centinela:FindFirstChildOfClass("Humanoid")
-		ctx.remote:FireServer("vida_enemigo", { tag = "Centinela", value = Config.Sparring.Types.Centinela.maxHealth })
-		task.wait(techniques.Descenso.cooldown)
-		standFacing(centinela, 6)
-		setResonance(100)
-		local c0 = cHumanoid.Health
-		Input.Trigger("Eco")
-		waitUntil(function()
-			return cHumanoid.Health < c0
-		end, 1.5)
-		local through = c0 - cHumanoid.Health
-		record(
-			"[Eco] La Ráfaga atraviesa la coraza del Centinela",
-			math.abs(through - techniques.Rafaga.damage) < 0.01,
-			string.format("%.1f de daño de frente (la coraza bloquea los golpes normales)", through)
-		)
-	else
-		ctx.skip("[Eco] La Ráfaga atraviesa la coraza del Centinela", "no hay Centinela en este lugar")
-	end
-
-	-- ---------- 7. Interrumpe al enemigo que prepara un ataque ----------
-	local partner = CollectionService:GetTagged("Companero")[1]
-	if partner then
-		ctx.remote:FireServer("patron", "Golpe")
-		ctx.remote:FireServer("reiniciar_defensa")
-		task.wait(techniques.Rafaga.cooldown)
-		standFacing(partner, 5)
-		setResonance(100)
-		local caught = waitUntil(function()
-			if partner:GetAttribute("Estado") == "Preparando" then
-				return (partner:GetAttribute("FaseFin") or 0) - Workspace:GetServerTimeNow() > 0.3
-			end
-			return false
-		end, 6)
-		if caught then
-			Input.Trigger("Eco")
-		end
-		local interrupted = caught and waitUntil(function()
-			return partner:GetAttribute("Estado") == "Aturdido"
-		end, 1)
-		record("[Eco] La Ráfaga interrumpe la preparación de un ataque", interrupted == true, string.format("preparando cuando se usó: %s · aturdido: %s", tostring(caught), tostring(interrupted)))
-		ctx.remote:FireServer("patron", "")
-	end
-
-	-- ---------- 8. Torbellino (mantener Eco en el suelo): golpea alrededor ----------
-	local spinDummy = byName("Objetivo", "Muneco1")
-	local spinHumanoid = spinDummy:FindFirstChildOfClass("Humanoid")
-	waitUntil(function()
-		return spinHumanoid.Health >= spinHumanoid.MaxHealth
-	end, 6)
-	standFacing(spinDummy, 4)
-	setResonance(100)
-	local s0 = spinHumanoid.Health
-	Input.Press("Eco")
-	task.wait(techniques.Torbellino.holdTime + 0.15)
-	Input.Release("Eco")
-	waitUntil(function()
-		return spinHumanoid.Health < s0
-	end, 1.5)
-	task.wait(0.15)
-	local spun = s0 - spinHumanoid.Health
-	record("[Eco] Torbellino (mantener): golpea alrededor", math.abs(spun - techniques.Torbellino.damage) < 0.01, string.format("%.1f de daño (objetivo %d) · último Eco %s", spun, techniques.Torbellino.damage, tostring(player:GetAttribute("UltimoEco"))))
-
-	-- ---------- 9. Estela sin Paso: el servidor la rechaza ----------
-	task.wait(0.8)
-	local rej = player:GetAttribute("EcosRechazados") or 0
-	ecoRemote:FireServer("estela", Workspace:GetServerTimeNow(), ctx.root.Position, ctx.root.CFrame.LookVector)
-	waitUntil(function()
-		return (player:GetAttribute("EcosRechazados") or 0) > rej
-	end, 1.5)
-	record("[Eco] La Estela sin un Paso se rechaza", player:GetAttribute("EcoRechazado") == "estela sin Paso", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
-
-	-- ---------- 10. Estela: el Paso que atraviesa a un muñeco y Eco enseguida ----------
-	local slashDummy = byName("Objetivo", "Muneco3")
-	local slashHumanoid = slashDummy:FindFirstChildOfClass("Humanoid")
-	waitUntil(function()
-		return slashHumanoid.Health >= slashHumanoid.MaxHealth
-	end, 6)
-	local sRoot = standFacing(slashDummy, 7)
-	setResonance(100)
-	local e0 = slashHumanoid.Health
-	local toward = Vector3.new(sRoot.Position.X - ctx.root.Position.X, 0, sRoot.Position.Z - ctx.root.Position.Z).Unit
-	ctx.humanoid:Move(toward)
-	task.wait()
-	Input.Trigger("Paso")
-	task.wait(0.16)
-	Input.Trigger("Eco")
-	ctx.humanoid:Move(Vector3.zero)
-	waitUntil(function()
-		return slashHumanoid.Health < e0
-	end, 1.5)
-	task.wait(0.15)
-	local slashed = e0 - slashHumanoid.Health
-	record("[Eco] Estela (tras un Paso): daña lo que atravesaste", math.abs(slashed - techniques.Estela.damage) < 0.01, string.format("%.1f de daño (objetivo %d) · último Eco %s · motivo si falló: %s", slashed, techniques.Estela.damage, tostring(player:GetAttribute("UltimoEco")), tostring(player:GetAttribute("EcoRechazado"))))
-
-	-- ---------- Menú: existe, abre con su botón y cambia un ajuste en vivo ----------
+	-- ---------- Menú: existe, con controles, Ecos y ajustes ----------
 	local menu = player.PlayerGui:FindFirstChild("UmbralMenu")
 	local panel = menu and menu:FindFirstChild("Panel")
 	local openButton = menu and menu:FindFirstChild("AbrirMenu")
 	local shakeBefore = Config.Feedback.ScreenShake
-	local toggled = false
+	local toggled, ecoButton = false, false
 	if panel and openButton then
 		for _, child in ipairs(panel:GetDescendants()) do
 			if child:IsA("TextButton") and string.find(child.Text, "Vibración", 1, true) then
 				toggled = true -- el ajuste está en el menú (el clic real lo valida una persona)
 			end
+			if child:IsA("TextButton") and child.Name == "EcoViento" then
+				ecoButton = true
+			end
 		end
 	end
 	record(
-		"[Menú] El menú existe con botón, controles y ajustes",
-		panel ~= nil and openButton ~= nil and toggled and shakeBefore == Config.Feedback.ScreenShake,
-		string.format("menú %s · botón %s · ajuste de vibración %s", tostring(panel ~= nil), tostring(openButton ~= nil), tostring(toggled))
+		"[Menú] El menú existe con botón, controles, Ecos y ajustes",
+		panel ~= nil and openButton ~= nil and toggled and ecoButton and shakeBefore == Config.Feedback.ScreenShake,
+		string.format("menú %s · botón %s · ajuste de vibración %s · Eco del Viento %s", tostring(panel ~= nil), tostring(openButton ~= nil), tostring(toggled), tostring(ecoButton))
 	)
 
 	setResonance(0)
-	local _ = Combat
+	resetEco()
 	ctx.teleport(Vector3.new(0, 4, 30), Vector3.new(0, 0, 1))
 end

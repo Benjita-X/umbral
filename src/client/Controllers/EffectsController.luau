@@ -197,13 +197,15 @@ function EffectsController.SetTrail(character, limbName, enabled)
 		if not enabled then
 			return
 		end
+		-- Las piezas largas (la hoja de la espada, a lo largo de Z) dejan la estela en todo su largo
+		local long = limb.Size.Z > 2
 		local a0 = Instance.new("Attachment")
 		a0.Name = "UmbralEstelaA"
-		a0.Position = Vector3.new(0, LIMB_ATTACHMENT_OFFSET, 0)
+		a0.Position = if long then Vector3.new(0, 0, limb.Size.Z * 0.45) else Vector3.new(0, LIMB_ATTACHMENT_OFFSET, 0)
 		a0.Parent = limb
 		local a1 = Instance.new("Attachment")
 		a1.Name = "UmbralEstelaB"
-		a1.Position = Vector3.new(0, -LIMB_ATTACHMENT_OFFSET, 0)
+		a1.Position = if long then Vector3.new(0, 0, -limb.Size.Z * 0.45) else Vector3.new(0, -LIMB_ATTACHMENT_OFFSET, 0)
 		a1.Parent = limb
 		trail = Instance.new("Trail")
 		trail.Name = "UmbralEstela"
@@ -344,7 +346,27 @@ end
 -- Golpes confirmados por el servidor (de cualquier jugador)
 function EffectsController.OnConfirmed(data, isLocalAttacker)
 	local attack = CombatConfig.Attacks[data.attack]
+	if data.attack == "GolpeDeGracia" then
+		-- El que lo hizo ya vio su impacto; todos ven el número grande
+		if not isLocalAttacker and typeof(data.position) == "Vector3" then
+			EffectsController.Impact(data.position, CombatConfig.Attacks.Fuerte, data.target)
+		end
+		if typeof(data.position) == "Vector3" then
+			EffectsController.DamageNumber(data.position, data.damage, true)
+		end
+		return
+	end
 	if not attack then
+		-- Habilidades del Eco: número de daño, destello y reacción del golpeado (el estallido de color lo pone
+		-- EcoController con el color del Eco de quien la usó)
+		if type(data.attack) == "string" and string.sub(data.attack, 1, 3) == "Eco" and typeof(data.position) == "Vector3" and (data.damage or 0) > 0 then
+			EffectsController.DamageNumber(data.position, data.damage, data.synergy ~= nil)
+			flashTarget(data.target)
+			playReaction(data.target, (data.damage or 0) >= 10)
+			if isLocalAttacker then
+				playSound("Hit", anchorPart("ImpactoEcoUmbral", data.position, 1))
+			end
+		end
 		return
 	end
 	if not isLocalAttacker then

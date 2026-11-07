@@ -99,6 +99,11 @@ function torch(name, x, y, z, side) {
 }
 
 // Cristal del Eco: brilla en color frío (la "resonancia" de la Grieta)
+// Punto de enganche (Gancho, tecla E): orbe brillante sin colisión. El cliente los busca por su nombre.
+function hook(x, y, z) {
+  return part({ name: 'PuntoGancho', size: [1.6, 1.6, 1.6], pos: P(x, y, z), color: [120, 255, 230], material: 'Neon', collide: false, extra: [['token', 'shape', 0]] });
+}
+
 function crystal(name, x, y, z, h = 4, color = [90, 220, 255], angle = 0) {
   return part({
     name,
@@ -165,6 +170,12 @@ export function buildDungeon() {
     items.push(part({ name: 'PuntoSparring_Instructor', size: [1, 1, 1], pos, rot: facing(pos, P(0, 3.2, 0)), transparency: 1, collide: false, color: [255, 255, 255] }));
   }
   items.push(sign('Bienvenida', 'LA GRIETA · muestra de ambiente · sigue las antorchas', P(0, 14, 39.8), P(0, 14, 0), [22, 3, 0.4]));
+  // Muñecos de práctica junto a la entrada: para probar las habilidades nada más llegar (no atacan)
+  for (const [x, name] of [[-6, 'PuntoMunecoGrieta1'], [6, 'PuntoMunecoGrieta2']]) {
+    const pos = P(x, 3.2, 19);
+    items.push(part({ name, size: [1, 1, 1], pos, rot: facing(pos, P(0, 3.2, 19)), transparency: 1, collide: false, color: [255, 255, 255] }));
+  }
+  items.push(sign('CartelMunecos', 'MUÑECOS · prueba Z X C V · 1-5 cambia de Eco · Q espada', P(0, 9, 0.8), P(0, 9, 40), [16, 2.4, 0.4]));
 
   // ---------- B. Pasillo ----------
   items.push(box('PasilloPiso', [-5, -8, 41], [5, 0, 61], FLOOR, 'Cobblestone'));
@@ -204,7 +215,9 @@ export function buildDungeon() {
   items.push(sign('CartelAcechador', 'ACECHADOR · si fallas un golpe pesado cerca de él, te embiste', P(0, 6, 92.2), P(0, 6, 0), [10, 1.6, 0.3]));
   items.push(enemy('Centinela', 0, 0, 113)); // más espacio entre él y la puerta: su golpe (alcance ~10) ya no llega dentro de la sala de ascenso
   items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
-  items.push(sign('CartelAbismo', 'salta (8) · luego salto + Paso en el aire (16) · o cruza corriendo por la pared', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
+  // Gancho (E): puntos de enganche sobre los dos saltos del abismo
+  items.push(hook(0, 13, 78), hook(0, 15, 100));
+  items.push(sign('CartelAbismo', 'salta (8) · salto + Paso en el aire (16) · corre por la pared · o E: gancho a los orbes', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
 
   // ---------- D. Ascenso ----------
   const D0 = 121, D1 = 153;
@@ -223,6 +236,8 @@ export function buildDungeon() {
   for (const [z, y] of [[128, 8], [146, 22]]) {
     items.push(...torch('AntorchaAscensoO', -16, y, z, -1), ...torch('AntorchaAscensoE', 16, y, z, 1));
   }
+  // Gancho (E): atajos hacia las repisas altas
+  items.push(hook(-10, 22, 136), hook(10, 36, 140));
   items.push(enemy('Gemelo', -4, 0, 132), enemy('Gemelo', 6, 0, 128));
   // Carteles en la pared, a los lados de la puerta (dentro del marco tapaban la vista al entrar)
   items.push(sign('CartelGemelos', 'GEMELOS · una sola vida · un desvío perfecto refleja el golpe al otro', P(-12, 6, D0 + 1.2), P(-12, 6, 300), [10, 2.4, 0.4]));
