@@ -76,7 +76,7 @@ local function bestTarget()
 		local offset = position - root.Position
 		local distance = offset.Magnitude
 		-- A los enemigos que ya tienes encima no hace falta engancharse (y el marco estorbaría en el combate)
-		if distance > range or distance < (if enemy then 9 else 5) then
+		if distance > range or distance < (if enemy then 14 else 5) then
 			return
 		end
 		local fromCamera = (position - camera.CFrame.Position).Unit

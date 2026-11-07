@@ -175,7 +175,7 @@ export function buildDungeon() {
     const pos = P(x, 3.2, 19);
     items.push(part({ name, size: [1, 1, 1], pos, rot: facing(pos, P(0, 3.2, 19)), transparency: 1, collide: false, color: [255, 255, 255] }));
   }
-  items.push(sign('CartelMunecos', 'MUÑECOS · prueba Z X C V · 1-5 cambia de Eco · Q espada', P(0, 9, 0.8), P(0, 9, 40), [16, 2.4, 0.4]));
+  items.push(sign('CartelMunecos', 'MUÑECOS · prueba Z X C V · 1-5 cambia de Eco · Q espada', P(0, 10, 39.6), P(0, 10, 0), [18, 2.4, 0.4]));
 
   // ---------- B. Pasillo ----------
   items.push(box('PasilloPiso', [-5, -8, 41], [5, 0, 61], FLOOR, 'Cobblestone'));

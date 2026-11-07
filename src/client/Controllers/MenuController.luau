@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local configFolder = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local CombatConfig = require(configFolder:WaitForChild("CombatConfig"))
+local Texto = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Texto"))
 
 local CameraController = require(script.Parent:WaitForChild("CameraController"))
 
@@ -174,7 +175,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			button.Font = Enum.Font.GothamBold
 			button.TextScaled = true
 			button.TextWrapped = true
-			button.Text = string.format("%d · %s  —  %s", index, string.upper(kit.name), table.concat(parts, " · "))
+			button.Text = string.format("%d · %s  —  %s", index, Texto.Mayusculas(kit.name), table.concat(parts, " · "))
 			corner(button, 8)
 			local stroke = Instance.new("UIStroke")
 			stroke.Thickness = 2

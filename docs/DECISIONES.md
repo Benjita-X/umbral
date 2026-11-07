@@ -111,6 +111,8 @@ Diseño completo: [HABILIDADES-V2.md](HABILIDADES-V2.md). Rama `experimental/hab
 | 91 | Fijar enemigo (R / R3): cámara que lo sigue (Scriptable mientras dura), el personaje lo encara, tirón del ratón para cambiar; se suelta si cae, se aleja o queda tapado | Comodidad de los juegos de acción con espada en peleas movidas |
 | 92 | Polvo y sacudida al caer desde alto, silueta fantasma en el Paso, golpe de FOV en gancho y definitivas | Que el movimiento "se sienta" |
 | 93 | El golpe tras el Paso también vale al llegar con el gancho (el servidor registra la hora del gancho); la picada usa la posición informada con el inicio, comprobada contra lo observado | La física replicada llega con décimas de retraso: el servidor veía al jugador todavía en el suelo |
+| 94 | Más vida a los enemigos de la Grieta: comunes ×1,4 (Latido 110, Centinela 125, Acechador 85, Gemelos 100) y Guardián 400 | Con 20 habilidades, sinergias y Golpe de Gracia caían en segundos |
+| 95 | Mayúsculas con tildes y eñe en la interfaz (`Shared/Texto`); el círculo del gancho solo sobre enemigos a más de 14 studs | Revisión visual: "CICLóN"; el círculo estorbaba en pleno combate |
 
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)

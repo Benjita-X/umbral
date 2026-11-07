@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
+local Texto = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Texto"))
 
 local SkillBarHUD = {}
 
@@ -141,7 +142,7 @@ function SkillBarHUD.Start(ecoController)
 		local function refreshWeapon()
 			local name = player:GetAttribute("Arma")
 			local weapon = CombatConfig.Weapons[name or ""]
-			weaponLabel.Text = "Q · " .. string.upper(if weapon and weapon.label then weapon.label else "Puños")
+			weaponLabel.Text = "Q · " .. Texto.Mayusculas(if weapon and weapon.label then weapon.label else "Puños")
 			weaponLabel.TextColor3 = if name == "Espada" then Color3.fromRGB(150, 225, 255) else Color3.fromRGB(230, 230, 240)
 		end
 		player:GetAttributeChangedSignal("Arma"):Connect(refreshWeapon)
@@ -193,7 +194,7 @@ function SkillBarHUD.Start(ecoController)
 	local function refreshNames()
 		local kit = ecoController.Kit()
 		if kitLabel then
-			kitLabel.Text = string.format("%s   ·   1-%d cambia de Eco", string.upper(kit.name), #eco.Order)
+			kitLabel.Text = string.format("%s   ·   1-%d cambia de Eco", Texto.Mayusculas(kit.name), #eco.Order)
 			kitLabel.TextColor3 = kit.color
 		end
 		for slot, s in pairs(slots) do
@@ -201,9 +202,9 @@ function SkillBarHUD.Start(ecoController)
 			local spec = skills[skillName]
 			local label = spec and spec.label or "—"
 			if s.name then
-				s.name.Text = string.upper(label)
+				s.name.Text = Texto.Mayusculas(label)
 			elseif s.frame:IsA("TextButton") then
-				s.frame.Text = string.upper(spec and spec.label or slot)
+				s.frame.Text = Texto.Mayusculas(spec and spec.label or slot)
 			end
 			s.stroke.Color = kit.color
 		end
@@ -298,7 +299,7 @@ function SkillBarHUD.Start(ecoController)
 		end
 	end)
 	ecoController.KitChanged:Connect(function()
-		notice(string.upper(ecoController.Kit().name))
+		notice(Texto.Mayusculas(ecoController.Kit().name))
 	end)
 
 	RunService.Heartbeat:Connect(function()
@@ -313,9 +314,9 @@ function SkillBarHUD.Start(ecoController)
 				if variant and skills[variant] then
 					local spec = skills[if air then variant else kit.slots[slot]]
 					if s.name then
-						s.name.Text = string.upper(spec.label)
+						s.name.Text = Texto.Mayusculas(spec.label)
 					elseif s.frame:IsA("TextButton") then
-						s.frame.Text = string.upper(spec.label)
+						s.frame.Text = Texto.Mayusculas(spec.label)
 					end
 				end
 			end

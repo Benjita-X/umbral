@@ -1,5 +1,19 @@
 # Cómo jugar el prototipo (rama `experimental/habilidades-v2`)
 
+## Lo nuevo de esta noche (resumen)
+- **Habilidades rehechas**: una tecla por habilidad (Z X C V), salen al instante y sin quedarte quieto, cortan tus
+  golpes, y la barra de abajo muestra cuándo vuelven a estar listas. Las básicas no gastan nada.
+- **5 Ecos** (teclas 1-5): Viento, Agua, Oscuridad, Fuego infernal y Trueno, con 20 habilidades más variantes en
+  el aire y relanzamientos.
+- **Combos**: 14 sinergias con nombre entre habilidades (y golpes), y combos aéreos (los enemigos flotan con cada
+  golpe; tú también).
+- **Espada** (Q), **patada voladora** (atacar tras un Paso) y **patada en picada** (atacar cayendo desde alto).
+- **Gancho** (E) a orbes del mapa y a enemigos.
+- **Postura y Golpe de Gracia**: desvía y golpea hasta que el enemigo quede QUEBRADO; luego ataca cerca.
+- **Cámara fija** (Ctrl, viene activada) y **fijar enemigo** (R).
+- Muñecos de práctica en la primera sala, título de entrada, polvo al caer, estela del Paso, sonidos nuevos.
+- Enemigos con más vida (para que sigan siendo un reto con tantas herramientas).
+
 ## Abrirlo
 1. Doble clic en **`JUGAR.cmd`** (carpeta del juego). Construye todo y abre Roblox Studio.
 2. En Studio, **F5**. Apareces en **La Grieta**: el Instructor te espera en la primera sala (tutorial; T lo salta,

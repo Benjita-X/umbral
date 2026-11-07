@@ -475,7 +475,7 @@ local CombatConfig = {
 		DefaultProfile = "basico",
 		-- Guardián de la Grieta (mazmorra de muestra, solo en el lugar de desarrollo): mismo oponente, más
 		-- exigente; no se cura solo y al vencerlo se levanta tras RiseAfter segundos
-		Guardian = { MaxHealth = 220, Profile = "tecnico", RiseAfter = 8 },
+		Guardian = { MaxHealth = 400, Profile = "tecnico", RiseAfter = 8 },
 		-- Enemigos comunes de la Grieta. Cada uno enseña una mecánica y castiga un hábito:
 		--   Latido    · ataca a ritmo fijo (corazón de luz). 3 desvíos perfectos seguidos = CONTRATIEMPO
 		--               (aturdido largo y Resonancia). Con menos vida, el ritmo se acelera.
@@ -485,14 +485,14 @@ local CombatConfig = {
 		-- Regla de todos: DESVÍO REFLEJADO. Un desvío perfecto lanza una onda que daña (el daño del ataque
 		-- desviado) y aturde a los otros enemigos a menos de ReflectRadius del jugador.
 		Types = {
-			Latido = { label = "Latido", maxHealth = 80, profile = "latido", body = Color3.fromRGB(120, 34, 52), legs = Color3.fromRGB(60, 18, 28), glow = Color3.fromRGB(255, 70, 110), riseAfter = 20, rhythmStreak = 3, rhythmStun = 2.5 },
-			Centinela = { label = "Centinela", maxHealth = 90, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5 },
+			Latido = { label = "Latido", maxHealth = 110, profile = "latido", body = Color3.fromRGB(120, 34, 52), legs = Color3.fromRGB(60, 18, 28), glow = Color3.fromRGB(255, 70, 110), riseAfter = 20, rhythmStreak = 3, rhythmStun = 2.5 },
+			Centinela = { label = "Centinela", maxHealth = 125, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5 },
 			-- Acechador: GOLPE DE OPORTUNIDAD. Si fallas un remate o un golpe fuerte a menos de opportunityRange,
 			-- te castiga con una Embestida durante tu recuperación (como mucho una cada opportunityCooldown s).
-			Acechador = { label = "Acechador", maxHealth = 60, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
+			Acechador = { label = "Acechador", maxHealth = 85, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
 			-- Instructor del tutorial: lento, predecible, se cura solo (para practicar sin prisa)
 			Instructor = { label = "Instructor", maxHealth = 150, profile = "instructor", body = Color3.fromRGB(200, 200, 210), legs = Color3.fromRGB(120, 120, 135), glow = Color3.fromRGB(150, 255, 230), riseAfter = 4, regen = true, aggroRange = 7 }, -- solo ataca si te acercas a golpearlo
-			Gemelo = { label = "Gemelo de Eco", maxHealth = 70, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
+			Gemelo = { label = "Gemelo de Eco", maxHealth = 100, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
 		},
 		ReflectRadius = 10, -- alcance de la onda del Desvío Reflejado
 		ReflectStun = 0.6,

@@ -398,10 +398,30 @@ end
 
 -- Relanzamientos: C otra vez tras un Levante que conectó → Ascenso (subes tras el lanzado)
 local recastActions = {}
+-- Altura a la que queda flotando un enemigo lanzado por el Levante: la cima del lanzamiento sobre su suelo
+local floorParams = RaycastParams.new()
+floorParams.FilterType = Enum.RaycastFilterType.Exclude
+floorParams.RespectCanCollide = true
+local function launchApex(model, targetRoot)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	floorParams.FilterDescendantsInstances = { model, character(), EcoEfectos.Folder() }
+	local hit = Workspace:Raycast(targetRoot.Position, Vector3.new(0, -60, 0), floorParams)
+	if not hit then
+		return targetRoot.Position.Y
+	end
+	local standing = (humanoid and humanoid.HipHeight or 2) + targetRoot.Size.Y / 2
+	local apex = skills.Levante.knockUp ^ 2 / (2 * Workspace.Gravity)
+	return hit.Position.Y + standing + apex
+end
+
 recastActions.Ascenso = function(r)
 	local root = rootPart()
 	local targetRoot = r.target and r.target:FindFirstChild("HumanoidRootPart")
 	local goal = if targetRoot then targetRoot.Position else root.Position + Vector3.new(0, 10, 0)
+	if targetRoot then
+		-- Se sube hasta donde el lanzado va a quedar flotando (lo que se ve todavía va subiendo, y con retraso)
+		goal = Vector3.new(goal.X, math.max(goal.Y, launchApex(r.target, targetRoot)), goal.Z)
+	end
 	local rise = math.clamp(goal.Y - root.Position.Y + 0.5, 3, 18)
 	local vy = math.sqrt(2 * Workspace.Gravity * rise)
 	local horizontal = flat(goal - root.Position)
@@ -418,6 +438,10 @@ recastActions.Ascenso = function(r)
 	EcoEfectos.Burst(root.Position - Vector3.new(0, 2, 0), color(), 16, 0.8, 26)
 	EcoEfectos.Sound("Viento", root.Position)
 	shake(0.15)
+	-- Arriba quedas flotando un instante: tiempo para empezar el combo aéreo
+	task.delay(apex * 0.92, function()
+		movement.AirStall(0.4)
+	end)
 end
 
 -- Efectos de las habilidades de otros jugadores (y de los que decide el servidor)

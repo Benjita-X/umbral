@@ -199,12 +199,60 @@ function TutorialController.Restart()
 	show()
 end
 
+-- Título al entrar: "UMBRAL · Despierta tu Eco" que aparece y se desvanece
+local function titleCard()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "UmbralTitulo"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 30
+	local shade = Instance.new("Frame")
+	shade.Size = UDim2.fromScale(1, 1)
+	shade.BackgroundColor3 = Color3.fromRGB(6, 4, 14)
+	shade.BackgroundTransparency = 0.25
+	shade.BorderSizePixel = 0
+	shade.Parent = gui
+	local title = Instance.new("TextLabel")
+	title.AnchorPoint = Vector2.new(0.5, 0.5)
+	title.Position = UDim2.fromScale(0.5, 0.42)
+	title.Size = UDim2.new(0.7, 0, 0, 90)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBlack
+	title.Text = "UMBRAL"
+	title.TextScaled = true
+	title.TextColor3 = Color3.fromRGB(205, 160, 255)
+	title.TextStrokeTransparency = 0.2
+	title.Parent = shade
+	local subtitle = Instance.new("TextLabel")
+	subtitle.AnchorPoint = Vector2.new(0.5, 0)
+	subtitle.Position = UDim2.new(0.5, 0, 0.42, 52)
+	subtitle.Size = UDim2.new(0.6, 0, 0, 30)
+	subtitle.BackgroundTransparency = 1
+	subtitle.Font = Enum.Font.GothamBold
+	subtitle.Text = "Despierta tu Eco"
+	subtitle.TextScaled = true
+	subtitle.TextColor3 = Color3.fromRGB(150, 255, 230)
+	subtitle.TextStrokeTransparency = 0.3
+	subtitle.Parent = shade
+	gui.Parent = player:WaitForChild("PlayerGui")
+	task.delay(2.2, function()
+		local info = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(shade, info, { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(title, info, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		TweenService:Create(subtitle, info, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		task.delay(1, function()
+			gui:Destroy()
+		end)
+	end)
+end
+
 function TutorialController.Start(movement, combat, eco)
 	-- Solo donde existe la Grieta
 	local maps = Workspace:WaitForChild("Maps", 10)
 	if not maps or not maps:WaitForChild("Grieta", 5) then
 		return
 	end
+	task.spawn(titleCard)
 	build()
 	context = newContext()
 

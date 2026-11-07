@@ -224,6 +224,38 @@ return function(ctx)
 	record("[Eco] C otra vez tras el Levante: Ascenso (subes tras él)", recast and rose >= 5, string.format("relanzamiento disponible %s · subiste %.1f studs", tostring(recast), rose))
 	ctx.settle()
 
+	-- ---------- 9b. Combo aéreo: Levante → C otra vez (subir) → golpe en el aire al muñeco que flota ----------
+	resetEco()
+	task.wait(1)
+	local ha = healthy(muneco3)
+	local ra = standFacing(muneco3, 5)
+	local ya = ra.Position.Y
+	Input.Trigger("HabilidadC")
+	local recastAir = waitUntil(function()
+		return Eco.State.recast.C ~= nil
+	end, 1)
+	if recastAir then
+		Input.Trigger("HabilidadC")
+	end
+	-- Como un jugador: se golpea cuando el muñeco ya se ve arriba, cerca de la altura a la que subiste
+	waitUntil(function()
+		return ra.Position.Y - ya >= 6 and math.abs(ra.Position.Y - ctx.root.Position.Y) < 4
+	end, 0.8)
+	local beforeAir = ha.Health
+	local heightAtHit = ra.Position.Y - ya
+	local playerAir = not ctx.grounded()
+	Input.Trigger("Atacar")
+	waitUntil(function()
+		return ha.Health < beforeAir
+	end, 1)
+	local airDamage = beforeAir - ha.Health
+	record(
+		"[Eco] Combo aéreo: Levante, subir y golpear en el aire al que flota",
+		recastAir and playerAir and heightAtHit >= 4 and math.abs(airDamage - Config.Attacks.Jab.damage) < 0.05,
+		string.format("relanzamiento %s · tú en el aire %s · el muñeco a %.1f studs · golpe en el aire %.1f (Jab %d)", tostring(recastAir), tostring(playerAir), heightAtHit, airDamage, Config.Attacks.Jab.damage)
+	)
+	ctx.settle()
+
 	-- ---------- 10. C en el aire: Descenso (picada y onda al aterrizar) ----------
 	resetEco()
 	task.wait(1) -- que el muñeco 3 baje

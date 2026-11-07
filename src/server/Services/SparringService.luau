@@ -25,6 +25,7 @@ local Workspace = game:GetService("Workspace")
 
 local shared = ReplicatedStorage:WaitForChild("Shared")
 local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
+local Texto = require(shared:WaitForChild("Texto"))
 local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local services = script.Parent
 local DummyService = require(services:WaitForChild("DummyService"))
@@ -660,7 +661,7 @@ local function watchDefeat(s, isGuardian)
 		if isGuardian then
 			noticeRemote:FireAllClients({ title = "¡GRIETA SUPERADA!", subtitle = string.format("El Guardián se levantará en %d s", riseAfter) })
 		elseif winner then
-			noticeRemote:FireClient(winner, { title = "¡" .. string.upper(s.kind.label) .. " VENCIDO!", subtitle = "+ Resonancia", small = true })
+			noticeRemote:FireClient(winner, { title = "¡" .. Texto.Mayusculas(s.kind.label) .. " VENCIDO!", subtitle = "+ Resonancia", small = true })
 		end
 		if winner and winner.Parent then
 			ResonanceService.Gain(winner, if isGuardian then "VencerGuardian" else "VencerComun")
