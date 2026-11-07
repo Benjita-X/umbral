@@ -56,3 +56,5 @@ El clic derecho queda libre porque en Roblox gira la cámara.
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): módulos, eventos cliente-servidor, flujo de ataque y defensa.
 - [docs/AUDITORIA-FASE3.md](docs/AUDITORIA-FASE3.md): hallazgos de la auditoría y cómo se corrigieron.
 - [docs/REVISION-CODEX.md](docs/REVISION-CODEX.md): canal de revisión cruzada con otro asistente.
+- [docs/AUDITORIA-2-AMENAZA.md](docs/AUDITORIA-2-AMENAZA.md): segunda auditoría crítica y diseño de Amenaza Asimétrica (hipótesis, sin implementar).
+- [docs/REFERENCIAS-JUEGOS.md](docs/REFERENCIAS-JUEGOS.md): qué aprender (y qué evitar) de otros juegos del género.
