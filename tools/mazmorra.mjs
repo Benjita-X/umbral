@@ -197,7 +197,7 @@ export function buildDungeon() {
   }
   items.push(enemy('Acechador', 0, 0, 89));
   items.push(sign('CartelAcechador', 'ACECHADOR · si fallas un golpe pesado cerca de él, te embiste', P(0, 6, 92.2), P(0, 6, 0), [10, 1.6, 0.3]));
-  items.push(enemy('Centinela', 0, 0, 117));
+  items.push(enemy('Centinela', 0, 0, 113)); // a 8 studs de la puerta: no ataca a través de ella
   items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
   items.push(sign('CartelAbismo', 'salta (8) · después salta y da un Paso en el aire (16)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
 
@@ -219,8 +219,9 @@ export function buildDungeon() {
     items.push(...torch('AntorchaAscensoO', -16, y, z, -1), ...torch('AntorchaAscensoE', 16, y, z, 1));
   }
   items.push(enemy('Gemelo', -4, 0, 132), enemy('Gemelo', 6, 0, 128));
-  items.push(sign('CartelGemelos', 'GEMELOS · una sola vida · un desvío perfecto refleja el golpe al otro', P(0, 4.5, D0 + 1.2), P(0, 4.5, 300), [16, 1.8, 0.4]));
-  items.push(sign('CartelAscenso', 'sube: salto · doble salto', P(0, 8, D0 + 1.2), P(0, 8, 300), [14, 2.5, 0.4]));
+  // Carteles en la pared, a los lados de la puerta (dentro del marco tapaban la vista al entrar)
+  items.push(sign('CartelGemelos', 'GEMELOS · una sola vida · un desvío perfecto refleja el golpe al otro', P(-12, 6, D0 + 1.2), P(-12, 6, 300), [10, 2.4, 0.4]));
+  items.push(sign('CartelAscenso', 'sube: salto · doble salto', P(12, 6, D0 + 1.2), P(12, 6, 300), [9, 2.4, 0.4]));
 
   // ---------- E. Sala del Guardián ----------
   const E0 = 153, E1 = 189, EY = 28;
