@@ -91,7 +91,58 @@ local function ghost(character)
 	end
 end
 
+-- Líneas de velocidad en los bordes de la pantalla (gancho y Paso)
+local function speedLines(movement)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "UmbralLineasVelocidad"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 2
+	local lines = {}
+	local random = Random.new(7)
+	for i = 1, 22 do
+		local angle = (i / 22) * math.pi * 2 + random:NextNumber(-0.1, 0.1)
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0.5, 0.5)
+		line.BackgroundColor3 = Color3.fromRGB(235, 242, 255)
+		line.BorderSizePixel = 0
+		line.BackgroundTransparency = 1
+		line.Rotation = math.deg(angle)
+		line.Parent = gui
+		table.insert(lines, { frame = line, angle = angle, length = random:NextNumber(0.12, 0.22), offset = random:NextNumber(0.38, 0.48) })
+	end
+	gui.Parent = player:WaitForChild("PlayerGui")
+	local lastDash = -math.huge
+	movement.Dashed:Connect(function()
+		lastDash = os.clock()
+	end)
+	local strength = 0
+	game:GetService("RunService").RenderStepped:Connect(function(dt)
+		local target = 0
+		if movement.State.grappling then
+			target = 0.5
+		elseif os.clock() - lastDash < 0.22 then
+			target = 0.35
+		end
+		strength += (target - strength) * math.min(1, dt * 14)
+		local visible = strength > 0.02
+		for _, line in ipairs(lines) do
+			local frame = line.frame
+			if visible then
+				local jitter = random:NextNumber(-0.02, 0.02)
+				local radius = line.offset + jitter
+				frame.Position = UDim2.fromScale(0.5 + math.cos(line.angle) * radius, 0.5 + math.sin(line.angle) * radius)
+				frame.Size = UDim2.new(line.length, 0, 0, 2)
+				frame.BackgroundTransparency = 1 - strength * random:NextNumber(0.6, 1)
+			elseif frame.BackgroundTransparency < 1 then
+				frame.BackgroundTransparency = 1
+			end
+		end
+	end)
+end
+
 function EfectosMovimiento.Start(movement, camera)
+	task.spawn(speedLines, movement)
 	if movement.Landed then
 		movement.Landed:Connect(function(speed)
 			local character = player.Character

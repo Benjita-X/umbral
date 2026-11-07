@@ -39,8 +39,23 @@ local function play(name, fade)
 end
 
 function MovementAnimator.Start(movement)
-	movement.Dashed:Connect(function()
-		play("Paso")
+	movement.Dashed:Connect(function(direction)
+		-- Hacia adelante y en el suelo: voltereta. De lado, hacia atrás o en el aire: el Paso inclinado.
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local forward = 0
+		if root and typeof(direction) == "Vector3" and direction.Magnitude > 0.01 then
+			local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+			local dir = Vector3.new(direction.X, 0, direction.Z)
+			if look.Magnitude > 0.01 and dir.Magnitude > 0.01 then
+				forward = look.Unit:Dot(dir.Unit)
+			end
+		end
+		if movement.State.grounded and forward > 0.6 then
+			play("PasoVoltereta", 0.03)
+		else
+			play("Paso")
+		end
 	end)
 	if movement.WallJumped then
 		movement.WallJumped:Connect(function()

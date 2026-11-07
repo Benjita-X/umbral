@@ -517,6 +517,23 @@ end
 
 local NEUTRAL = {}
 
+-- Pose recogida de la voltereta: el cuerpo gira `angle` grados (X−: hacia adelante) y baja `drop` studs
+local function rollPose(angle, drop)
+	return {
+		LowerTorso = { angle, 0, 0, p = Vector3.new(0, drop, 0) },
+		UpperTorso = { -25, 0, 0 },
+		Head = { -20, 0, 0 },
+		RightUpperArm = { 70, 0, -15 },
+		RightLowerArm = { 100, 0, 0 },
+		LeftUpperArm = { 70, 0, 15 },
+		LeftLowerArm = { 100, 0, 0 },
+		RightUpperLeg = { 105, 0, 0 },
+		RightLowerLeg = { -125, 0, 0 },
+		LeftUpperLeg = { 105, 0, 0 },
+		LeftLowerLeg = { -125, 0, 0 },
+	}
+end
+
 -- Guardia de pelea: base de la que parten y a la que vuelven los golpes (en un combo los brazos no bajan
 -- entre golpe y golpe)
 local STANCE = {
@@ -799,6 +816,21 @@ local function buildClips()
 				{ time = 0.04, poses = POSES.DashLean, ease = VUELVE },
 				{ time = 0.16, poses = POSES.DashLean, ease = VUELVE },
 				{ time = 0.3, poses = NEUTRAL, ease = VUELVE },
+			},
+		},
+		-- Voltereta del Paso hacia adelante en el suelo (el esquive con voltereta de los juegos de acción): el cuerpo
+		-- se recoge y gira una vuelta completa alrededor de la cintura. Cada tramo gira menos de 180° (así la
+		-- interpolación va siempre hacia adelante).
+		PasoVoltereta = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL, ease = SECO },
+				{ time = 0.05, poses = rollPose(-70, -0.4), ease = SECO },
+				{ time = 0.12, poses = rollPose(-180, -0.6), ease = SECO },
+				{ time = 0.2, poses = rollPose(-290, -0.45), ease = SECO },
+				{ time = 0.26, poses = rollPose(-360, -0.15), ease = VUELVE },
+				{ time = 0.38, poses = NEUTRAL, ease = VUELVE },
 			},
 		},
 		SaltoPared = {

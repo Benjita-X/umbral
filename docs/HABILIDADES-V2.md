@@ -97,7 +97,9 @@ corto (no se puede encadenar definitivas cambiando).
 | Gancho (E) a orbes y a enemigos | ✔ | suite `GanchoYGracia` |
 | Postura enemiga, QUEBRADO y Golpe de Gracia | ✔ | suite `GanchoYGracia` |
 | Cámara fija (Ctrl) con mira y fijar enemigo (R) | ✔ | suite `GanchoYGracia` (fijar) |
-| Efectos de movimiento (polvo al caer, silueta del Paso), sonidos de agua y viento, destello de definitivas | ✔ | — |
+| Efectos de movimiento (polvo al caer, silueta del Paso, voltereta, líneas de velocidad), sonidos de agua y viento, destello de definitivas, números de daño con el color del Eco | ✔ | — |
+| Combo aéreo completo (Levante → subir → golpe en el aire) | ✔ | suite `Eco` |
+| Revisión visual en Studio (cámara fija, barra, espada, Ciclón, Levante, Bola Infernal) | ✔ a mano | — |
 | Tutorial (pasos de habilidades, sinergia y espada), menú (Ecos, apuntado, cámara), README, DECISIONES #73-#93 | ✔ | — |
 
 ## Pendiente / ideas siguientes

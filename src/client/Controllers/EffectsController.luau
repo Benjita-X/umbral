@@ -223,7 +223,7 @@ function EffectsController.SetTrail(character, limbName, enabled)
 end
 
 -- Número de daño confirmado por el servidor
-function EffectsController.DamageNumber(position, amount, big)
+function EffectsController.DamageNumber(position, amount, big, color)
 	if not CombatConfig.Feedback.DamageNumbers then
 		return
 	end
@@ -240,7 +240,7 @@ function EffectsController.DamageNumber(position, amount, big)
 	label.Text = tostring(math.floor(amount + 0.5))
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
-	label.TextColor3 = if big then Color3.fromRGB(255, 205, 70) else Color3.fromRGB(255, 255, 255)
+	label.TextColor3 = color or (if big then Color3.fromRGB(255, 205, 70) else Color3.fromRGB(255, 255, 255))
 	label.TextStrokeTransparency = 0.3
 	label.Parent = billboard
 	TweenService:Create(billboard, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { StudsOffset = Vector3.new(0, 2.2, 0) }):Play()
@@ -360,7 +360,13 @@ function EffectsController.OnConfirmed(data, isLocalAttacker)
 		-- Habilidades del Eco: número de daño, destello y reacción del golpeado (el estallido de color lo pone
 		-- EcoController con el color del Eco de quien la usó)
 		if type(data.attack) == "string" and string.sub(data.attack, 1, 3) == "Eco" and typeof(data.position) == "Vector3" and (data.damage or 0) > 0 then
-			EffectsController.DamageNumber(data.position, data.damage, data.synergy ~= nil)
+			-- El número sale con el color del Eco de quien lo hizo (la quemadura, en naranja; un combo, dorado)
+			local kit = typeof(data.attacker) == "Instance" and CombatConfig.Eco.Kits[data.attacker:GetAttribute("Eco") or ""]
+			local color = if data.synergy then Color3.fromRGB(255, 215, 90)
+				elseif data.attack == "EcoQuemadura" then Color3.fromRGB(255, 140, 50)
+				elseif kit then kit.color
+				else nil
+			EffectsController.DamageNumber(data.position, data.damage, data.synergy ~= nil, color)
 			flashTarget(data.target)
 			playReaction(data.target, (data.damage or 0) >= 10)
 			if isLocalAttacker then

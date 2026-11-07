@@ -11,7 +11,8 @@
 - **Gancho** (E) a orbes del mapa y a enemigos.
 - **Postura y Golpe de Gracia**: desvía y golpea hasta que el enemigo quede QUEBRADO; luego ataca cerca.
 - **Cámara fija** (Ctrl, viene activada) y **fijar enemigo** (R).
-- Muñecos de práctica en la primera sala, título de entrada, polvo al caer, estela del Paso, sonidos nuevos.
+- Voltereta al dar un Paso hacia adelante, líneas de velocidad, polvo al caer, sonidos nuevos.
+- Muñecos de práctica en la primera sala y título de entrada.
 - Enemigos con más vida (para que sigan siendo un reto con tantas herramientas).
 
 ## Abrirlo

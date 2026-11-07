@@ -113,6 +113,9 @@ Diseño completo: [HABILIDADES-V2.md](HABILIDADES-V2.md). Rama `experimental/hab
 | 93 | El golpe tras el Paso también vale al llegar con el gancho (el servidor registra la hora del gancho); la picada usa la posición informada con el inicio, comprobada contra lo observado | La física replicada llega con décimas de retraso: el servidor veía al jugador todavía en el suelo |
 | 94 | Más vida a los enemigos de la Grieta: comunes ×1,4 (Latido 110, Centinela 125, Acechador 85, Gemelos 100) y Guardián 400 | Con 20 habilidades, sinergias y Golpe de Gracia caían en segundos |
 | 95 | Mayúsculas con tildes y eñe en la interfaz (`Shared/Texto`); el círculo del gancho solo sobre enemigos a más de 14 studs | Revisión visual: "CICLóN"; el círculo estorbaba en pleno combate |
+| 96 | Ascenso hasta la cima del lanzamiento (donde el enemigo queda flotando) y un instante flotando arriba | Apuntaba a la altura que se veía (todavía subiendo, con retraso) y el golpe en el aire no alcanzaba |
+| 97 | Voltereta al dar un Paso hacia adelante en el suelo (de lado, atrás o en el aire: el Paso inclinado) | El esquive con voltereta de los juegos de acción con espada |
+| 98 | Líneas de velocidad en el gancho y el Paso; números de daño de habilidades con el color del Eco (dorado en sinergias, naranja la quemadura) | Que se sienta la velocidad y se lea de quién es cada golpe |
 
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)
