@@ -124,7 +124,8 @@ local function alivePlayers()
 end
 
 local function nearestTarget(s)
-	local best, bestDistance = nil, sparring.AggroRange
+	-- Cada tipo puede tener su propio alcance de agresión (el Instructor solo ataca de cerca)
+	local best, bestDistance = nil, (s.kind and s.kind.aggroRange) or sparring.AggroRange
 	for _, p in ipairs(alivePlayers()) do
 		local distance = flat(p.root.Position - s.root.Position).Magnitude
 		if distance <= bestDistance then

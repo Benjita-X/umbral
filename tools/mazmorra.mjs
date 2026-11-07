@@ -161,7 +161,7 @@ export function buildDungeon() {
   );
   // Instructor del tutorial, al fondo de la sala de entrada (lejos de la aparición: no ataca al llegar)
   {
-    const pos = P(0, 3.2, 31);
+    const pos = P(0, 3.2, 34);
     items.push(part({ name: 'PuntoSparring_Instructor', size: [1, 1, 1], pos, rot: facing(pos, P(0, 3.2, 0)), transparency: 1, collide: false, color: [255, 255, 255] }));
   }
   items.push(sign('Bienvenida', 'LA GRIETA · muestra de ambiente · sigue las antorchas', P(0, 14, 39.8), P(0, 14, 0), [22, 3, 0.4]));

@@ -257,7 +257,7 @@ local CombatConfig = {
 			-- te castiga con una Embestida durante tu recuperación (como mucho una cada opportunityCooldown s).
 			Acechador = { label = "Acechador", maxHealth = 60, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
 			-- Instructor del tutorial: lento, predecible, se cura solo (para practicar sin prisa)
-			Instructor = { label = "Instructor", maxHealth = 150, profile = "instructor", body = Color3.fromRGB(200, 200, 210), legs = Color3.fromRGB(120, 120, 135), glow = Color3.fromRGB(150, 255, 230), riseAfter = 4, regen = true },
+			Instructor = { label = "Instructor", maxHealth = 150, profile = "instructor", body = Color3.fromRGB(200, 200, 210), legs = Color3.fromRGB(120, 120, 135), glow = Color3.fromRGB(150, 255, 230), riseAfter = 4, regen = true, aggroRange = 7 }, -- solo ataca si te acercas a golpearlo
 			Gemelo = { label = "Gemelo de Eco", maxHealth = 70, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
 		},
 		ReflectRadius = 10, -- alcance de la onda del Desvío Reflejado
