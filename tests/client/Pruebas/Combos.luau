@@ -141,8 +141,14 @@ return function(ctx)
 	task.wait(0.15)
 	local inAir = not ctx.grounded()
 	local descentBefore = h3.Health
+	local function where()
+		local offset = r3.Position - ctx.root.Position
+		return string.format("muñeco a %.1f en horizontal y %.1f de alto respecto a ti", Vector3.new(offset.X, 0, offset.Z).Magnitude, offset.Y)
+	end
+	local atPress = where()
 	press("HabilidadC", "C", 0.5)
 	local descent = damageAfter(h3, descentBefore, 1.6) > 0
+	local atLanding = where()
 	local elapsed = os.clock() - t0
 	task.wait(0.3)
 	local total = hits()
@@ -152,8 +158,8 @@ return function(ctx)
 		"[Combos] Viento completo: golpes, Ciclón, Cuchilla, Levante, subir, golpe aéreo y Descenso",
 		total >= 6 and airHit and descent and ecoRejected == 0 and hitRejected == 0 and elapsed < 5.5,
 		string.format(
-			"%d golpes en %.1f s · combos: %s · golpe aéreo %s · en el aire al pedir el Descenso %s · Descenso %s · rechazos: habilidades %d (%s), golpes %d",
-			total, elapsed, if #synergies > 0 then table.concat(synergies, ", ") else "ninguno", tostring(airHit), tostring(inAir), tostring(descent), ecoRejected, ctx.lastRejections(2), hitRejected
+			"%d golpes en %.1f s · combos: %s · golpe aéreo %s · en el aire al pedir el Descenso %s · Descenso %s (%s) · al pedirlo: %s · al caer: %s · rechazos: habilidades %d (%s), golpes %d",
+			total, elapsed, if #synergies > 0 then table.concat(synergies, ", ") else "ninguno", tostring(airHit), tostring(inAir), tostring(descent), tostring(player:GetAttribute("UltimoEco")), atPress, atLanding, ecoRejected, ctx.lastRejections(2), hitRejected
 		)
 	)
 	ctx.settle()
@@ -260,6 +266,43 @@ return function(ctx)
 		"[Combos] Agua y Trueno: Burbuja, Pararrayos y Juicio",
 		bubble and total >= 4 and ecoRejected == 0,
 		string.format("%d golpes en %.1f s · burbuja %s · rechazos %d (%s)", total, elapsed, tostring(bubble), ecoRejected, ctx.lastRejections(2))
+	)
+
+	-- ---------- 5. Reacciones: Agua (mojado) → Trueno = ELECTROCUCIÓN (cargado) → Oscuridad = PULSO UMBRÍO ----------
+	resetAll()
+	equip("Agua")
+	resetAll()
+	h2 = healthy(m2)
+	standFacing(m2, 8)
+	eco0 = ecoRejections()
+	local reactions = {}
+	local reactionConnection = player:GetAttributeChangedSignal("Reacciones"):Connect(function()
+		table.insert(reactions, tostring(player:GetAttribute("UltimaReaccion")))
+	end)
+	t0 = os.clock()
+	local wetBefore = h2.Health
+	press("HabilidadZ", "Z")
+	damageAfter(h2, wetBefore, 1)
+	local wet = (m2:GetAttribute("MojadoHasta") or 0) > Workspace:GetServerTimeNow()
+	-- (cada tecla tiene un solo enfriamiento para todos los Ecos: se usan teclas distintas)
+	task.wait(1.3) -- que la burbuja lo suelte
+	Input.Trigger("Eco5")
+	press("HabilidadC", "C", 1.2) -- Pararrayos: su primer chispazo electrocuta al mojado
+	waitUntil(function()
+		return #reactions >= 1
+	end, 1.5)
+	Input.Trigger("Eco3")
+	press("HabilidadX", "X", 1.2) -- Daga sobre el cargado: pulso umbrío
+	waitUntil(function()
+		return #reactions >= 2
+	end, 1.5)
+	elapsed = os.clock() - t0
+	reactionConnection:Disconnect()
+	ecoRejected = ecoRejections() - eco0
+	record(
+		"[Combos] Reacciones: Agua moja, Trueno electrocuta y Oscuridad hace el pulso",
+		wet and reactions[1] == "ELECTROCUCIÓN" and reactions[2] == "PULSO UMBRÍO" and ecoRejected == 0,
+		string.format("mojado %s · reacciones: %s · %.1f s · rechazos %d (%s)", tostring(wet), if #reactions > 0 then table.concat(reactions, " → ") else "ninguna", elapsed, ecoRejected, ctx.lastRejections(2))
 	)
 
 	resetAll()

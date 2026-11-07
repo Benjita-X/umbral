@@ -16,6 +16,8 @@ return function(ctx)
 	local controllers = Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers")
 	local Eco = require(controllers:WaitForChild("EcoController"))
 	local okHud, SkillBarHUD = pcall(require, controllers:WaitForChild("SkillBarHUD"))
+	local EcoEfectos = require(controllers:WaitForChild("EcoEfectos"))
+	EcoEfectos.Lento = 4 -- cámara lenta: los efectos duran 4 veces más (solo aquí)
 	Eco.SetAimMode("frente")
 
 	local target = nil
@@ -72,9 +74,9 @@ return function(ctx)
 		ctx.teleport(Vector3.new(stand.X, root.Position.Y + 0.5, stand.Z), -look)
 		local camera = Workspace.CurrentCamera
 		camera.CameraType = Enum.CameraType.Scriptable
-		local middle = (stand + root.Position) / 2
 		local side = Vector3.new(-look.Z, 0, look.X)
-		camera.CFrame = CFrame.lookAt(middle + side * 21 + Vector3.new(0, 7, 0) + look * 3, middle + Vector3.new(0, 2, 0))
+		local eye = stand + look * 11 + side * 3 + Vector3.new(0, 6, 0) -- detrás del jugador y un poco arriba
+		camera.CFrame = CFrame.lookAt(eye, root.Position + Vector3.new(0, 1, 0))
 		task.wait(0.3)
 	end
 
@@ -102,7 +104,8 @@ return function(ctx)
 		placeAndFrame()
 		local spec = eco.Skills[entry.skill]
 		banner.TextColor3 = kit.color
-		banner.Text = string.format("VITRINA %d/%d · %s · %s%s %s — pulsa N", index, #entries, string.upper(entry.kit), entry.slot, if entry.air then " (aire)" else "", spec and spec.label or entry.skill)
+		local cam = Workspace.CurrentCamera
+		banner.Text = string.format("VITRINA %d/%d · %s · %s%s %s — N · efectos %d · %s (%d)", index, #entries, string.upper(entry.kit), entry.slot, if entry.air then " (aire)" else "", spec and spec.label or entry.skill, EcoEfectos.Creados, cam and cam:GetFullName() or "?", cam and #cam:GetChildren() or -1)
 		if okHud and SkillBarHUD.ShowCard and (index == 1 or entries[index - 1].kit ~= entry.kit) then
 			SkillBarHUD.ShowCard(true)
 		end
@@ -124,6 +127,7 @@ return function(ctx)
 	banner.Text = "VITRINA TERMINADA — pulsa N para cerrar"
 	waitForNext()
 	connection:Disconnect()
+	EcoEfectos.Lento = 1
 	gui:Destroy()
 	Workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	ctx.record("[Vitrina] Recorrido de todas las habilidades", true, string.format("%d habilidades mostradas", #entries))

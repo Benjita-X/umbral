@@ -306,8 +306,9 @@ function SkillBarHUD.Start(ecoController)
 	-- Ficha del Eco
 	local card = Instance.new("CanvasGroup")
 	card.Name = "Ficha"
-	card.AnchorPoint = if touch then Vector2.new(0.5, 0) else Vector2.new(0.5, 1)
-	card.Position = if touch then UDim2.new(0.5, 0, 0, 58) else UDim2.new(0.5, 0, 1, -98 - SLOT - 44)
+	-- Abajo a la izquierda (en el centro tapaba el contador de combo); en el celular, arriba
+	card.AnchorPoint = if touch then Vector2.new(0.5, 0) else Vector2.new(0, 1)
+	card.Position = if touch then UDim2.new(0.5, 0, 0, 58) else UDim2.new(0, 16, 1, -98 - SLOT - 30)
 	card.Size = UDim2.fromOffset(450, 120)
 	card.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
 	card.BackgroundTransparency = 0.2
@@ -400,6 +401,72 @@ function SkillBarHUD.Start(ecoController)
 		return true
 	end
 	SkillBarHUD.ShowCard = showCard
+
+	-- Nombre de la técnica al lanzar una definitiva: franja del color del Eco que entra deslizándose (estilo anime)
+	local cutIn = Instance.new("Frame")
+	cutIn.Name = "Definitiva"
+	cutIn.AnchorPoint = Vector2.new(0.5, 0.5)
+	cutIn.Position = UDim2.fromScale(0.5, 0.36)
+	cutIn.Size = UDim2.new(1.3, 0, 0, 74)
+	cutIn.Rotation = -6
+	cutIn.BorderSizePixel = 0
+	cutIn.Visible = false
+	local cutGradient = Instance.new("UIGradient")
+	cutGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.18, 0.15),
+		NumberSequenceKeypoint.new(0.82, 0.15),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	cutGradient.Parent = cutIn
+	local cutName = text(cutIn, "Nombre", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.new(0.6, 0, 0, 50),
+		Font = Enum.Font.GothamBlack,
+		TextStrokeTransparency = 0,
+		TextStrokeColor3 = Color3.new(0, 0, 0),
+	})
+	local cutKit = text(cutIn, "Eco", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.72),
+		Size = UDim2.new(0.6, 0, 0, 16),
+		TextStrokeTransparency = 0.2,
+		TextStrokeColor3 = Color3.new(0, 0, 0),
+	})
+	cutIn.Parent = gui
+	local cutToken = 0
+	ecoController.Used:Connect(function(skillName)
+		local spec = skills[skillName or ""]
+		if not spec or (spec.cost or 0) <= 0 then
+			return
+		end
+		cutToken += 1
+		local token = cutToken
+		local kit = ecoController.Kit()
+		cutIn.BackgroundColor3 = kit.color:Lerp(Color3.new(0, 0, 0), 0.35)
+		cutName.Text = Texto.Mayusculas(spec.label)
+		cutKit.Text = Texto.Mayusculas(kit.name)
+		cutIn.BackgroundTransparency = 0
+		cutName.TextTransparency, cutKit.TextTransparency = 0, 0
+		cutIn.Position = UDim2.fromScale(-0.4, 0.36)
+		cutIn.Visible = true
+		TweenService:Create(cutIn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.fromScale(0.5, 0.36) }):Play()
+		task.delay(0.75, function()
+			if token ~= cutToken then
+				return
+			end
+			local info = TweenInfo.new(0.25)
+			TweenService:Create(cutIn, info, { BackgroundTransparency = 1, Position = UDim2.fromScale(0.62, 0.36) }):Play()
+			TweenService:Create(cutName, info, { TextTransparency = 1 }):Play()
+			TweenService:Create(cutKit, info, { TextTransparency = 1 }):Play()
+			task.delay(0.26, function()
+				if token == cutToken then
+					cutIn.Visible = false
+				end
+			end)
+		end)
+	end)
 	ecoController.KitChanged:Connect(function()
 		if not showCard(false) then
 			notice(Texto.Mayusculas(ecoController.Kit().name))

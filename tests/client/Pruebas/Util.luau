@@ -122,7 +122,8 @@ function ctx.teleport(position, look)
 	if ctx.remote then
 		-- El servidor no lo cuenta como movimiento imposible. Se le dice A QUÉ HORA se mueve el personaje: con
 		-- latencia, su propia hora de llegada es posterior y descartaría las primeras muestras del lugar nuevo
-		ctx.remote:FireServer("teletransporte", game:GetService("Workspace"):GetServerTimeNow() + 0.05)
+		-- (el corte va un poco ANTES del movimiento real: lo informado después ya es del lugar nuevo seguro)
+		ctx.remote:FireServer("teletransporte", game:GetService("Workspace"):GetServerTimeNow() + 0.02)
 		task.wait(0.05)
 		ctx.humanoid:Move(Vector3.zero)
 		ctx.root.AssemblyLinearVelocity = Vector3.zero

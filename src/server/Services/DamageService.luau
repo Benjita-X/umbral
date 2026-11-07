@@ -201,6 +201,38 @@ function DamageService.DragTo(targetRoot, point, duration)
 	end)
 end
 
+local WALL_SPLAT_SPEED = 38 -- empujón (studs/s) desde el que estampa contra la pared
+local WALL_SPLAT_TIME = 1 -- s con daño extra tras estamparse
+local WALL_SPLAT_BONUS = 1.25
+
+-- Combos muy largos: desde el golpe COMBO_FREE + 1 seguido sobre el mismo objetivo (sin pausas de más de
+-- COMBO_GAP s), cada golpe hace COMBO_DECAY menos, hasta COMBO_FLOOR. Los golpes pequeños y repetidos (menos de
+-- COMBO_MIN_DAMAGE: tornado, tótem, quemaduras) ni cuentan ni se reducen. Un combo infinito no basta para ganar.
+local COMBO_FREE, COMBO_GAP, COMBO_DECAY, COMBO_FLOOR, COMBO_MIN_DAMAGE = 8, 1.6, 0.07, 0.5, 4
+local comboChains = setmetatable({}, { __mode = "k" })
+local function comboScale(target, damage)
+	if damage < COMBO_MIN_DAMAGE then
+		return 1
+	end
+	local chain = comboChains[target]
+	local clock = os.clock()
+	if not chain or clock - chain.last > COMBO_GAP then
+		chain = { count = 0, last = clock }
+		comboChains[target] = chain
+	end
+	chain.count += 1
+	chain.last = clock
+	if chain.count <= COMBO_FREE then
+		return 1
+	end
+	return math.max(COMBO_FLOOR, 1 - (chain.count - COMBO_FREE) * COMBO_DECAY)
+end
+
+-- Daño extra contra un objetivo recién estampado en la pared
+local function wallBonus(target)
+	return if (target:GetAttribute("ParedHasta") or 0) > Workspace:GetServerTimeNow() then WALL_SPLAT_BONUS else 1
+end
+
 local function knockback(targetRoot, direction, speed, up)
 	local attachment = targetRoot:FindFirstChild("UmbralEmpujeA")
 	if not attachment then
@@ -221,7 +253,9 @@ local function knockback(targetRoot, direction, speed, up)
 		push.Enabled = false
 		push.Parent = targetRoot
 	end
-	-- El empuje se acorta si hay una pared detrás del objetivo (no lo mete dentro ni lo atraviesa)
+	-- El empuje se acorta si hay una pared detrás del objetivo (no lo mete dentro ni lo atraviesa). Si el empujón
+	-- era fuerte, se estampa: queda pegado un instante y recibe más daño un rato (combo de pared)
+	local wallHit = nil
 	if speed > 0 and direction.Magnitude > 0.01 then
 		local travel = speed * CombatConfig.Dummy.KnockbackTime
 		local params = RaycastParams.new()
@@ -230,8 +264,22 @@ local function knockback(targetRoot, direction, speed, up)
 		params.RespectCanCollide = true
 		local ok, hit = pcall(Workspace.Spherecast, Workspace, targetRoot.Position, 0.9, direction.Unit * (travel + 1), params)
 		if ok and hit and math.abs(hit.Normal.Y) < 0.6 then
+			if speed >= WALL_SPLAT_SPEED then
+				wallHit = hit
+			end
 			speed = math.max(0, hit.Distance - 1) / CombatConfig.Dummy.KnockbackTime
 		end
+	end
+	if wallHit then
+		local model = targetRoot.Parent
+		model:SetAttribute("ParedPunto", wallHit.Position)
+		model:SetAttribute("ParedNormal", wallHit.Normal)
+		model:SetAttribute("ParedHasta", Workspace:GetServerTimeNow() + WALL_SPLAT_TIME)
+		task.delay(CombatConfig.Dummy.KnockbackTime, function()
+			if targetRoot.Parent then
+				DamageService.Suspend(targetRoot, 0.4) -- pegado a la pared un instante
+			end
+		end)
 	end
 	local token = (push:GetAttribute("Token") or 0) + 1
 	push:SetAttribute("Token", token)
@@ -520,6 +568,8 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		multiplier, note, keepFacing = modifier(player, target, attackName, b, geometry)
 		damage *= multiplier or 1
 	end
+	damage *= wallBonus(target)
+	damage *= comboScale(target, damage)
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
 	-- Solo dan Resonancia los rivales que pelean (no los muñecos), con rendimiento decreciente si se
 	-- repite el mismo golpe contra el mismo rival
@@ -581,6 +631,10 @@ function DamageService.ApplyExternalHit(player, target, spec)
 		local multiplier
 		multiplier, note = modifier(player, target, spec.attackName, { attackerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or root, targetRoot = root, targetHumanoid = humanoid })
 		damage *= multiplier or 1
+	end
+	if not spec.dot then
+		damage *= wallBonus(target)
+		damage *= comboScale(target, damage)
 	end
 	humanoid.Health = math.max(0, humanoid.Health - damage)
 	local stun = spec.stun or 0

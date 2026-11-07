@@ -346,7 +346,7 @@ cast.Cuchilla = function(spec)
 	commitFacing(flat(dir), 0.25)
 	remote:FireServer("cuchilla", t, position, look, dir)
 	playClip("EcoCuchilla")
-	EcoEfectos.Tajo(position + Vector3.new(0, 0.5, 0) + flat(dir) * 0.6, dir, color(), 2.8, -22, { width = 0.9, sweep = 0.05, fade = 0.16 })
+	EcoEfectos.Tajo(position + Vector3.new(0, 0.6, 0) + flat(dir) * 0.6, dir, color(), 3, -38, { width = 1, sweep = 0.05, fade = 0.2 })
 	EcoEfectos.Cuchilla(position + Vector3.new(0, 0.3, 0) + dir * 1.5, dir, spec.speed, spec.range - 1.5, color())
 	if air then
 		movement.AirStall(spec.airStall)
@@ -402,6 +402,7 @@ cast.Descenso = function(spec)
 		playClip("EcoAterrizaje")
 		EcoEfectos.Onda(landing, spec.radius, c)
 		EcoEfectos.OndaChoque(EcoEfectos.Ground(landing) + Vector3.new(0, 0.3, 0), c, spec.radius, Vector3.yAxis, 0.3)
+		EcoEfectos.Escombros(landing, 1)
 		EcoEfectos.Rayas(landing, c, 8, 5)
 		shake(0.5)
 	end)
@@ -487,6 +488,14 @@ remoteEffects.Levante = function(data, c)
 end
 remoteEffects.Impacto = function(data, c)
 	EcoEfectos.Onda(data.origin, skills.Descenso.radius, c)
+end
+remoteEffects.Reaccion = function(data)
+	EcoEfectos.Reaccion(data.name, data.center)
+end
+remoteEffects.ReaccionRayo = function(data)
+	if typeof(data.origin) == "Vector3" and typeof(data.finish) == "Vector3" then
+		EcoEfectos.Rayo(data.origin, data.finish, Color3.fromRGB(255, 240, 120), 0.35)
+	end
 end
 remoteEffects.Tempestad = function(data, c)
 	EcoEfectos.Tornado(data.center, skills.Tempestad.radius, c, skills.Tempestad.duration)
@@ -737,6 +746,19 @@ local function onConfirmed(data)
 	end
 	if attacker == player and type(data.synergy) == "string" and (data.damage or 0) > 0 then
 		EcoEfectos.ImpactFrame(kit.color, 0.7)
+		if camera and camera.Kick then
+			camera.Kick(4)
+		end
+	end
+	-- Golpe grande propio: la animación se congela un instante (se siente el peso, como en los golpes del combo)
+	if attacker == player and ((data.damage or 0) >= 12 or type(data.synergy) == "string") and currentTrack and currentTrack.IsPlaying then
+		local track = currentTrack
+		track:AdjustSpeed(0)
+		task.delay(0.06, function()
+			if track.IsPlaying then
+				track:AdjustSpeed(1)
+			end
+		end)
 	end
 	if attacker ~= player then
 		if data.attack == "EcoBurbuja" and typeof(data.target) == "Instance" and (data.damage or 0) > 0 then

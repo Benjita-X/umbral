@@ -14,9 +14,9 @@ const O = [0, -200, 0]; // origen de la mazmorra
 const P = (x, y, z) => [O[0] + x, O[1] + y, O[2] + z];
 
 // Paleta: piedra con un toque violeta (la Grieta "resuena"), suelo cálido, acentos de Eco en los cristales
-const STONE = [88, 82, 96];
-const STONE_DARK = [56, 50, 64];
-const FLOOR = [108, 98, 88];
+const STONE = [82, 82, 92];
+const STONE_DARK = [52, 50, 60];
+const FLOOR = [98, 90, 82];
 const WOOD = [96, 62, 38];
 const TRIM = [44, 40, 52];
 const EMBER = [255, 150, 60];
@@ -475,7 +475,7 @@ export function dungeonLighting() {
       ['bool', 'GlobalShadows', true],
       ['float', 'ClockTime', 0.5],
       ['float', 'Brightness', 2],
-      ['color3', 'Ambient', [0.1, 0.09, 0.13]],
+      ['color3', 'Ambient', [0.09, 0.088, 0.115]],
       ['color3', 'OutdoorAmbient', [0.26, 0.24, 0.32]],
       ['float', 'EnvironmentDiffuseScale', 0.6],
       ['float', 'EnvironmentSpecularScale', 0.9],
@@ -487,8 +487,8 @@ export function dungeonLighting() {
         props: [
           ['float', 'Density', 0.27],
           ['float', 'Offset', 0.05],
-          ['color3', 'Color', [0.3, 0.26, 0.4]],
-          ['color3', 'Decay', [0.14, 0.1, 0.2]],
+          ['color3', 'Color', [0.27, 0.25, 0.34]],
+          ['color3', 'Decay', [0.12, 0.1, 0.17]],
           ['float', 'Glare', 0.15],
           ['float', 'Haze', 1.6],
         ],
@@ -510,8 +510,8 @@ export function dungeonLighting() {
         props: [
           ['float', 'Brightness', 0.05],
           ['float', 'Contrast', 0.18],
-          ['float', 'Saturation', 0.22],
-          ['color3', 'TintColor', [1, 0.96, 1]],
+          ['float', 'Saturation', 0.15],
+          ['color3', 'TintColor', [1, 0.98, 0.96]],
         ],
         children: [],
       },

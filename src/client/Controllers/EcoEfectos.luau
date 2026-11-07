@@ -42,7 +42,10 @@ local function folder()
 end
 EcoEfectos.Folder = folder
 
+EcoEfectos.Creados = 0 -- piezas de efecto creadas (diagnóstico de la vitrina)
+EcoEfectos.Lento = 1 -- la vitrina lo sube para ver los efectos en cámara lenta (alarga duraciones)
 function EcoEfectos.Part(size, cframe, color, shape, transparency)
+	EcoEfectos.Creados += 1
 	local part = Instance.new("Part")
 	part.Name = "UmbralEfectoEco"
 	part.Shape = shape or Enum.PartType.Block
@@ -61,7 +64,7 @@ function EcoEfectos.Part(size, cframe, color, shape, transparency)
 end
 
 local function tween(instance, time, props, style, direction)
-	local t = TweenService:Create(instance, TweenInfo.new(time, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), props)
+	local t = TweenService:Create(instance, TweenInfo.new(time * EcoEfectos.Lento, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), props)
 	t:Play()
 	return t
 end
@@ -165,7 +168,7 @@ function EcoEfectos.Projectile(origin, dir, speed, range, parts, onEnd, relative
 	end
 	local connection
 	connection = RunService.Heartbeat:Connect(function(dt)
-		local step = math.min(speed * dt, range - traveled)
+		local step = math.min(speed / EcoEfectos.Lento * dt, range - traveled)
 		local hit = Workspace:Raycast(position, dir * step, wallParams)
 		-- los personajes no frenan el proyectil (lo decide el servidor): solo las paredes
 		while hit do
@@ -207,9 +210,9 @@ end
 -- Cuchilla: un disco de viento ancho y fino con estela
 function EcoEfectos.Cuchilla(origin, dir, speed, range, color)
 	-- Media luna horizontal que vuela con la panza hacia adelante: tramos de neón de color con el filo blanco
-	local frame = CFrame.lookAt(origin, origin + dir)
+	local frame = CFrame.lookAt(origin, origin + dir) * CFrame.Angles(0, 0, math.rad(22))
 	local parts = {}
-	local radius, count = 3.2, 9
+	local radius, count = 3.4, 9
 	local tips = {}
 	for i = 1, count do
 		local t = (i - 0.5) / count
@@ -219,10 +222,11 @@ function EcoEfectos.Cuchilla(origin, dir, speed, range, color)
 		local radial = Vector3.new(math.sin(angle), 0, -math.cos(angle))
 		local segFrame = frame * CFrame.fromMatrix(local_, radial, Vector3.yAxis)
 		local w = math.max(0.15, 1.1 * profile)
-		table.insert(parts, EcoEfectos.Part(Vector3.new(w, 0.14, radius * 0.3), segFrame, color, Enum.PartType.Block, 0.15))
-		table.insert(parts, EcoEfectos.Part(Vector3.new(w * 0.38, 0.16, radius * 0.3), segFrame * CFrame.new(w * 0.3, 0, 0), Color3.new(1, 1, 1), Enum.PartType.Block, 0))
+		table.insert(parts, EcoEfectos.Part(Vector3.new(w, 0.5, radius * 0.3), segFrame, color, Enum.PartType.Block, 0.15))
+		table.insert(parts, EcoEfectos.Part(Vector3.new(w * 0.38, 0.4, radius * 0.3), segFrame * CFrame.new(w * 0.3, 0, 0), Color3.new(1, 1, 1), Enum.PartType.Block, 0))
+		table.insert(parts, EcoEfectos.Part(Vector3.new(w * 1.8, 1, radius * 0.32), segFrame, color, Enum.PartType.Block, 0.78))
 		if i == 1 or i == count then
-			table.insert(tips, parts[#parts - 1])
+			table.insert(tips, parts[#parts - 2])
 		end
 	end
 	-- Estelas desde las dos puntas
@@ -259,7 +263,7 @@ function EcoEfectos.Ciclon(center, radius, color, air)
 		local ring = EcoEfectos.Part(Vector3.new(0.35, radius * 2, radius * 2), CFrame.new(base + Vector3.new(0, (i - 1) * 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), color, Enum.PartType.Cylinder, 0.3)
 		local spin = 0
 		local start = os.clock()
-		local duration = 0.32 + i * 0.05
+		local duration = (0.32 + i * 0.05) * EcoEfectos.Lento
 		local connection
 		connection = RunService.Heartbeat:Connect(function(dt)
 			local alpha = math.clamp((os.clock() - start) / duration, 0, 1)
@@ -289,6 +293,7 @@ function EcoEfectos.Columna(position, color, height, radius)
 	end)
 	EcoEfectos.Ring(ground + Vector3.new(0, 0.2, 0), radius * 1.6, color, 0.3)
 	EcoEfectos.Burst(ground + Vector3.new(0, 1, 0), color, 18, 0.8, 34)
+	EcoEfectos.Espiral(ground + Vector3.new(0, 0.5, 0), height * 0.9, radius * 1.25, color, 0.42, 4)
 	EcoEfectos.Sound("Estallido", ground)
 end
 
@@ -766,8 +771,8 @@ local WHITE = Color3.new(1, 1, 1)
 function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, opts)
 	opts = opts or {}
 	local width = opts.width or 1.1
-	local sweep = opts.sweep or 0.07
-	local fade = opts.fade or 0.2
+	local sweep = (opts.sweep or 0.07) * EcoEfectos.Lento
+	local fade = (opts.fade or 0.2) * EcoEfectos.Lento
 	local base = opts.transparency or 0.12
 	axisA, axisB = axisA.Unit, axisB.Unit
 	local normal = axisA:Cross(axisB)
@@ -777,7 +782,7 @@ function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, op
 	normal = normal.Unit
 	local from, to = math.rad(fromDeg), math.rad(toDeg)
 	local length = radius * math.abs(to - from)
-	local count = math.clamp(math.floor(length / 0.95), 6, 18)
+	local count = math.clamp(math.floor(length / 1.15), 6, 14)
 	local segLength = length / count * 1.2
 	local segments = {}
 	for i = 1, count do
@@ -788,12 +793,14 @@ function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, op
 		local w = math.max(0.12, width * profile)
 		local position = center + radial * radius
 		local frame = CFrame.fromMatrix(position, radial, normal)
-		local outer = EcoEfectos.Part(Vector3.new(w, 0.1, segLength), frame, color, Enum.PartType.Block, 1)
+		local depth = math.max(0.3, w * 0.4) -- grosor en la normal: se ve aunque el arco quede de canto
+		local outer = EcoEfectos.Part(Vector3.new(w, depth, segLength), frame, color, Enum.PartType.Block, 1)
+		local halo = EcoEfectos.Part(Vector3.new(w * 1.7, depth * 1.8, segLength), frame, color, Enum.PartType.Block, 1)
 		local core = nil
 		if opts.core ~= false then
-			core = EcoEfectos.Part(Vector3.new(w * 0.36, 0.12, segLength), frame * CFrame.new(w * 0.28, 0, 0), WHITE, Enum.PartType.Block, 1)
+			core = EcoEfectos.Part(Vector3.new(w * 0.36, depth * 0.7, segLength), frame * CFrame.new(w * 0.28, 0, 0), WHITE, Enum.PartType.Block, 1)
 		end
-		segments[i] = { outer = outer, core = core, w = w, frame = frame, appear = (i - 1) / count * sweep }
+		segments[i] = { outer = outer, halo = halo, core = core, w = w, depth = depth, frame = frame, appear = (i - 1) / count * sweep }
 	end
 	local start = os.clock()
 	local connection
@@ -811,10 +818,12 @@ function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, op
 				end
 				local thin = 1 - 0.75 * k
 				seg.outer.Transparency = base + (1 - base) * k
-				seg.outer.Size = Vector3.new(seg.w * thin, 0.1, segLength)
+				seg.outer.Size = Vector3.new(seg.w * thin, seg.depth, segLength)
+				seg.halo.Transparency = 0.78 + 0.22 * k
+				seg.halo.Size = Vector3.new(seg.w * 1.7 * thin, seg.depth * 1.8, segLength)
 				if seg.core then
 					seg.core.Transparency = k
-					seg.core.Size = Vector3.new(seg.w * 0.36 * thin, 0.12, segLength)
+					seg.core.Size = Vector3.new(seg.w * 0.36 * thin, seg.depth * 0.7, segLength)
 					seg.core.CFrame = seg.frame * CFrame.new(seg.w * 0.28 * thin, 0, 0)
 				end
 			end
@@ -823,12 +832,185 @@ function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, op
 			connection:Disconnect()
 			for _, seg in ipairs(segments) do
 				seg.outer:Destroy()
+				seg.halo:Destroy()
 				if seg.core then
 					seg.core:Destroy()
 				end
 			end
 		end
 	end)
+end
+
+-- Espiral: trazos de neón que suben girando alrededor de un eje vertical (viento, agua, fuego que asciende)
+function EcoEfectos.Espiral(base, height, radius, color, duration, streaks)
+	duration = (duration or 0.45) * EcoEfectos.Lento
+	streaks = streaks or 3
+	local parts = {}
+	for i = 1, streaks do
+		local part = EcoEfectos.Part(Vector3.new(0.35, 0.35, 2.2), CFrame.new(base), if i % 2 == 0 then WHITE else color, Enum.PartType.Block, 0.1)
+		table.insert(parts, { part = part, phase = (i - 1) / streaks * math.pi * 2, lag = (i - 1) * 0.06 })
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		local elapsed = os.clock() - start
+		local done = true
+		for _, s in ipairs(parts) do
+			local t = math.clamp((elapsed - s.lag * EcoEfectos.Lento) / duration, 0, 1)
+			if t < 1 then
+				done = false
+			end
+			local angle = s.phase + t * math.pi * 3
+			local r = radius * (1 - 0.35 * t)
+			local position = base + Vector3.new(math.cos(angle) * r, height * t, math.sin(angle) * r)
+			local tangent = Vector3.new(-math.sin(angle), 0.55, math.cos(angle)).Unit
+			s.part.CFrame = CFrame.lookAt(position, position + tangent)
+			s.part.Transparency = 0.1 + 0.9 * t
+		end
+		if done then
+			connection:Disconnect()
+			for _, s in ipairs(parts) do
+				s.part:Destroy()
+			end
+		end
+	end)
+end
+
+-- Escombros y grietas en el suelo (golpes contra el suelo): piedras del color del suelo que saltan en arco y
+-- grietas oscuras que se abren. Sin física (no chocan con nadie): la trayectoria se calcula aquí.
+function EcoEfectos.Escombros(position, strength)
+	strength = strength or 1
+	local ignore = { folder() }
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other.Character then
+			table.insert(ignore, other.Character)
+		end
+	end
+	groundParams.FilterDescendantsInstances = ignore
+	local hit = Workspace:Raycast(position + Vector3.new(0, 3, 0), Vector3.new(0, -12, 0), groundParams)
+	if not hit then
+		return
+	end
+	local ground = hit.Position
+	local rockColor = hit.Instance.Color
+	local material = if hit.Material == Enum.Material.Neon or hit.Material == Enum.Material.Air then Enum.Material.Slate else hit.Material
+	local rocks = {}
+	for _ = 1, math.floor(7 * strength) do
+		local size = 0.4 + math.random() * 0.7 * strength
+		local rock = EcoEfectos.Part(Vector3.new(size, size * 0.8, size), CFrame.new(ground) * CFrame.Angles(math.random() * 6, math.random() * 6, 0), rockColor, Enum.PartType.Block, 0)
+		rock.Material = material
+		local angle = math.random() * math.pi * 2
+		local speed = 10 + math.random() * 14 * strength
+		table.insert(rocks, { part = rock, velocity = Vector3.new(math.cos(angle) * speed, 18 + math.random() * 16 * strength, math.sin(angle) * speed), spin = CFrame.Angles(math.random() * 0.4, math.random() * 0.4, 0) })
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function(dt)
+		local elapsed = os.clock() - start
+		for _, r in ipairs(rocks) do
+			if not r.landed then
+				r.velocity += Vector3.new(0, -110 * dt, 0)
+				local nextPosition = r.part.Position + r.velocity * dt
+				if nextPosition.Y <= ground.Y + 0.2 and r.velocity.Y < 0 then
+					nextPosition = Vector3.new(nextPosition.X, ground.Y + 0.2, nextPosition.Z)
+					r.landed = true
+				end
+				r.part.CFrame = (r.part.CFrame - r.part.Position + nextPosition) * r.spin
+			end
+		end
+		if elapsed > 1.1 then
+			connection:Disconnect()
+			for _, r in ipairs(rocks) do
+				fadeAndDestroy(r.part, 0.4)
+			end
+		end
+	end)
+	-- Grietas: trazos oscuros que salen del centro
+	for k = 1, 6 do
+		local angle = (k / 6) * math.pi * 2 + math.random() * 0.5
+		local length = (2.5 + math.random() * 2.5) * strength
+		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+		local crack = EcoEfectos.Part(Vector3.new(0.25, 0.06, 0.2), CFrame.lookAt(ground + Vector3.new(0, 0.04, 0), ground + Vector3.new(0, 0.04, 0) + dir), Color3.fromRGB(20, 16, 22), Enum.PartType.Block, 0.1)
+		crack.Material = Enum.Material.SmoothPlastic
+		tween(crack, 0.12, { Size = Vector3.new(0.3, 0.06, length), CFrame = CFrame.lookAt(ground + Vector3.new(0, 0.04, 0) + dir * length / 2, ground + Vector3.new(0, 0.04, 0) + dir * length) })
+		task.delay(1.4, function()
+			if crack.Parent then
+				fadeAndDestroy(crack, 0.5)
+			end
+		end)
+	end
+end
+
+-- Estampado contra la pared: onda en el muro, grietas en su plano, chispas y el aviso "¡PARED!"
+function EcoEfectos.Pared(point, normal)
+	if typeof(point) ~= "Vector3" or typeof(normal) ~= "Vector3" or normal.Magnitude < 0.1 then
+		return
+	end
+	normal = normal.Unit
+	EcoEfectos.OndaChoque(point + normal * 0.2, Color3.fromRGB(255, 230, 200), 4.5, normal, 0.3)
+	EcoEfectos.Rayas(point + normal * 0.5, Color3.fromRGB(255, 220, 160), 8, 4)
+	EcoEfectos.Burst(point + normal * 0.5, Color3.fromRGB(200, 190, 180), 18, 0.8, 26)
+	local helper = if math.abs(normal.Y) > 0.9 then Vector3.xAxis else Vector3.yAxis
+	local right = helper:Cross(normal).Unit
+	local up = normal:Cross(right).Unit
+	for k = 1, 7 do
+		local angle = (k / 7) * math.pi * 2 + math.random() * 0.4
+		local dir = right * math.cos(angle) + up * math.sin(angle)
+		local length = 1.8 + math.random() * 2.2
+		local base = point + normal * 0.06
+		local crack = EcoEfectos.Part(Vector3.new(0.22, 0.22, length), CFrame.lookAt(base + dir * length / 2, base + dir * length), Color3.fromRGB(22, 18, 24), Enum.PartType.Block, 0.1)
+		crack.Material = Enum.Material.SmoothPlastic
+		task.delay(1.4, function()
+			if crack.Parent then
+				fadeAndDestroy(crack, 0.5)
+			end
+		end)
+	end
+	local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.new(point + normal * 1.5), Color3.new(1, 1, 1), nil, 1)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(160, 40)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.StudsOffset = Vector3.new(0, 2.5, 0)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.Text = "¡PARED!"
+	label.TextColor3 = Color3.fromRGB(255, 225, 150)
+	label.TextStrokeTransparency = 0
+	label.Parent = gui
+	gui.Parent = anchor
+	tween(label, 0.6, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	Debris:AddItem(anchor, 0.8)
+	EcoEfectos.Sound("Grave", point)
+end
+
+-- Reacción entre elementos (la decide el servidor; se ve en todas las pantallas)
+local REACTION_LOOK = {
+	["ELECTROCUCIÓN"] = { color = Color3.fromRGB(255, 240, 120), element = "Trueno" },
+	VAPOR = { color = Color3.fromRGB(235, 245, 255), element = "Agua" },
+	["TORMENTA ÍGNEA"] = { color = Color3.fromRGB(255, 120, 40), element = "Fuego" },
+	["PULSO UMBRÍO"] = { color = Color3.fromRGB(180, 90, 255), element = "Oscuridad" },
+	["CONDUCCIÓN"] = { color = Color3.fromRGB(120, 220, 255), element = "Trueno" },
+}
+function EcoEfectos.Reaccion(name, center)
+	local look = REACTION_LOOK[name]
+	if not look or typeof(center) ~= "Vector3" then
+		return
+	end
+	EcoEfectos.Destello(center, look.color, 8, 0.22)
+	EcoEfectos.Elemento(center, look.element, 2)
+	EcoEfectos.OndaChoque(EcoEfectos.Ground(center) + Vector3.new(0, 0.4, 0), look.color, if name == "VAPOR" then 8 else 6, Vector3.yAxis, 0.35)
+	if name == "VAPOR" then
+		EcoEfectos.Elemento(center + Vector3.new(0, 1.5, 0), "Agua", 2)
+		EcoEfectos.Espiral(EcoEfectos.Ground(center), 8, 3, look.color, 0.5, 4)
+	elseif name == "TORMENTA ÍGNEA" then
+		EcoEfectos.Espiral(EcoEfectos.Ground(center), 9, 4, look.color, 0.5, 5)
+	elseif name == "PULSO UMBRÍO" then
+		EcoEfectos.Rayas(center, look.color, 12, 6)
+	end
 end
 
 -- Tajo horizontal delante de un personaje (o de un punto) hacia `dir`, un poco inclinado
@@ -845,7 +1027,7 @@ end
 -- Destello de impacto: estrella de agujas de neón mirando a la cámara, que se abre y se cierra en un instante
 function EcoEfectos.Destello(position, color, size, duration)
 	size = size or 4.5
-	duration = duration or 0.16
+	duration = (duration or 0.16) * EcoEfectos.Lento
 	local camera = Workspace.CurrentCamera
 	local toCamera = if camera then camera.CFrame.Position - position else Vector3.new(0, 0, 1)
 	if toCamera.Magnitude < 0.01 then
@@ -890,7 +1072,7 @@ end
 function EcoEfectos.Rayas(position, color, count, length, duration)
 	count = count or 6
 	length = length or 4
-	duration = duration or 0.16
+	duration = (duration or 0.16) * EcoEfectos.Lento
 	local streaks = {}
 	for _ = 1, count do
 		local dir = Vector3.new(math.random() - 0.5, (math.random() - 0.3) * 0.9, math.random() - 0.5)
@@ -938,7 +1120,7 @@ function EcoEfectos.OndaChoque(position, color, radius, normal, duration)
 	emitter.SpreadAngle = Vector2.new(0, 0)
 	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, radius * 2) })
 	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
-	emitter.Lifetime = NumberRange.new(duration or 0.28)
+	emitter.Lifetime = NumberRange.new((duration or 0.28) * EcoEfectos.Lento)
 	emitter.LockedToPart = true
 	emitter.Rate = 0
 	emitter.Parent = attachment
@@ -1114,6 +1296,73 @@ function EcoEfectos.WatchStates()
 					fire.Parent = root
 				elseif not burning and fire then
 					fire:Destroy()
+				end
+				for _, state in ipairs({
+					{ attribute = "MojadoHasta", name = "UmbralMojado", color = Color3.fromRGB(110, 190, 255), accel = Vector3.new(0, -25, 0), speed = 1, light = 0.5 },
+					{ attribute = "CargadoHasta", name = "UmbralCargado", color = Color3.fromRGB(255, 240, 110), accel = Vector3.zero, speed = 6, light = 1 },
+				}) do
+					local active = (model:GetAttribute(state.attribute) or 0) > now
+					local emitter = root:FindFirstChild(state.name)
+					if active and not emitter then
+						emitter = Instance.new("ParticleEmitter")
+						emitter.Name = state.name
+						emitter.Texture = TEXTURES.Sparks
+						emitter.Color = ColorSequence.new(state.color)
+						emitter.LightEmission = state.light
+						emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+						emitter.Lifetime = NumberRange.new(0.25, 0.5)
+						emitter.Speed = NumberRange.new(state.speed * 0.5, state.speed)
+						emitter.SpreadAngle = Vector2.new(180, 180)
+						emitter.Acceleration = state.accel
+						emitter.Rate = 22
+						emitter.Shape = Enum.ParticleEmitterShape.Box
+						emitter.Parent = root
+					elseif not active and emitter then
+						emitter:Destroy()
+					end
+				end
+				-- Furia del Guardián: aura roja y rugido (una vez por fase)
+				local fury = model:GetAttribute("Furia") == true
+				local aura = model:FindFirstChild("UmbralFuria")
+				if fury and not aura then
+					aura = Instance.new("Highlight")
+					aura.Name = "UmbralFuria"
+					aura.FillColor = Color3.fromRGB(255, 40, 40)
+					aura.FillTransparency = 0.7
+					aura.OutlineColor = Color3.fromRGB(255, 90, 60)
+					aura.OutlineTransparency = 0
+					aura.Parent = model
+					EcoEfectos.OndaChoque(EcoEfectos.Ground(root.Position) + Vector3.new(0, 0.4, 0), Color3.fromRGB(255, 60, 40), 14, Vector3.yAxis, 0.6)
+					EcoEfectos.Rayas(root.Position, Color3.fromRGB(255, 80, 50), 14, 8)
+					EcoEfectos.ImpactFrame(Color3.fromRGB(255, 50, 40), 0.8)
+					EcoEfectos.Sound("Grave", root.Position)
+					local player = Players.LocalPlayer
+					local gui = Instance.new("ScreenGui")
+					gui.Name = "UmbralAvisoFuria"
+					gui.ResetOnSpawn = false
+					local label = Instance.new("TextLabel")
+					label.AnchorPoint = Vector2.new(0.5, 0.5)
+					label.Position = UDim2.fromScale(0.5, 0.22)
+					label.Size = UDim2.fromOffset(620, 46)
+					label.BackgroundTransparency = 1
+					label.Font = Enum.Font.GothamBlack
+					label.TextScaled = true
+					label.Text = "¡EL GUARDIÁN SE ENFURECE!"
+					label.TextColor3 = Color3.fromRGB(255, 90, 70)
+					label.TextStrokeTransparency = 0
+					label.Parent = gui
+					gui.Parent = player:WaitForChild("PlayerGui")
+					task.delay(1.6, function()
+						tween(label, 0.4, { TextTransparency = 1, TextStrokeTransparency = 1 })
+						Debris:AddItem(gui, 0.5)
+					end)
+				elseif not fury and aura then
+					aura:Destroy()
+				end
+				local wallUntil = model:GetAttribute("ParedHasta")
+				if wallUntil and wallUntil > now and model:GetAttribute("UmbralParedVista") ~= wallUntil then
+					model:SetAttribute("UmbralParedVista", wallUntil)
+					EcoEfectos.Pared(model:GetAttribute("ParedPunto"), model:GetAttribute("ParedNormal"))
 				end
 				local marked = (model:GetAttribute("MarcadoHasta") or 0) > now
 				local markGui = root:FindFirstChild("UmbralMarca")

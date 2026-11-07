@@ -236,9 +236,18 @@ local function synergyFor(player, model, skillName)
 	return nil
 end
 
--- Aplica el golpe de una habilidad (con su sinergia, si la hay). Devuelve el daño hecho.
+-- Reacciones entre elementos (se definen más abajo, junto a la quemadura y las zonas)
+local reactionFor, react
+
+-- Aplica el golpe de una habilidad (con su sinergia, si la hay, y la reacción entre elementos). Devuelve el daño.
 local function strike(player, model, skillName, spec, synergy)
 	spec.attackName = "Eco" .. skillName
+	local element = player:GetAttribute("Eco") or eco.Default
+	local reaction = if reactionFor and not spec.dot then reactionFor(element, model) else nil
+	if reaction and reaction.boost then
+		spec.damage *= reaction.boost
+		spec.stun = (spec.stun or 0) + (reaction.stun or 0)
+	end
 	if synergy then
 		spec.damage *= synergy.damage or 1
 		if spec.knockUp then
@@ -252,7 +261,13 @@ local function strike(player, model, skillName, spec, synergy)
 	if model:HasTag("Guardian") and spec.knockUp then
 		spec.knockUp *= eco.GuardianLaunchScale
 	end
+	if reaction and not spec.synergy then
+		spec.synergy = reaction.name -- se muestra igual que un combo con nombre
+	end
 	local dealt = DamageService.ApplyExternalHit(player, model, spec)
+	if dealt > 0 and react and not spec.dot then
+		react(player, model, element, reaction)
+	end
 	if synergy and dealt > 0 then
 		player:SetAttribute("UltimaSinergia", synergy.name)
 		player:SetAttribute("Sinergias", (player:GetAttribute("Sinergias") or 0) + 1)
@@ -480,6 +495,110 @@ end
 
 -- Marca de la Daga: el siguiente golpe del mismo jugador la detona
 local marks = setmetatable({}, { __mode = "k" }) -- [modelo] = { owner, untilTime }
+-- ---------- Reacciones entre elementos ----------
+-- Agua deja al enemigo MOJADO (4 s) y Trueno, CARGADO (3 s); Fuego lo deja ARDIENDO (quemadura). Golpearlo con otro
+-- elemento provoca una reacción con nombre: así cambiar de Eco a mitad de un combo tiene premio.
+local REACTIONS = {
+	Trueno = { state = "MojadoHasta", name = "ELECTROCUCIÓN", boost = 1.6, stun = 0.6, consume = true },
+	Fuego = { state = "MojadoHasta", name = "VAPOR", consume = true },
+	Viento = { state = "ArdeHasta", name = "TORMENTA ÍGNEA" },
+	Oscuridad = { state = "CargadoHasta", name = "PULSO UMBRÍO", consume = true },
+	Agua = { state = "CargadoHasta", name = "CONDUCCIÓN", consume = true },
+}
+
+reactionFor = function(element, model)
+	local reaction = REACTIONS[element]
+	if reaction and (model:GetAttribute(reaction.state) or 0) > now() then
+		return reaction
+	end
+	return nil
+end
+
+react = function(player, model, element, reaction)
+	local root = targetRoot(model)
+	if not root then
+		return
+	end
+	local t = now()
+	if reaction then
+		if reaction.consume then
+			model:SetAttribute(reaction.state, nil)
+		end
+		player:SetAttribute("UltimaReaccion", reaction.name)
+		player:SetAttribute("Reacciones", (player:GetAttribute("Reacciones") or 0) + 1)
+		local center = root.Position
+		broadcast(player, "Reaccion", { name = reaction.name, center = center, serverDriven = true })
+		local function hit(target, damage, extra)
+			local targetRootPart = targetRoot(target)
+			if not targetRootPart then
+				return
+			end
+			local spec = { attackName = "EcoReaccion", damage = damage, direction = flatUnit(targetRootPart.Position - center, Vector3.new(0, 0, -1)), knockback = 0, stun = 0.4, noResonance = true }
+			for key, value in pairs(extra or {}) do
+				spec[key] = value
+			end
+			DamageService.ApplyExternalHit(player, target, spec)
+		end
+		local others = {}
+		for _, other in ipairs(radiusTargets(player, center, 10, 8, t)) do
+			if other ~= model then
+				table.insert(others, other)
+			end
+		end
+		if reaction.name == "ELECTROCUCIÓN" then
+			-- Un rayo salta al enemigo más cercano
+			local nearest, best = nil, math.huge
+			for _, other in ipairs(others) do
+				local d = (targetRoot(other).Position - center).Magnitude
+				if d < best then
+					nearest, best = other, d
+				end
+			end
+			if nearest then
+				broadcast(player, "ReaccionRayo", { origin = center, finish = targetRoot(nearest).Position, serverDriven = true })
+				hit(nearest, 5, { stun = 0.6 })
+			end
+		elseif reaction.name == "VAPOR" then
+			-- Explosión de vapor: daña y empuja a todos los de alrededor (también al golpeado)
+			hit(model, 4, { knockback = 26 })
+			for _, other in ipairs(others) do
+				if (targetRoot(other).Position - center).Magnitude <= 7 then
+					hit(other, 6, { knockback = 30 })
+				end
+			end
+		elseif reaction.name == "TORMENTA ÍGNEA" then
+			-- El viento contagia el fuego a los cercanos
+			for _, other in ipairs(others) do
+				if (targetRoot(other).Position - center).Magnitude <= 9 then
+					hit(other, 3, { stun = 0.3 })
+					burn(player, other, 2.5)
+				end
+			end
+		elseif reaction.name == "PULSO UMBRÍO" then
+			-- Implosión: más daño al golpeado y los cercanos caen hacia él
+			hit(model, 8, { stun = 0.8 })
+			for index, other in ipairs(others) do
+				if (targetRoot(other).Position - center).Magnitude <= 8 then
+					local angle = index * 2.1
+					hit(other, 3, { stun = 0.8, dragTo = center + Vector3.new(math.cos(angle) * 2.2, 0, math.sin(angle) * 2.2), dragTime = 0.2 })
+				end
+			end
+		elseif reaction.name == "CONDUCCIÓN" then
+			-- El agua reparte la carga: chispazos a todos los cercanos
+			for _, other in ipairs(others) do
+				broadcast(player, "ReaccionRayo", { origin = center, finish = targetRoot(other).Position, serverDriven = true })
+				hit(other, 6, { stun = 0.6 })
+			end
+		end
+	end
+	-- Estados que deja cada elemento
+	if element == "Agua" then
+		model:SetAttribute("MojadoHasta", t + 4)
+	elseif element == "Trueno" then
+		model:SetAttribute("CargadoHasta", t + 3)
+	end
+end
+
 local function mark(player, model, duration)
 	marks[model] = { owner = player, untilTime = os.clock() + duration }
 	model:SetAttribute("MarcadoHasta", now() + duration)
@@ -672,10 +791,15 @@ local function descenso(player, t, position, look)
 	r.pending = nil
 	r.descent = { t = t, untilTime = t + spec.window, startY = origin.Position.Y, character = player.Character }
 	broadcast(player, "Descenso", { origin = origin.Position })
-	-- Los enemigos que flotan cerca caen contigo: se estampan contra el suelo
+	-- Los enemigos que flotan cerca caen contigo: se estampan contra el suelo. También el que golpeaste hace
+	-- nada si sigue en el aire (aunque su "malabar" ya haya terminado): el remate del combo aéreo no falla por poco
+	local lastHits = recordFor(player).lastHits
 	for _, model in ipairs(CollectionService:GetTagged("Objetivo")) do
 		local root = targetRoot(model)
-		if root and (root.Position - origin.Position).Magnitude <= spec.spikeRadius and DamageService.IsJuggled(model) then
+		local distance = root and (root.Position - origin.Position).Magnitude or math.huge
+		local recent = lastHits[model] ~= nil and os.clock() - lastHits[model].t <= 1.5
+		local airborne = root ~= nil and heightAboveGround(model, root.Position) > 4
+		if root and ((distance <= spec.spikeRadius and DamageService.IsJuggled(model)) or (recent and airborne and distance <= spec.spikeRadius * 1.6)) then
 			local floor = floorBelow(model, root.Position)
 			if floor then
 				DamageService.Release(root)
@@ -718,7 +842,7 @@ local function impacto(player, t, position, look)
 		return refuse(player, "impacto sin aterrizaje")
 	end
 	local targets = targetsIn(player, function(cframe)
-		return Hurtbox.InRadius(landing.Position, spec.radius, cframe.Position, 6)
+		return Hurtbox.InRadius(landing.Position, spec.radius, cframe.Position, 8)
 	end, t)
 	broadcast(player, "Impacto", { origin = landing.Position })
 	for _, model in ipairs(targets) do

@@ -75,6 +75,9 @@ end
 -- Pausa entre ataques. Un perfil con ritmo (Latido) se acelera al perder vida (hasta un 45 % más rápido)
 local function pauseFor(s)
 	local p = profile(s)
+	if s.enraged then
+		return p.pause * 0.6 -- furia (Guardián bajo la mitad de vida): casi sin respiro entre ataques
+	end
 	if p.rhythm then
 		local humanoid = s.model:FindFirstChildOfClass("Humanoid")
 		local ratio = if humanoid and humanoid.MaxHealth > 0 then math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1) else 1
@@ -907,6 +910,19 @@ function SparringService.Start()
 				if isGuardian then
 					dressGuardian(model)
 					watchDefeat(s, true)
+					-- Segunda fase: bajo la mitad de vida se enfurece (ataca con menos pausa); al reaparecer entero, se calma
+					local humanoid = model:FindFirstChildOfClass("Humanoid")
+					if humanoid then
+						humanoid.HealthChanged:Connect(function(health)
+							if not s.enraged and health > 0 and health <= humanoid.MaxHealth * 0.5 then
+								s.enraged = true
+								model:SetAttribute("Furia", true)
+							elseif s.enraged and health >= humanoid.MaxHealth * 0.99 then
+								s.enraged = false
+								model:SetAttribute("Furia", nil)
+							end
+						end)
+					end
 				elseif kind then
 					s.heart = dressGuardian(model, kind.glow, kind.rhythmStreak ~= nil)
 					if kind.linked then
