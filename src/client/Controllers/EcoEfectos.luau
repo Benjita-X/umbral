@@ -1100,6 +1100,23 @@ function EcoEfectos.Pared(point, normal)
 	EcoEfectos.Sound("Grave", point)
 end
 
+-- Liberación: onda blanca que aparta a los cercanos
+function EcoEfectos.Liberacion(center)
+	if typeof(center) ~= "Vector3" then
+		return
+	end
+	local white = Color3.fromRGB(235, 245, 255)
+	EcoEfectos.OndaChoque(center, white, 10, Vector3.yAxis, 0.35)
+	EcoEfectos.OndaChoque(EcoEfectos.Ground(center) + Vector3.new(0, 0.3, 0), white, 9, Vector3.yAxis, 0.4)
+	EcoEfectos.Destello(center, white, 7, 0.2)
+	EcoEfectos.Rayas(center, white, 12, 7)
+	EcoEfectos.Sound("Grave", center)
+	local player = Players.LocalPlayer
+	if player.Character and (center - (player.Character:GetPivot().Position)).Magnitude < 4 then
+		EcoEfectos.ImpactFrame(white, 0.6)
+	end
+end
+
 -- Reacción entre elementos (la decide el servidor; se ve en todas las pantallas)
 local REACTION_LOOK = {
 	["ELECTROCUCIÓN"] = { color = Color3.fromRGB(255, 240, 120), element = "Trueno" },
@@ -1335,11 +1352,13 @@ end
 -- Cuadro de impacto: un instante de alto contraste y casi sin color (y un velo blanco) en los golpes grandes.
 -- Se apaga con el ajuste "Destellos al golpear" del menú.
 local impactEffect, impactGui = nil, nil
+local lastImpactFrame = -math.huge
 function EcoEfectos.ImpactFrame(color, strength)
 	local feedback = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig")).Feedback
-	if not feedback.Flashes then
+	if not feedback.Flashes or os.clock() - lastImpactFrame < 0.6 then
 		return
 	end
+	lastImpactFrame = os.clock()
 	strength = strength or 1
 	local camera = Workspace.CurrentCamera
 	if not camera then

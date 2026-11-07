@@ -175,7 +175,11 @@ function CombatHUD.Start(combat)
 	combat.Hit:Connect(function()
 		local s = combat.State
 		count.Text = string.format("x%d COMBO", s.comboHits)
-		damage.Text = string.format("%d de daño", math.floor(s.comboDamage + 0.5))
+		-- Igual que el servidor: desde el 9.º golpe seguido cada uno hace un 7 % menos (mínimo 50 %)
+		local scaling = if s.comboHits > 8 then math.max(50, 100 - (s.comboHits - 8) * 7) else 100
+		damage.Text = if scaling < 100
+			then string.format("%d de daño · golpes al %d %%", math.floor(s.comboDamage + 0.5), scaling)
+			else string.format("%d de daño", math.floor(s.comboDamage + 0.5))
 		frame.Visible = true
 		scale.Scale = 1.25
 		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()

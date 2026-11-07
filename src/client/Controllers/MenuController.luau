@@ -233,6 +233,37 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		ecoController.KitChanged:Connect(refreshEcos)
 	end
 
+	-- Combos con nombre y reacciones entre elementos (salen de CombatConfig: nunca se desactualizan)
+	do
+		local eco = CombatConfig.Eco
+		local attacks = CombatConfig.Attacks
+		local function nameOf(skillOrAttack)
+			local skill = eco.Skills[skillOrAttack]
+			if skill then
+				return skill.slot .. " " .. skill.label
+			end
+			local attack = attacks[skillOrAttack]
+			return if attack and attack.label then attack.label else skillOrAttack
+		end
+		nextOrder(label(content, "COMBOS   (una técnica y enseguida la otra, sobre el mismo enemigo)", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
+		for _, synergy in ipairs(eco.Synergies) do
+			local line = label(content, string.format("%s  →  %s   =   %s", nameOf(synergy.first), nameOf(synergy.next), synergy.name), UDim2.new(1, 0, 0, 17), Color3.fromRGB(255, 215, 120))
+			line.Name = "Combo" .. synergy.name
+			nextOrder(line)
+		end
+		nextOrder(label(content, "REACCIONES   (cambia de Eco: Agua moja, Trueno carga, Fuego quema)", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
+		for _, row in ipairs({
+			{ "Mojado + Trueno", "ELECTROCUCIÓN: más daño y un rayo salta a otro" },
+			{ "Mojado + Fuego", "VAPOR: explosión que empuja" },
+			{ "Ardiendo + Viento", "TORMENTA ÍGNEA: el fuego se contagia" },
+			{ "Cargado + Oscuridad", "PULSO UMBRÍO: implosión que atrae" },
+			{ "Cargado + Agua", "CONDUCCIÓN: la descarga se reparte" },
+		}) do
+			nextOrder(label(content, row[1] .. "   =   " .. row[2], UDim2.new(1, 0, 0, 17), Color3.fromRGB(150, 220, 255)))
+		end
+		nextOrder(label(content, "Contra la pared: un empujón fuerte estampa (¡PARED!); otro empujón lo hace rebotar hacia ti. Aturdido: Paso = Liberación (40 de Resonancia).", UDim2.new(1, 0, 0, 30), Color3.fromRGB(200, 205, 220)))
+	end
+
 	nextOrder(label(content, "AJUSTES", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
 	local feedback = CombatConfig.Feedback
 	local debugStarted = false
@@ -244,6 +275,18 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 			set = function(on)
 				feedback.ScreenShake = if on then 1 else 0
+			end,
+		},
+		{
+			name = "Modo práctica: sin enfriamientos y Resonancia llena (solo Studio)",
+			get = function()
+				return Players.LocalPlayer:GetAttribute("Practica") == true
+			end,
+			set = function(on)
+				local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):FindFirstChild("Practica")
+				if remote then
+					remote:FireServer(on)
+				end
 			end,
 		},
 		{

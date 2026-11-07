@@ -85,6 +85,9 @@ end
 
 -- Enfriamiento que queda en una clave: la tecla ("Z") o la variante en el aire de esa tecla ("Caire")
 function EcoController.CooldownRemaining(key)
+	if player:GetAttribute("Practica") then
+		return math.max(0, state.swapUntil - os.clock()) -- modo práctica (Studio): sin enfriamientos
+	end
 	return math.max(0, (state.cooldownEnd[key] or 0) - os.clock(), state.swapUntil - os.clock())
 end
 
@@ -500,6 +503,11 @@ end
 remoteEffects.Impacto = function(data, c)
 	EcoEfectos.Onda(data.origin, skills.Descenso.radius, c)
 end
+remoteEffects.Liberacion = function(data, _, own)
+	if not own then
+		EcoEfectos.Liberacion(data.center)
+	end
+end
 remoteEffects.Reaccion = function(data)
 	EcoEfectos.Reaccion(data.name, data.center)
 end
@@ -868,6 +876,26 @@ function EcoController.Start(inputController, movementController, combatControll
 	end)
 
 	RunService.Heartbeat:Connect(pollBuffer)
+
+	-- Liberación: Paso estando aturdido (cuesta Resonancia; lo valida el servidor)
+	local lastRelease = -math.huge
+	input.ActionBegan:Connect(function(action)
+		if action ~= "Paso" or combat.State.mode ~= "Aturdido" or not remote then
+			return
+		end
+		local spec = eco.Release
+		if os.clock() - lastRelease < spec.cooldown or (player:GetAttribute("Resonancia") or 0) < spec.cost then
+			return
+		end
+		lastRelease = os.clock()
+		local t, position, look = PositionReporter.Sample()
+		remote:FireServer("liberar", t, position, look)
+		combat.EndStun()
+		local root = rootPart()
+		if root then
+			EcoEfectos.Liberacion(root.Position)
+		end
+	end)
 
 	input.ActionBegan:Connect(function(action)
 		local slot = SLOT_OF[action]

@@ -960,6 +960,13 @@ end
 -- Una habilidad del Eco corta lo que estés haciendo (preparación, recuperación, carga o guardia), como el Paso.
 -- El combo NO se reinicia: tras la habilidad puedes seguir con el golpe que tocaba. Devuelve false si no se
 -- puede (aturdido o sin personaje).
+-- Liberación aceptada (o pedida): sale del aturdimiento en esta pantalla al instante
+function CombatController.EndStun()
+	if state.mode == "Aturdido" then
+		endStun()
+	end
+end
+
 function CombatController.CancelForSkill()
 	if not alive() or state.mode == "Aturdido" then
 		return false

@@ -127,7 +127,7 @@ local function canUse(player, skillName, t)
 	-- Enfriamiento por tecla, medido entre las horas (validadas) de los pedidos: la variación de la red no
 	-- rechaza un uso legítimo justo al terminar el enfriamiento
 	local last = r.cooldowns[cooldownKey(spec)]
-	if last and t - last < spec.cooldown - COOLDOWN_SLACK then
+	if last and t - last < spec.cooldown - COOLDOWN_SLACK and not player:GetAttribute("Practica") then
 		return false, "enfriamiento"
 	end
 	if (spec.cost or 0) > 0 and ResonanceService.Get(player) < spec.cost then
@@ -967,7 +967,46 @@ local function tempestad(player, t, position, look, aim)
 	player:SetAttribute("UltimoEco", string.format("Tempestad:%d", count))
 end
 
+-- ---------- Liberación (Paso estando aturdido) ----------
+local function liberar(player, t, position, look)
+	local spec = eco.Release
+	local r = recordFor(player)
+	local stunnedUntil = player:GetAttribute("AturdidoHasta")
+	if not stunnedUntil or stunnedUntil <= now() then
+		return refuse(player, "liberación sin aturdimiento")
+	end
+	if r.lastRelease and os.clock() - r.lastRelease < spec.cooldown - 0.1 then
+		return refuse(player, "liberación en enfriamiento")
+	end
+	if not ResonanceService.Spend(player, spec.cost) then
+		return refuse(player, "Resonancia insuficiente")
+	end
+	r.lastRelease = os.clock()
+	DefenseService.ReleaseStun(player, spec.immunity)
+	player:SetAttribute("Liberaciones", (player:GetAttribute("Liberaciones") or 0) + 1)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	broadcast(player, "Liberacion", { center = root.Position, serverDriven = true })
+	for _, model in ipairs(radiusTargets(player, root.Position, spec.radius, 8, now())) do
+		local targetRootPart = targetRoot(model)
+		if targetRootPart then
+			DamageService.ApplyExternalHit(player, model, {
+				attackName = "EcoLiberacion",
+				damage = 1,
+				direction = flatUnit(targetRootPart.Position - root.Position, Vector3.new(0, 0, -1)),
+				knockback = spec.knockback,
+				knockUp = 12,
+				stun = spec.stun,
+				noResonance = true,
+			})
+		end
+	end
+end
+
 local ACTIONS = {
+	liberar = liberar,
 	cuchilla = cuchilla,
 	ciclon = ciclon,
 	levante = levante,
@@ -1113,6 +1152,25 @@ function EcoService.Start()
 	effectRemote = Instance.new("RemoteEvent")
 	effectRemote.Name = "EcoEfecto"
 	effectRemote.Parent = remotes
+	-- Modo práctica: SOLO en Studio (nunca en un juego publicado). Sin enfriamientos y con la Resonancia llena.
+	local practiceRemote = Instance.new("RemoteEvent")
+	practiceRemote.Name = "Practica"
+	practiceRemote.Parent = remotes
+	practiceRemote.OnServerEvent:Connect(function(player, on)
+		if RunService:IsStudio() then
+			player:SetAttribute("Practica", if on == true then true else nil)
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player:GetAttribute("Practica") and (player:GetAttribute("Resonancia") or 0) < CombatConfig.Resonance.Max then
+					player:SetAttribute("Resonancia", CombatConfig.Resonance.Max)
+				end
+			end
+		end
+	end)
 	local equipRemote = Instance.new("RemoteEvent")
 	equipRemote.Name = "ElegirEco"
 	equipRemote.Parent = remotes

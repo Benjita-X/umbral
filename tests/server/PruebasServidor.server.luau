@@ -93,6 +93,17 @@ remote.OnServerEvent:Connect(function(player, action, payload, extra)
 				end
 			end
 		end
+	elseif action == "aturdir_jugador" then
+		-- Aturde al jugador como un golpe enemigo de verdad (servidor + aviso al cliente por ResultadoDefensa)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local DefenseService = require(services:WaitForChild("DefenseService"))
+		DefenseService.ClearStunChain(player)
+		local applied = DefenseService.Stun(player, payload or 2)
+		local result = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):FindFirstChild("ResultadoDefensa")
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if result and root then
+			result:FireAllClients({ player = player, result = "golpe", damage = 0, stun = applied, from = root.Position + root.CFrame.LookVector * 4 })
+		end
 	elseif action == "malabar_largo" then
 		-- Mantiene a un muñeco "en malabar" más de lo permitido (prueba del tope de malabar)
 		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")

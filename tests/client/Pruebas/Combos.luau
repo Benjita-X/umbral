@@ -150,9 +150,17 @@ return function(ctx)
 		return string.format("muñeco a %.1f en horizontal y %.1f de alto respecto a ti", Vector3.new(offset.X, 0, offset.Z).Magnitude, offset.Y)
 	end
 	local atPress = where()
+	local castDescent = false
+	local descentConnection = Eco.Used:Connect(function(name)
+		if name == "Descenso" then
+			castDescent = true
+		end
+	end)
 	press("HabilidadC", "C", 0.5)
 	local descent = damageAfter(h3, descentBefore, 1.6) > 0
 	local atLanding = where()
+	descentConnection:Disconnect()
+	atLanding ..= " · Descenso lanzado " .. tostring(castDescent) .. " · relanzamiento abierto " .. tostring(Eco.State.recast.C ~= nil)
 	local elapsed = os.clock() - t0
 	task.wait(0.3)
 	local total = hits()
@@ -344,6 +352,29 @@ return function(ctx)
 		return (m1:GetAttribute("ResisteHasta") or 0) > Workspace:GetServerTimeNow()
 	end, 7)
 	record("[Combos] Tope de malabar: tras 4,5 s en el aire, el enemigo se suelta (¡RESISTE!)", resisted, "resiste " .. tostring(resisted))
+
+	-- ---------- 8. Liberación: Paso estando aturdido sale del aturdimiento y cuesta Resonancia ----------
+	resetAll(100)
+	ctx.teleport(Vector3.new(0, 4, 30), Vector3.new(0, 0, 1))
+	local releasesBefore = player:GetAttribute("Liberaciones") or 0
+	ctx.remote:FireServer("aturdir_jugador", 2.5)
+	local stunned = waitUntil(function()
+		return ctx.Combat.State.mode == "Aturdido"
+	end, 1.5)
+	local resonanceBefore = player:GetAttribute("Resonancia") or 0
+	Input.Trigger("Paso")
+	local released = waitUntil(function()
+		return (player:GetAttribute("Liberaciones") or 0) > releasesBefore
+	end, 1.5)
+	task.wait(0.2)
+	local serverFree = (player:GetAttribute("AturdidoHasta") or 0) <= Workspace:GetServerTimeNow()
+	local spent = resonanceBefore - (player:GetAttribute("Resonancia") or 0)
+	record(
+		"[Combos] Liberación: Paso estando aturdido te libera y cuesta Resonancia",
+		stunned and released and serverFree and ctx.Combat.State.mode ~= "Aturdido" and math.abs(spent - eco.Release.cost) < 1,
+		string.format("aturdido %s · liberado %s · libre en el servidor %s · modo %s · gastó %.0f (cuesta %d) · rechazos: %s", tostring(stunned), tostring(released), tostring(serverFree), tostring(ctx.Combat.State.mode), spent, eco.Release.cost, ctx.lastRejections(1))
+	)
+	ctx.remote:FireServer("reiniciar_defensa")
 
 	resetAll()
 	equip("Viento")

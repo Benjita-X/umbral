@@ -245,6 +245,16 @@ function DefenseService.IsStunned(player, grace)
 	return t - recordFor(player).stunStart > (grace or 0)
 end
 
+-- Liberación: termina el aturdimiento y deja `immunity` s sin poder volver a aturdirlo (lo usa EcoService)
+function DefenseService.ReleaseStun(player, immunity)
+	local r = recordFor(player)
+	local t = now()
+	player:SetAttribute("AturdidoHasta", nil)
+	r.recentStuns = {}
+	r.aguanteUntil = math.max(r.aguanteUntil or 0, t + (immunity or 0))
+	player:SetAttribute("AguanteHasta", r.aguanteUntil)
+end
+
 -- Borra la cadena de aturdimientos y el Aguante (reaparecer, pruebas)
 function DefenseService.ClearStunChain(player)
 	local r = recordFor(player)
