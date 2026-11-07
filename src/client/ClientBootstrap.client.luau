@@ -14,6 +14,7 @@ local CombatHUD = require(controllers:WaitForChild("CombatHUD"))
 local VitalsHUD = require(controllers:WaitForChild("VitalsHUD"))
 local DebugHUD = require(controllers:WaitForChild("DebugHUD"))
 local PositionReporter = require(controllers:WaitForChild("PositionReporter"))
+local EcoController = require(controllers:WaitForChild("EcoController"))
 
 MovementController.Start(InputController)
 CombatController.Start(InputController, MovementController)
@@ -25,6 +26,7 @@ if Config.DebugHUD then
 	DebugHUD.Start(MovementController, CombatController)
 end
 PositionReporter.Start()
+EcoController.Start(InputController, MovementController, CombatController, CameraController)
 InputController.Start()
 
 print("[UMBRAL] Cliente listo")

@@ -89,9 +89,9 @@ return function(ctx)
 	waitUntil(function()
 		return ctx.grounded()
 	end, 2.5)
-	task.wait(0.2)
-	local feet = ctx.root.Position.Y - (ctx.humanoid.HipHeight + ctx.root.Size.Y / 2)
+	-- Soltar la dirección al aterrizar (si no, sigue caminando y cruza el bloque antes de medir)
 	ctx.humanoid:Move(Vector3.zero)
+	local feet = ctx.root.Position.Y - (ctx.humanoid.HipHeight + ctx.root.Size.Y / 2)
 	record(
 		"[Paredes] Agarre de borde: sube a un borde que el salto no alcanza",
 		mantles == m0 + 1 and feet > 10,

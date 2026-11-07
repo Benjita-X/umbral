@@ -13,6 +13,7 @@ local ResonanceService = require(services:WaitForChild("ResonanceService"))
 local DummyService = require(services:WaitForChild("DummyService"))
 local SparringService = require(services:WaitForChild("SparringService"))
 local GrietaService = require(services:WaitForChild("GrietaService"))
+local EcoService = require(services:WaitForChild("EcoService"))
 
 Workspace.Gravity = MovementConfig.Gravity
 
@@ -21,6 +22,7 @@ PositionService.Start() -- historial de posiciones (usa Remotes)
 DefenseService.SetPositionService(PositionService)
 DefenseService.Start()
 ResonanceService.Start()
+EcoService.Start() -- Ecos del jugador (EXPERIMENTAL)
 DummyService.Start()
 SparringService.Start()
 GrietaService.Start() -- solo actúa si el mapa tiene la Grieta (lugar de desarrollo)

@@ -370,6 +370,18 @@ local CombatConfig = {
 		},
 	},
 
+	-- Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento (botón Eco: Q / Y / ECO).
+	-- Cuestan Resonancia y no la devuelven. El servidor decide alcance y daño (EcoService).
+	Eco = {
+		Name = "Eco del Viento",
+		Techniques = {
+			-- En el suelo: onda frontal. Atraviesa corazas e interrumpe al enemigo que prepara un ataque.
+			Rafaga = { cost = 35, cooldown = 2.5, damage = 12, range = 12, hitboxSize = Vector3.new(7, 6, 12), knockback = 45, knockUp = 8 },
+			-- En el aire: picada y onda circular al aterrizar.
+			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 110 },
+		},
+	},
+
 	-- IDs de animaciones publicadas en Roblox (rbxassetid://...). Vacío = se usan las generadas
 	-- por código (solo funcionan en Studio). Antes de publicar el juego hay que subirlas y ponerlas aquí.
 	AnimationIds = {},

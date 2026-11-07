@@ -13,7 +13,7 @@ Prioridad: **P0** imprescindible para una primera versión jugable con gente · 
 | Combate: combo, golpe fuerte, guardia, desvío, Contrapaso, Contraataque | ✅ | P0 | Validación humana pendiente |
 | Movilidad al atacar (80 %, cancelar con Paso o salto) | ✅ | P0 | |
 | Aguante (anticadena de aturdimientos) | 🧪 | P0 | |
-| **Ecos: poderes del jugador (botón Eco)** | ⬜ → en curso | **P0** | Es la identidad del juego ("Despierta tu Eco") |
+| **Ecos: poderes del jugador (botón Eco)** | 🧪 primer Eco (Eco del Viento) | **P0** | Ráfaga y Descenso, rama `experimental/eco`; faltan más Ecos, maestría y rarezas |
 | Animaciones definitivas (subidas a Roblox) | ⬜ | P1 | Las de ahora solo funcionan en Studio |
 | Sonido de golpes, pasos y ambiente | ⬜ | P1 | Hay que subir audio propio o con licencia |
 | Celular: botones cómodos y probados en un teléfono | 🟡 | P0 | Funcionan en el emulador; falta un teléfono real |
@@ -80,7 +80,7 @@ El bucle de un juego así: **entrar → pelear → ganar algo → hacerse más f
 | Compras seguras (ProcessReceipt idempotente) | ⬜ | P2 |
 
 ## 9. Orden recomendado (lo que sigue)
-1. **Primer Eco jugable** (en curso): le da sentido a la Resonancia y es la identidad del juego.
+1. ~~Primer Eco jugable~~ (hecho en `experimental/eco`, 7 pruebas).
 2. **Menú de pausa con ajustes**: necesario para que cualquiera juegue cómodo.
 3. **Tutorial integrado** en la entrada de la Grieta.
 4. Validación humana de todo lo experimental, para integrarlo a `main`.

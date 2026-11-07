@@ -322,6 +322,39 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 	end
 end
 
+-- Daño que no viene de un golpe del combo (técnicas de Eco). Ya validado por quien lo llama (EcoService):
+-- aplica daño, empuje y aviso igual que un golpe, sin dar Resonancia.
+-- spec: attackName, damage, direction, knockback, knockUp, ignoreModifier
+function DamageService.ApplyExternalHit(player, target, spec)
+	local humanoid = target:FindFirstChildOfClass("Humanoid")
+	local root = target:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
+		return
+	end
+	local damage = spec.damage
+	local note = nil
+	if modifier and not spec.ignoreModifier then
+		local multiplier
+		multiplier, note = modifier(player, target, spec.attackName, { attackerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or root, targetRoot = root, targetHumanoid = humanoid })
+		damage *= multiplier or 1
+	end
+	humanoid.Health = math.max(0, humanoid.Health - damage)
+	if damage > 0 then
+		knockback(root, spec.direction, spec.knockback or 0, spec.knockUp or 0)
+		hitApplied:Fire(player, target, spec.attackName)
+	end
+	confirmedRemote:FireAllClients({
+		attacker = player,
+		target = target,
+		attack = spec.attackName,
+		damage = damage,
+		position = root.Position + Vector3.new(0, 1, 0),
+		health = humanoid.Health,
+		counter = false,
+		note = note,
+	})
+end
+
 local function handleHit(player, payload)
 	-- 1. Forma de la petición
 	if type(payload) ~= "table" then

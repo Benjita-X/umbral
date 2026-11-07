@@ -43,6 +43,7 @@ Por usar las mismas convenciones de Rojo, se puede pasar a Rojo más adelante si
 | Defender (mantener: guardia) | F | Botón DEFENDER | R1 / RB |
 | Paso (dash) | Shift | Botón PASO | B |
 | Saltar / doble salto | Espacio | Botón saltar | A |
+| **Eco** (suelo: Ráfaga · aire: Descenso; cuesta Resonancia) | Q | Botón ECO | Y |
 | Salto de pared (en el aire, junto a un muro) | Espacio | Botón saltar | A |
 | Correr por la pared (en sprint, saltar junto a un muro avanzando a lo largo de él) | — automático | — | — |
 

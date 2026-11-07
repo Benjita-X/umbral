@@ -4,7 +4,7 @@
 --   Defender · F · R1/RB (mando) · botón DEFENDER          (mantener = guardia)
 --   Paso     · Shift · B (mando) · botón PASO
 --   Saltar   · Espacio · A (mando) · botón de salto de Roblox
---   Eco      · llega con los Ecos (Fase 7)
+--   Eco      · Q / Y / botón ECO: el Eco del jugador (EXPERIMENTAL)
 -- El clic derecho NO se usa: en Roblox gira la cámara.
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -81,6 +81,7 @@ local TOUCH_BUTTONS = {
 	{ action = "Atacar", label = "ATACAR", dx = -1.15, dy = 0.05, scale = 1.1, color = Color3.fromRGB(150, 40, 40) },
 	{ action = "Paso", label = "PASO", dx = -0.2, dy = -1.05, scale = 0.8, color = Color3.fromRGB(28, 36, 58) },
 	{ action = "Defender", label = "DEFENDER", dx = -1.3, dy = -1.0, scale = 0.8, color = Color3.fromRGB(40, 90, 70) },
+	{ action = "Eco", label = "ECO", dx = -0.75, dy = -1.95, scale = 0.75, color = Color3.fromRGB(30, 110, 100) },
 }
 
 local function makeButton(spec, gui)
@@ -174,6 +175,7 @@ function InputController.Start()
 	bind("Atacar", Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX)
 	bind("Defender", Enum.KeyCode.F, Enum.KeyCode.ButtonR1)
 	bind("Paso", Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB)
+	bind("Eco", Enum.KeyCode.Q, Enum.KeyCode.ButtonY)
 
 	UserInputService.JumpRequest:Connect(function()
 		local now = os.clock()

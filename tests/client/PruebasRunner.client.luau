@@ -12,6 +12,7 @@ local SUITES = {
 	{ "Auditoria", require(Pruebas:WaitForChild("Auditoria")) },
 	{ "Habilidad", require(Pruebas:WaitForChild("Habilidad")) },
 	{ "Enemigos", require(Pruebas:WaitForChild("Enemigos")) },
+	{ "Eco", require(Pruebas:WaitForChild("Eco")) },
 }
 
 if ctx.start() then

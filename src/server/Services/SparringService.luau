@@ -708,8 +708,9 @@ function SparringService.Start()
 			s.lastHitter = attacker
 		end
 		local attack = CombatConfig.Attacks[attackName]
-		if s and s.state == "Preparando" and attack and attack.heavy then
-			stagger(s, sparring.StaggerOnInterrupt)
+		local isEco = type(attackName) == "string" and string.sub(attackName, 1, 3) == "Eco"
+		if s and s.state == "Preparando" and ((attack and attack.heavy) or isEco) then
+			stagger(s, sparring.StaggerOnInterrupt) -- los golpes fuertes y los Ecos interrumpen la preparación
 		end
 	end)
 
