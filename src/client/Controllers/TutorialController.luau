@@ -51,6 +51,11 @@ local STEPS = {
 	end, hint = function()
 		return "Tras un Levante (C) que conecta, pulsa C otra vez para subir tras él y sigue golpeando en el aire. V: la definitiva (gasta Resonancia)"
 	end },
+	{ text = "ECOS: tienes 5. Pulsa 2 para cambiar al Eco del AGUA (1-5 los cambia)", done = function(c)
+		return c.kitChanges >= 1
+	end, hint = function()
+		return "La ficha te dice qué hace cada tecla; pulsa el número de tu Eco para volver a verla. Puedes cambiar a mitad de un combo"
+	end },
 	{ text = "ARMAS: pulsa Q para sacar la ESPADA y golpea 2 veces al Instructor con ella", done = function(c)
 		return c.swordHits >= 2
 	end, hint = function()
@@ -64,7 +69,7 @@ local gui, title, body, hintLabel = nil, nil, nil, nil
 local active = false
 
 local function newContext()
-	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, skillsUsed = {}, skillCount = 0, synergies = 0, swordHits = 0, start = nil }
+	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, skillsUsed = {}, skillCount = 0, synergies = 0, kitChanges = 0, swordHits = 0, start = nil }
 end
 
 local function show()
@@ -293,6 +298,12 @@ function TutorialController.Start(movement, combat, eco)
 	if eco and eco.Synergy then
 		eco.Synergy:Connect(function()
 			context.synergies += 1
+			advance()
+		end)
+	end
+	if eco and eco.KitChanged then
+		eco.KitChanged:Connect(function()
+			context.kitChanges += 1
 			advance()
 		end)
 	end

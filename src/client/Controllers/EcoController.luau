@@ -12,6 +12,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -34,6 +35,7 @@ local synergyEvent = signal("Synergy") -- (nombre del combo)
 local kitEvent = signal("KitChanged") -- (nombre del Eco)
 local recastEvent = signal("Recast") -- (tecla, texto o nil): relanzamiento disponible
 local rejectedEvent = signal("Rejected") -- (motivo): el servidor no aceptó la última habilidad
+local infoEvent = signal("InfoRequested") -- (Eco, tecla o nil): ficha del Eco o pista de una habilidad (Alt + tecla)
 
 local eco = CombatConfig.Eco
 local skills = eco.Skills
@@ -81,9 +83,16 @@ function EcoController.SkillFor(slot, air)
 	return kit.slots[slot]
 end
 
-function EcoController.CooldownRemaining(slot)
-	return math.max(0, (state.cooldownEnd[slot] or 0) - os.clock(), state.swapUntil - os.clock())
+-- Enfriamiento que queda en una clave: la tecla ("Z") o la variante en el aire de esa tecla ("Caire")
+function EcoController.CooldownRemaining(key)
+	return math.max(0, (state.cooldownEnd[key] or 0) - os.clock(), state.swapUntil - os.clock())
 end
+
+-- Clave del enfriamiento de una habilidad (las variantes en el aire llevan el suyo)
+local function cooldownKey(slot, spec)
+	return if spec and spec.air then slot .. "aire" else slot
+end
+EcoController.CooldownKey = cooldownKey
 
 function EcoController.SetAimMode(mode)
 	state.aimMode = if mode == "frente" then "frente" else "raton"
@@ -337,6 +346,7 @@ cast.Cuchilla = function(spec)
 	commitFacing(flat(dir), 0.25)
 	remote:FireServer("cuchilla", t, position, look, dir)
 	playClip("EcoCuchilla")
+	EcoEfectos.Tajo(position + Vector3.new(0, 0.5, 0) + flat(dir) * 0.6, dir, color(), 2.8, -22, { width = 0.9, sweep = 0.05, fade = 0.16 })
 	EcoEfectos.Cuchilla(position + Vector3.new(0, 0.3, 0) + dir * 1.5, dir, spec.speed, spec.range - 1.5, color())
 	if air then
 		movement.AirStall(spec.airStall)
@@ -353,6 +363,13 @@ cast.Ciclon = function(spec)
 	playClip("EcoCiclon")
 	local center = if air then position + dir * 2.5 else position + dir * spec.pullTo
 	EcoEfectos.Ciclon(center, spec.radius, color(), air)
+	-- Remolino: dos arcos que giran en sentidos opuestos alrededor del centro
+	local right = dir:Cross(Vector3.yAxis)
+	if right.Magnitude > 0.05 then
+		EcoEfectos.Arco(center + Vector3.new(0, 1.2, 0), dir, right.Unit, spec.radius * 0.5, 0, 320, color(), { width = 1.2, sweep = 0.14, fade = 0.24 })
+		EcoEfectos.Arco(center + Vector3.new(0, 2.6, 0), -dir, right.Unit, spec.radius * 0.35, 0, -300, color(), { width = 0.9, sweep = 0.14, fade = 0.22 })
+	end
+	EcoEfectos.Elemento(center + Vector3.new(0, 1.5, 0), "Viento", 1)
 	if air then
 		movement.AirStall(0.4)
 	end
@@ -366,6 +383,9 @@ cast.Levante = function(spec)
 	remote:FireServer("levante", t, position, look, dir)
 	playClip("EcoLevante")
 	EcoEfectos.Columna(position + dir * (spec.range * 0.5 + 0.5), color(), 12, 3)
+	-- Gancho hacia arriba: un arco vertical que sube por delante
+	EcoEfectos.Arco(position + dir * 2.2 + Vector3.new(0, 0.5, 0), dir, Vector3.yAxis, 3.2, -70, 95, color(), { width = 1.1, sweep = 0.07, fade = 0.2 })
+	EcoEfectos.Elemento(position + dir * (spec.range * 0.5 + 0.5), "Viento", 1)
 	shake(0.3)
 end
 
@@ -381,6 +401,8 @@ cast.Descenso = function(spec)
 		remote:FireServer("impacto", tt, landing, lk)
 		playClip("EcoAterrizaje")
 		EcoEfectos.Onda(landing, spec.radius, c)
+		EcoEfectos.OndaChoque(EcoEfectos.Ground(landing) + Vector3.new(0, 0.3, 0), c, spec.radius, Vector3.yAxis, 0.3)
+		EcoEfectos.Rayas(landing, c, 8, 5)
 		shake(0.5)
 	end)
 end
@@ -393,6 +415,14 @@ cast.Tempestad = function(spec)
 	playClip("EcoTempestad")
 	local center = position + dir * freeDistance(position, dir, spec.distance)
 	EcoEfectos.Tornado(center, spec.radius, color(), spec.duration)
+	local right = dir:Cross(Vector3.yAxis)
+	if right.Magnitude > 0.05 then
+		for i = 0, 2 do
+			task.delay(i * 0.2, function()
+				EcoEfectos.Arco(center + Vector3.new(0, 1.5 + i * 2.5, 0), dir, right.Unit, spec.radius * (0.55 + i * 0.15), i * 40, i * 40 + 330, color(), { width = 1.4, sweep = 0.16, fade = 0.3 })
+			end)
+		end
+	end
 	shake(0.6)
 end
 
@@ -500,6 +530,9 @@ local function loadKits()
 		shake = shake,
 		freeDistance = freeDistance,
 		color = color,
+		element = function()
+			return state.kit
+		end,
 		character = character,
 		rootPart = rootPart,
 		humanoidOf = humanoidOf,
@@ -548,6 +581,7 @@ ultimateFlash = function(c)
 	if camera and camera.Kick then
 		camera.Kick(9)
 	end
+	EcoEfectos.ImpactFrame(c, 0.9)
 end
 
 -- ---------- Lanzar ----------
@@ -564,9 +598,16 @@ local function deny(slot, reason)
 	end
 end
 
-local function tryCast(slot)
+-- Búfer: una tecla pulsada un poco antes de tiempo (al final del enfriamiento, de un aturdimiento o de una
+-- caída) no se pierde: sale sola en cuanto se pueda, dentro de BUFFER segundos.
+local BUFFER = 0.3
+local buffered = nil -- { slot, untilTime, reason }
+local BUFFERABLE = { aturdido = true, ocupado = true, enfriamiento = true }
+
+-- Intenta lanzar la habilidad de la tecla. Devuelve true, o false y el motivo (sin avisar todavía).
+local function attempt(slot)
 	if not canAct() then
-		return deny(slot, if combat.State.mode == "Aturdido" then "aturdido" else "ocupado")
+		return false, if combat.State.mode == "Aturdido" then "aturdido" else "ocupado"
 	end
 	-- Relanzamiento disponible en esta tecla
 	local r = state.recast[slot]
@@ -576,30 +617,85 @@ local function tryCast(slot)
 		combat.CancelForSkill()
 		recastActions[r.action](r)
 		usedEvent:Fire(r.action, slot)
-		return
+		return true
 	end
 	local skillName = EcoController.SkillFor(slot, inAir())
 	local spec = skillName and skills[skillName]
 	if not spec or not cast[skillName] then
-		return deny(slot, "sin habilidad")
+		return false, "sin habilidad"
 	end
-	if EcoController.CooldownRemaining(slot) > 0 then
-		return deny(slot, "enfriamiento")
+	local key = cooldownKey(slot, spec)
+	local remaining = EcoController.CooldownRemaining(key)
+	if remaining > 0 then
+		return false, "enfriamiento", remaining
 	end
 	if (spec.cost or 0) > 0 and (player:GetAttribute("Resonancia") or 0) < spec.cost then
-		return deny(slot, "resonancia")
+		return false, "resonancia"
 	end
 	if not combat.CancelForSkill() then
-		return deny(slot, "aturdido")
+		return false, "aturdido"
 	end
 	cast[skillName](spec, slot)
+	EcoEfectos.Estela(character(), color(), if (spec.cost or 0) > 0 then 0.9 else 0.45)
 	if (spec.cost or 0) > 0 then
 		ultimateFlash(color())
 	end
-	state.cooldownEnd[slot] = os.clock() + spec.cooldown
-	state.cooldownLength[slot] = spec.cooldown
-	state.lastCast = { slot = slot, time = os.clock() }
+	state.cooldownEnd[key] = os.clock() + spec.cooldown
+	state.cooldownLength[key] = spec.cooldown
+	state.lastCast = { slot = key, time = os.clock() }
 	usedEvent:Fire(skillName, slot)
+	return true
+end
+
+local function tryCast(slot)
+	local ok, reason, remaining = attempt(slot)
+	if ok then
+		buffered = nil
+		return
+	end
+	if BUFFERABLE[reason] and (reason ~= "enfriamiento" or (remaining or 0) <= BUFFER) then
+		buffered = { slot = slot, untilTime = os.clock() + BUFFER, reason = reason }
+		return
+	end
+	buffered = nil
+	deny(slot, reason)
+end
+
+-- Reintenta la tecla guardada en el búfer cada cuadro; si se acaba el tiempo, avisa que no estaba lista
+local function pollBuffer()
+	local b = buffered
+	if not b then
+		return
+	end
+	if os.clock() > b.untilTime then
+		buffered = nil
+		deny(b.slot, b.reason)
+		return
+	end
+	local ok, reason = attempt(b.slot)
+	if ok then
+		buffered = nil
+	elseif BUFFERABLE[reason] then
+		b.reason = reason
+	else
+		buffered = nil
+		deny(b.slot, reason)
+	end
+end
+
+-- El cambio de Eco se manda con la hora sincronizada del pulso: el servidor cuenta la espera desde ahí (con
+-- latencia, contarla desde que llega rechazaba la primera habilidad justo cuando la barra decía "lista").
+-- Cambios muy seguidos se juntan en uno (el servidor no acepta más de uno cada 0.25 s).
+local EQUIP_GAP = 0.3
+local lastEquipSent = -math.huge
+local pendingEquip = nil
+local function sendEquip()
+	local name = pendingEquip
+	pendingEquip = nil
+	if name and equipRemote then
+		lastEquipSent = os.clock()
+		equipRemote:FireServer(name, Workspace:GetServerTimeNow())
+	end
 end
 
 local function equip(name)
@@ -607,10 +703,16 @@ local function equip(name)
 		return
 	end
 	state.kit = name
-	state.swapUntil = os.clock() + eco.SwapCooldown
+	local wait = math.max(0, EQUIP_GAP - (os.clock() - lastEquipSent))
+	state.swapUntil = os.clock() + wait + eco.SwapCooldown
 	table.clear(state.recast)
-	if equipRemote then
-		equipRemote:FireServer(name)
+	buffered = nil
+	local scheduled = pendingEquip ~= nil
+	pendingEquip = name
+	if wait <= 0 then
+		sendEquip()
+	elseif not scheduled then
+		task.delay(wait, sendEquip)
 	end
 	kitEvent:Fire(name)
 end
@@ -623,8 +725,18 @@ local function onConfirmed(data)
 	end
 	local attacker = data.attacker
 	local kit = eco.Kits[(typeof(attacker) == "Instance" and attacker:GetAttribute("Eco")) or ""] or eco.Kits[eco.Default]
+	local element = (typeof(attacker) == "Instance" and attacker:GetAttribute("Eco")) or eco.Default
 	if typeof(data.position) == "Vector3" and data.attack ~= "EcoQuemadura" and data.attack ~= "EcoInfierno" then
-		EcoEfectos.Impacto(data.position, kit.color)
+		local damage = data.damage or 0
+		if damage > 0 and damage < 4 and type(data.synergy) ~= "string" then
+			-- Golpes pequeños y seguidos (tornado, tótem, cortes del Eclipse): solo chispas, para no saturar
+			EcoEfectos.Burst(data.position, kit.color, 8, 0.6, 20)
+		else
+			EcoEfectos.Impacto(data.position, kit.color, element, type(data.synergy) == "string" or damage >= 14)
+		end
+	end
+	if attacker == player and type(data.synergy) == "string" and (data.damage or 0) > 0 then
+		EcoEfectos.ImpactFrame(kit.color, 0.7)
 	end
 	if attacker ~= player then
 		if data.attack == "EcoBurbuja" and typeof(data.target) == "Instance" and (data.damage or 0) > 0 then
@@ -700,16 +812,26 @@ function EcoController.Start(inputController, movementController, combatControll
 		remotes:WaitForChild("EcoEfecto").OnClientEvent:Connect(onRemoteEffect)
 	end)
 
+	RunService.Heartbeat:Connect(pollBuffer)
+
 	input.ActionBegan:Connect(function(action)
 		local slot = SLOT_OF[action]
 		if slot then
+			-- Alt + tecla: solo muestra qué hace la habilidad (no la lanza). La tecla Fn del teclado no llega a
+			-- los juegos (la maneja el propio teclado), por eso es Alt.
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) or UserInputService:IsKeyDown(Enum.KeyCode.RightAlt) then
+				infoEvent:Fire(state.kit, slot)
+				return
+			end
 			tryCast(slot)
 			return
 		end
 		local index = type(action) == "string" and tonumber(string.match(action, "^Eco(%d)$"))
 		if index then
 			local name = eco.Order[index]
-			if name then
+			if name == state.kit then
+				infoEvent:Fire(name)
+			elseif name then
 				equip(name)
 			end
 		elseif action == "EcoSiguiente" or action == "EcoAnterior" then
@@ -741,6 +863,7 @@ function EcoController.Start(inputController, movementController, combatControll
 	end)
 
 	player.CharacterAdded:Connect(function()
+		buffered = nil
 		falling = false
 		descentToken += 1
 		table.clear(state.recast)

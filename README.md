@@ -58,6 +58,7 @@ Por usar las mismas convenciones de Rojo, se puede pasar a Rojo más adelante si
 | **Gancho** al orbe brillante o al enemigo marcado | E | Botón GANCHO | Cruceta abajo |
 | **Cámara fija** (el personaje mira hacia la mira; viene activada en PC) / ratón libre | Ctrl | — | — |
 | **Fijar enemigo** (la cámara lo sigue; tirón del ratón: cambiar de enemigo) | R | — | R3 |
+| **Ver qué hace una habilidad** (sin lanzarla) | Alt + Z/X/C/V | — | — |
 | Golpe tras el Paso (patada voladora / estocada en carrera) | Atacar justo después de un Paso | | |
 | Golpe en picada (cayendo desde alto) | Atacar en el aire, alto | | |
 | Golpe de Gracia (enemigo QUEBRADO: postura llena) | Atacar cerca de él | | |

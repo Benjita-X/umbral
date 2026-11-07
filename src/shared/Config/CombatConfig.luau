@@ -626,10 +626,13 @@ local CombatConfig = {
 	-- que se carga peleando bien (golpes, defensas y sinergias). Se lanzan al pulsar, sin quedarte quieto, y
 	-- cortan tus golpes. El servidor decide alcance, daño y efectos (EcoService); el cliente solo los muestra.
 	Eco = {
-		-- Kits: cada Eco pone sus 4 habilidades en Z X C V (y alguna variante en el aire). Se elige en el menú o
-		-- con las teclas 1-5. Al cambiar de Eco, las 4 teclas quedan en enfriamiento al menos SwapCooldown.
+		-- Kits: cada Eco pone sus 4 habilidades en Z X C V (y alguna variante en el aire, con su PROPIO enfriamiento:
+		-- Levante → subir → golpes en el aire → Descenso es un combo completo). Se elige en el menú o
+		-- con las teclas 1-5. Al cambiar de Eco, las 4 teclas esperan SwapCooldown (corto: se puede cambiar a
+		-- mitad de un combo). Los enfriamientos son por TECLA y se comparten entre Ecos, así que cambiar no da
+		-- más habilidades seguidas: solo elige cuál sale en cada tecla.
 		Default = "Viento",
-		SwapCooldown = 2,
+		SwapCooldown = 0.6,
 		SlotOrder = { "Z", "X", "C", "V" },
 		Gamepad = { Z = "Y", X = "L1", C = "L2", V = "R2" }, -- botón del mando de cada tecla
 		Order = { "Viento", "Agua", "Oscuridad", "Fuego", "Trueno" },
@@ -637,6 +640,7 @@ local CombatConfig = {
 			-- Control y combos aéreos
 			Viento = {
 				name = "Eco del Viento",
+				role = "Control y combos aéreos",
 				color = Color3.fromRGB(150, 255, 230),
 				slots = { Z = "Cuchilla", X = "Ciclon", C = "Levante", V = "Tempestad" },
 				air = { C = "Descenso" },
@@ -644,18 +648,21 @@ local CombatConfig = {
 			-- Fluir, atrapar y sostener la vida
 			Agua = {
 				name = "Eco del Agua",
+				role = "Atrapar, arrastrar y curarse",
 				color = Color3.fromRGB(80, 175, 255),
 				slots = { Z = "Burbuja", X = "Oleaje", C = "Geiser", V = "Diluvio" },
 			},
 			-- Asesino: saltos de sombra y marcas
 			Oscuridad = {
 				name = "Eco de la Oscuridad",
+				role = "Saltos de sombra y marcas",
 				color = Color3.fromRGB(175, 95, 255),
 				slots = { Z = "PasoSombrio", X = "Daga", C = "Fauces", V = "Eclipse" },
 			},
 			-- Daño sostenido y explosiones
 			Fuego = {
 				name = "Eco del Fuego Infernal",
+				role = "Explosiones y quemaduras",
 				color = Color3.fromRGB(255, 110, 40),
 				slots = { Z = "BolaInfernal", X = "EstelaArdiente", C = "PunoVolcanico", V = "Infierno" },
 				air = { C = "Meteoro" },
@@ -663,6 +670,7 @@ local CombatConfig = {
 			-- Velocidad, cadenas y torretas
 			Trueno = {
 				name = "Eco del Trueno",
+				role = "Rayos en cadena y aturdir",
 				color = Color3.fromRGB(255, 235, 90),
 				slots = { Z = "Rayo", X = "Relampago", C = "Pararrayos", V = "Juicio" },
 			},
@@ -671,59 +679,59 @@ local CombatConfig = {
 			-- Z · proyectil: una cuchilla de viento que vuela recto hacia donde apuntas, atraviesa enemigos (cada uno
 			-- recibe un corte) y se detiene en las paredes. Aturde un instante e interrumpe preparaciones.
 			-- En el aire puede apuntar hacia abajo y te sostiene un instante (airStall).
-			Cuchilla = { slot = "Z", label = "Cuchilla", cooldown = 3, damage = 9, speed = 120, range = 60, radius = 2.5, knockback = 14, knockUp = 0, stun = 0.45, maxPitch = 50, airMaxPitch = 75, airStall = 0.25 },
+			Cuchilla = { slot = "Z", label = "Cuchilla", desc = "Corte de viento a distancia que atraviesa enemigos.", cooldown = 3, damage = 9, speed = 120, range = 60, radius = 2.5, knockback = 14, knockUp = 0, stun = 0.45, maxPitch = 50, airMaxPitch = 75, airStall = 0.25 },
 			-- X · atrae a los cercanos hasta tu frente y los aturde. En el aire: los sube hasta ti y los deja flotando.
-			Ciclon = { slot = "X", label = "Ciclón", cooldown = 6, damage = 7, radius = 12, pullTo = 3.5, airHeight = 14, stun = 0.9, airStun = 1.2, airSuspend = 0.7 },
+			Ciclon = { slot = "X", label = "Ciclón", desc = "Atrae a los cercanos hasta tu frente. En el aire, los sube contigo.", cooldown = 6, damage = 7, radius = 12, pullTo = 3.5, airHeight = 14, stun = 0.9, airStun = 1.2, airSuspend = 0.7 },
 			-- C · columna que lanza al aire (≈10 studs). Pulsar C otra vez enseguida: Ascenso (subes tras el lanzado).
-			Levante = { slot = "C", label = "Levante", cooldown = 5, damage = 8, range = 8, hitboxSize = Vector3.new(7, 8, 8), knockUp = 68, stun = 1.1, suspend = 0.6, juggle = 1.8, recastWindow = 1.2 },
+			Levante = { slot = "C", label = "Levante", desc = "Columna que lanza al aire. C otra vez: subes tras él.", cooldown = 5, damage = 8, range = 8, hitboxSize = Vector3.new(7, 8, 8), knockUp = 68, stun = 1.1, suspend = 0.6, juggle = 1.8, recastWindow = 1.2 },
 			-- C en el aire · picada; al aterrizar, onda que rebota a los enemigos hacia arriba. Antes arrastra consigo a
 			-- los enemigos que flotan cerca (los estampa contra el suelo).
-			Descenso = { slot = "C", label = "Descenso", cooldown = 5, damage = 11, radius = 9, knockback = 25, knockUp = 34, stun = 0.7, window = 1.5, plungeSpeed = 90, minHeight = 1.6, spikeRadius = 9, juggle = 1.0 }, -- minHeight: pies sobre el suelo (el cliente pide 2,2)
+			Descenso = { slot = "C", air = true, label = "Descenso", desc = "En el aire: picada que rebota a los enemigos hacia arriba.", cooldown = 5, damage = 11, radius = 9, knockback = 25, knockUp = 34, stun = 0.7, window = 1.5, plungeSpeed = 90, minHeight = 1.6, spikeRadius = 9, juggle = 1.0 }, -- minHeight: pies sobre el suelo (el cliente pide 2,2)
 			-- V · definitiva: un tornado frente a ti que atrae, sostiene y golpea a todos los de adentro; al terminar
 			-- estalla y los lanza. Mientras dura puedes moverte y seguir golpeando.
-			Tempestad = { slot = "V", label = "Tempestad", cooldown = 15, cost = 60, distance = 7, radius = 11, duration = 2.2, tick = 0.25, tickDamage = 2.5, holdHeight = 3, finalDamage = 12, finalKnockUp = 60, finalKnockback = 40, stun = 0.45 },
+			Tempestad = { slot = "V", label = "Tempestad", desc = "Tornado que atrapa y golpea a los de dentro; al final estalla.", cooldown = 15, cost = 60, distance = 7, radius = 11, duration = 2.2, tick = 0.25, tickDamage = 2.5, holdHeight = 3, finalDamage = 12, finalKnockUp = 60, finalKnockback = 40, stun = 0.45 },
 
 			-- ---------- Agua ----------
 			-- Z · burbuja lenta: atrapa al primer enemigo y lo sube flotando dentro (combo aéreo)
-			Burbuja = { slot = "Z", label = "Burbuja", cooldown = 4, damage = 6, speed = 70, range = 45, radius = 2.2, lift = 4, trap = 1.3, stun = 1.4, maxPitch = 40, airMaxPitch = 70 },
+			Burbuja = { slot = "Z", label = "Burbuja", desc = "Burbuja lenta que atrapa al primero y lo eleva.", cooldown = 4, damage = 6, speed = 70, range = 45, radius = 2.2, lift = 4, trap = 1.3, stun = 1.4, maxPitch = 40, airMaxPitch = 70 },
 			-- X · surfeas sobre una ola: arrastras a los del camino y los sueltas al final
-			Oleaje = { slot = "X", label = "Oleaje", cooldown = 6, damage = 8, distance = 16, duration = 0.32, width = 4.5, carry = 2.5, stun = 0.6, knockUp = 14 },
+			Oleaje = { slot = "X", label = "Oleaje", desc = "Surfeas una ola y arrastras a los del camino.", cooldown = 6, damage = 8, distance = 16, duration = 0.32, width = 4.5, carry = 2.5, stun = 0.6, knockUp = 14 },
 			-- C · géiser en el punto apuntado: aviso y erupción que lanza
-			Geiser = { slot = "C", label = "Géiser", cooldown = 6, damage = 10, range = 18, radius = 5, delay = 0.45, knockUp = 62, stun = 1.0, suspend = 0.5, juggle = 1.6 },
+			Geiser = { slot = "C", label = "Géiser", desc = "Géiser donde apuntas: tras un aviso, lanza al aire.", cooldown = 6, damage = 10, range = 18, radius = 5, delay = 0.45, knockUp = 62, stun = 1.0, suspend = 0.5, juggle = 1.6 },
 			-- V · gran ola frontal que barre y empuja, y lluvia que te cura
-			Diluvio = { slot = "V", label = "Diluvio", cooldown = 15, cost = 60, damage = 18, length = 22, width = 11, delay = 0.3, knockback = 70, knockUp = 16, stun = 0.8, heal = 32, healTime = 4 },
+			Diluvio = { slot = "V", label = "Diluvio", desc = "Gran ola que barre al frente y lluvia que te cura.", cooldown = 15, cost = 60, damage = 18, length = 22, width = 11, delay = 0.3, knockback = 70, knockUp = 16, stun = 0.8, heal = 32, healTime = 4 },
 
 			-- ---------- Oscuridad ----------
 			-- Z · salto de sombra (nunca atraviesa paredes): cortas a quien cruzas; Z otra vez: vuelves a tu sombra
-			PasoSombrio = { slot = "Z", label = "Paso Sombrío", cooldown = 5, damage = 5, distance = 16, duration = 0.12, width = 3.5, stun = 0.4, recastWindow = 2.5, returnMax = 34 },
+			PasoSombrio = { slot = "Z", label = "Paso Sombrío", desc = "Saltas por la sombra cortando al pasar. Z otra vez: vuelves.", cooldown = 5, damage = 5, distance = 16, duration = 0.12, width = 3.5, stun = 0.4, recastWindow = 2.5, returnMax = 34 },
 			-- X · daga que marca 4 s: golpear al marcado lo detona (daño extra) y recarga el Paso Sombrío
-			Daga = { slot = "X", label = "Daga Marcada", cooldown = 5, damage = 6, speed = 140, range = 40, radius = 1.6, mark = 4, detonate = 12, stun = 0.3, maxPitch = 40, airMaxPitch = 70 },
+			Daga = { slot = "X", label = "Daga Marcada", desc = "Marca 4 s. Golpear al marcado lo detona y recarga Z.", cooldown = 5, damage = 6, speed = 140, range = 40, radius = 1.6, mark = 4, detonate = 12, stun = 0.3, maxPitch = 40, airMaxPitch = 70 },
 			-- C · fauces de sombra en un cono al frente: inmovilizan y bajan a los que flotan
-			Fauces = { slot = "C", label = "Fauces", cooldown = 6, damage = 9, range = 11, angle = 50, stun = 1.3 },
+			Fauces = { slot = "C", label = "Fauces", desc = "Cono de sombra que inmoviliza y baja a los que flotan.", cooldown = 6, damage = 9, range = 11, angle = 50, stun = 1.3 },
 			-- V · forma sombría: los ataques te atraviesan, corres más y cada golpe suma un corte; estalla al final
-			Eclipse = { slot = "V", label = "Eclipse", cooldown = 16, cost = 60, duration = 4, speedBoost = 1.3, cut = 4, burstDamage = 15, burstRadius = 9, burstStun = 0.8 },
+			Eclipse = { slot = "V", label = "Eclipse", desc = "Forma sombría: te atraviesan, corres más y cortas extra.", cooldown = 16, cost = 60, duration = 4, speedBoost = 1.3, cut = 4, burstDamage = 15, burstRadius = 9, burstStun = 0.8 },
 
 			-- ---------- Fuego infernal ----------
 			-- Z · bola que explota al chocar y deja el suelo ardiendo
-			BolaInfernal = { slot = "Z", label = "Bola Infernal", cooldown = 4, damage = 10, speed = 90, range = 50, radius = 2, blast = 6, burn = 3, groundTime = 2, groundRadius = 5, knockback = 30, knockUp = 10, stun = 0.4, maxPitch = 40, airMaxPitch = 75 },
+			BolaInfernal = { slot = "Z", label = "Bola Infernal", desc = "Bola que explota al chocar y deja el suelo ardiendo.", cooldown = 4, damage = 10, speed = 90, range = 50, radius = 2, blast = 6, burn = 3, groundTime = 2, groundRadius = 5, knockback = 30, knockUp = 10, stun = 0.4, maxPitch = 40, airMaxPitch = 75 },
 			-- X · Paso de fuego que deja un rastro ardiente
-			EstelaArdiente = { slot = "X", label = "Estela Ardiente", cooldown = 6, damage = 6, distance = 14, duration = 0.24, width = 3.5, trailTime = 2.5, burn = 2, stun = 0.3 },
+			EstelaArdiente = { slot = "X", label = "Estela Ardiente", desc = "Paso de fuego que deja un rastro que quema.", cooldown = 6, damage = 6, distance = 14, duration = 0.24, width = 3.5, trailTime = 2.5, burn = 2, stun = 0.3 },
 			-- C · embestida corta y puñetazo que explota
-			PunoVolcanico = { slot = "C", label = "Puño Volcánico", cooldown = 6, damage = 14, lunge = 7, duration = 0.16, range = 6, hitboxSize = Vector3.new(7, 6, 7), knockback = 75, knockUp = 20, burn = 3, stun = 0.7 },
+			PunoVolcanico = { slot = "C", label = "Puño Volcánico", desc = "Embestida y puñetazo que explota y empuja lejos.", cooldown = 6, damage = 14, lunge = 7, duration = 0.16, range = 6, hitboxSize = Vector3.new(7, 6, 7), knockback = 75, knockUp = 20, burn = 3, stun = 0.7 },
 			-- C en el aire · picada en diagonal hacia donde apuntas; cráter ardiente
-			Meteoro = { slot = "C", label = "Meteoro", cooldown = 6, damage = 16, speed = 110, radius = 9, knockUp = 30, burn = 3, craterTime = 3, craterRadius = 7, stun = 0.7, window = 1.5, minHeight = 1.6, maxPitch = 80 },
+			Meteoro = { slot = "C", air = true, label = "Meteoro", desc = "En el aire: picada en diagonal que deja un cráter ardiente.", cooldown = 6, damage = 16, speed = 110, radius = 9, knockUp = 30, burn = 3, craterTime = 3, craterRadius = 7, stun = 0.7, window = 1.5, minHeight = 1.6, maxPitch = 80 },
 			-- V · anillo de fuego: quema a los de adentro; tus golpes arden
-			Infierno = { slot = "V", label = "Infierno", cooldown = 16, cost = 60, duration = 4.5, radius = 10, tick = 0.5, tickDamage = 4, extra = 3 },
+			Infierno = { slot = "V", label = "Infierno", desc = "Anillo que quema a los de dentro; tus golpes arden.", cooldown = 16, cost = 60, duration = 4.5, radius = 10, tick = 0.5, tickDamage = 4, extra = 3 },
 
 			-- ---------- Trueno ----------
 			-- Z · rayo instantáneo al enemigo apuntado que salta a 2 más cercanos
-			Rayo = { slot = "Z", label = "Rayo", cooldown = 3, damage = 8, range = 26, cone = 30, jumps = 2, jumpRange = 13, falloff = 0.75, stun = 0.5 },
+			Rayo = { slot = "Z", label = "Rayo", desc = "Rayo instantáneo que salta a 2 enemigos más.", cooldown = 3, damage = 8, range = 26, cone = 30, jumps = 2, jumpRange = 13, falloff = 0.75, stun = 0.5 },
 			-- X · te vuelves rayo y cruzas: daña y aturde a todos en el camino
-			Relampago = { slot = "X", label = "Relámpago", cooldown = 6, damage = 9, distance = 16, duration = 0.12, width = 3.5, stun = 0.8 },
+			Relampago = { slot = "X", label = "Relámpago", desc = "Cruzas como un rayo y aturdes a los del camino.", cooldown = 6, damage = 9, distance = 16, duration = 0.12, width = 3.5, stun = 0.8 },
 			-- C · tótem que electrocuta al más cercano cada medio segundo
-			Pararrayos = { slot = "C", label = "Pararrayos", cooldown = 8, range = 14, duration = 4, tick = 0.5, radius = 9, damage = 3, stun = 0.3 },
+			Pararrayos = { slot = "C", label = "Pararrayos", desc = "Tótem que electrocuta al enemigo más cercano.", cooldown = 8, range = 14, duration = 4, tick = 0.5, radius = 9, damage = 3, stun = 0.3 },
 			-- V · rayos que caen sobre los enemigos a tu alrededor
-			Juicio = { slot = "V", label = "Juicio", cooldown = 15, cost = 60, strikes = 6, interval = 0.25, radius = 18, damage = 8, knockUp = 25, stun = 0.6 },
+			Juicio = { slot = "V", label = "Juicio", desc = "Rayos que caen sobre los enemigos a tu alrededor.", cooldown = 15, cost = 60, strikes = 6, interval = 0.25, radius = 18, damage = 8, knockUp = 25, stun = 0.6 },
 		},
 		-- Estados: quemadura (daño cada medio segundo) y marca de la Daga
 		Burn = { tick = 0.5, damage = 2 },

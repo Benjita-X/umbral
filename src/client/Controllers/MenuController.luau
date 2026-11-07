@@ -37,6 +37,7 @@ local CONTROLS = {
 	{ "Gancho al orbe o enemigo marcado", "E", "Cruceta abajo", "GANCHO" },
 	{ "Cámara fija (el personaje mira a la mira) / ratón libre", "Ctrl", "—", "—" },
 	{ "Fijar enemigo (la cámara lo sigue) · tirón del ratón: cambiar", "R", "R3", "—" },
+	{ "Ver qué hace una habilidad (sin lanzarla)", "Alt + Z X C V", "—", "—" },
 	{ "Menú", "M", "Select", "MENÚ" },
 }
 
@@ -145,6 +146,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		local eco = CombatConfig.Eco
 		nextOrder(label(content, "ECOS   (elige uno · también con las teclas 1-" .. #eco.Order .. ")", UDim2.new(1, 0, 0, 18), Color3.fromRGB(170, 180, 205), Enum.Font.GothamBold))
 		local ecoButtons = {}
+		local details = nil -- qué hace cada tecla del Eco elegido (se rellena en refreshEcos)
 		local function refreshEcos()
 			for name, button in pairs(ecoButtons) do
 				local kit = eco.Kits[name]
@@ -157,17 +159,34 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 					stroke.Color = kit.color
 				end
 			end
+			if details then
+				for _, child in ipairs(details:GetChildren()) do
+					if child:IsA("TextLabel") then
+						child:Destroy()
+					end
+				end
+				local kit = ecoController.Kit()
+				local rows = 0
+				for _, slot in ipairs(eco.SlotOrder) do
+					for _, entry in ipairs({ { kit.slots[slot], slot }, { kit.air and kit.air[slot], slot .. " en el aire" } }) do
+						local skill = entry[1] and eco.Skills[entry[1]]
+						if skill then
+							rows += 1
+							local row = label(details, string.format("%s · %s — %s", entry[2], Texto.Mayusculas(skill.label), skill.desc or ""), UDim2.new(1, 0, 0, 18), kit.color)
+							row.Name = "Detalle" .. rows
+							row.LayoutOrder = rows
+						end
+					end
+				end
+				details.Size = UDim2.new(1, 0, 0, rows * 20)
+			end
 		end
 		for index, name in ipairs(eco.Order) do
 			local kit = eco.Kits[name]
 			local parts = {}
 			for _, slot in ipairs(eco.SlotOrder) do
 				local skill = eco.Skills[kit.slots[slot]]
-				local text = slot .. " " .. (skill and skill.label or "?")
-				if kit.air and kit.air[slot] and eco.Skills[kit.air[slot]] then
-					text ..= " (aire: " .. eco.Skills[kit.air[slot]].label .. ")"
-				end
-				table.insert(parts, text)
+				table.insert(parts, skill and skill.label or "?")
 			end
 			local button = Instance.new("TextButton")
 			button.Name = "Eco" .. name
@@ -175,7 +194,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			button.Font = Enum.Font.GothamBold
 			button.TextScaled = true
 			button.TextWrapped = true
-			button.Text = string.format("%d · %s  —  %s", index, Texto.Mayusculas(kit.name), table.concat(parts, " · "))
+			button.Text = string.format("%d · %s  —  %s  (%s)", index, Texto.Mayusculas(kit.name), kit.role or "", table.concat(parts, ", "))
 			corner(button, 8)
 			local stroke = Instance.new("UIStroke")
 			stroke.Thickness = 2
@@ -193,6 +212,17 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			nextOrder(button)
 			button.Parent = content
 		end
+		-- Lo que hace cada tecla del Eco elegido
+		details = Instance.new("Frame")
+		details.Name = "DetallesEco"
+		details.BackgroundTransparency = 1
+		details.Size = UDim2.new(1, 0, 0, 100)
+		local detailsList = Instance.new("UIListLayout")
+		detailsList.Padding = UDim.new(0, 2)
+		detailsList.SortOrder = Enum.SortOrder.LayoutOrder
+		detailsList.Parent = details
+		nextOrder(details)
+		details.Parent = content
 		refreshEcos()
 		ecoController.KitChanged:Connect(refreshEcos)
 	end

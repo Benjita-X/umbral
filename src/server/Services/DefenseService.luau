@@ -42,8 +42,14 @@ local function prune(list, t)
 end
 
 -- Latencia de ida (aprox. la mitad del ping), con el MISMO tope que el historial de posiciones
+-- Ping con la latencia simulada de las pruebas (ver PositionService.Ping; no se requiere para no crear un ciclo)
+local function pingOf(player)
+	return player:GetNetworkPing() + (Workspace:GetAttribute("LatenciaSimulada") or 0) * 2
+end
+DefenseService.Ping = pingOf
+
 function DefenseService.OneWay(player)
-	return math.min(player:GetNetworkPing() / 2, CombatConfig.Network.MaxRewind / 2)
+	return math.min(pingOf(player) / 2, CombatConfig.Network.MaxRewind / 2)
 end
 
 local MAX_EVENTS_PER_SECOND = 30 -- defensas por segundo y jugador (machacar a mano no llega a 15)
@@ -55,7 +61,7 @@ local function validTime(player, t)
 	if type(t) ~= "number" or t ~= t then
 		return false, current
 	end
-	local maxAge = math.min(player:GetNetworkPing(), CombatConfig.Network.MaxRewind) + defense.TimestampSlack
+	local maxAge = math.min(pingOf(player), CombatConfig.Network.MaxRewind) + defense.TimestampSlack
 	if t > current + 0.05 or t < current - maxAge then
 		return false, current
 	end

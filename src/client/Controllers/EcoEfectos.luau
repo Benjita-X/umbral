@@ -146,7 +146,7 @@ end
 local wallParams = RaycastParams.new()
 wallParams.FilterType = Enum.RaycastFilterType.Exclude
 wallParams.RespectCanCollide = true
-function EcoEfectos.Projectile(origin, dir, speed, range, parts, onEnd)
+function EcoEfectos.Projectile(origin, dir, speed, range, parts, onEnd, relative)
 	local ignore = { folder() }
 	for _, other in ipairs(Players:GetPlayers()) do
 		if other.Character then
@@ -158,8 +158,10 @@ function EcoEfectos.Projectile(origin, dir, speed, range, parts, onEnd)
 	local position = origin
 	local basis = CFrame.lookAt(Vector3.zero, dir)
 	local offsets = {}
+	-- relative = true: las piezas conservan su posición respecto al proyectil (se crearon ya colocadas)
+	local startFrame = CFrame.new(origin) * basis.Rotation
 	for i, part in ipairs(parts) do
-		offsets[i] = part.CFrame.Rotation
+		offsets[i] = if relative then startFrame:ToObjectSpace(part.CFrame) else part.CFrame.Rotation
 	end
 	local connection
 	connection = RunService.Heartbeat:Connect(function(dt)
@@ -204,38 +206,50 @@ end
 
 -- Cuchilla: un disco de viento ancho y fino con estela
 function EcoEfectos.Cuchilla(origin, dir, speed, range, color)
-	local look = CFrame.lookAt(origin, origin + dir)
-	local blade = EcoEfectos.Part(Vector3.new(5, 0.35, 1.2), look, color, Enum.PartType.Block, 0.15)
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Parent = blade
-	local glow = EcoEfectos.Part(Vector3.new(6.5, 0.6, 2), look, color, Enum.PartType.Block, 0.7)
-	local glowMesh = Instance.new("SpecialMesh")
-	glowMesh.MeshType = Enum.MeshType.Sphere
-	glowMesh.Parent = glow
-	local a0 = Instance.new("Attachment")
-	a0.Position = Vector3.new(-2.4, 0, 0)
-	a0.Parent = blade
-	local a1 = Instance.new("Attachment")
-	a1.Position = Vector3.new(2.4, 0, 0)
-	a1.Parent = blade
-	local trail = Instance.new("Trail")
-	trail.Attachment0 = a0
-	trail.Attachment1 = a1
-	trail.Color = ColorSequence.new(color)
-	trail.LightEmission = 0.9
-	trail.Lifetime = 0.18
-	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
-	trail.Parent = blade
-	-- Las piezas se orientan con la dirección: su giro propio es la identidad
-	blade.CFrame = CFrame.new(origin)
-	glow.CFrame = CFrame.new(origin)
+	-- Media luna horizontal que vuela con la panza hacia adelante: tramos de neón de color con el filo blanco
+	local frame = CFrame.lookAt(origin, origin + dir)
+	local parts = {}
+	local radius, count = 3.2, 9
+	local tips = {}
+	for i = 1, count do
+		local t = (i - 0.5) / count
+		local angle = math.rad(-70 + 140 * t)
+		local profile = math.sin(math.pi * t) ^ 0.7
+		local local_ = Vector3.new(math.sin(angle) * radius, 0, -(math.cos(angle) * radius) + radius * 0.75)
+		local radial = Vector3.new(math.sin(angle), 0, -math.cos(angle))
+		local segFrame = frame * CFrame.fromMatrix(local_, radial, Vector3.yAxis)
+		local w = math.max(0.15, 1.1 * profile)
+		table.insert(parts, EcoEfectos.Part(Vector3.new(w, 0.14, radius * 0.3), segFrame, color, Enum.PartType.Block, 0.15))
+		table.insert(parts, EcoEfectos.Part(Vector3.new(w * 0.38, 0.16, radius * 0.3), segFrame * CFrame.new(w * 0.3, 0, 0), Color3.new(1, 1, 1), Enum.PartType.Block, 0))
+		if i == 1 or i == count then
+			table.insert(tips, parts[#parts - 1])
+		end
+	end
+	-- Estelas desde las dos puntas
+	for _, tip in ipairs(tips) do
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(0, 0.25, 0)
+		a0.Parent = tip
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(0, -0.25, 0)
+		a1.Parent = tip
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Color = ColorSequence.new(Color3.new(1, 1, 1), color)
+		trail.LightEmission = 1
+		trail.Lifetime = 0.2
+		trail.FaceCamera = true
+		trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+		trail.Parent = tip
+	end
 	EcoEfectos.Sound("Lanzar", origin)
-	EcoEfectos.Projectile(origin, dir, speed, range, { blade, glow }, function(position, hitWall)
+	EcoEfectos.Projectile(origin, dir, speed, range, parts, function(position, hitWall)
 		if hitWall then
 			EcoEfectos.Burst(position, color, 14, 0.7, 24)
+			EcoEfectos.Destello(position, color, 3.5, 0.12)
 		end
-	end)
+	end, true)
 end
 
 -- Ciclón: anillos que giran y se cierran hacia el centro
@@ -312,10 +326,20 @@ function EcoEfectos.Tornado(center, radius, color, duration)
 end
 
 -- Impacto de una habilidad sobre un enemigo (confirmado por el servidor)
-function EcoEfectos.Impacto(position, color)
-	EcoEfectos.Burst(position, color, 12, 0.7, 26)
+function EcoEfectos.Impacto(position, color, element, big)
+	EcoEfectos.Burst(position, color, if big then 18 else 12, 0.7, 26)
+	EcoEfectos.Destello(position, color, if big then 7 else 4.6, if big then 0.2 else 0.15)
+	EcoEfectos.Rayas(position, color, if big then 10 else 6, if big then 6 else 4)
+	if element then
+		EcoEfectos.Elemento(position, element, if big then 1.4 else 0.8)
+	end
+	if big then
+		local camera = Workspace.CurrentCamera
+		local toCamera = if camera then (camera.CFrame.Position - position) else Vector3.yAxis
+		EcoEfectos.OndaChoque(position, color, 5, if toCamera.Magnitude > 0.1 then toCamera.Unit else Vector3.yAxis, 0.22)
+	end
 	local flash = EcoEfectos.Part(Vector3.new(1, 1, 1), CFrame.new(position), color, Enum.PartType.Ball, 0.2)
-	fadeAndDestroy(flash, 0.18, { Size = Vector3.new(4, 4, 4) })
+	fadeAndDestroy(flash, 0.16, { Size = Vector3.new(3.5, 3.5, 3.5) })
 end
 
 -- Estela de picada (Descenso) y onda al aterrizar
@@ -367,7 +391,7 @@ function EcoEfectos.Orbe(origin, dir, speed, range, color, size, texture, onEnd)
 end
 
 -- Rayo entre dos puntos: tramos en zigzag que destellan y se apagan
-function EcoEfectos.Rayo(from, to, color, width)
+function EcoEfectos.Rayo(from, to, color, width, quiet)
 	local points = { from }
 	local segments = math.clamp(math.floor((to - from).Magnitude / 3), 3, 12)
 	for i = 1, segments - 1 do
@@ -380,11 +404,18 @@ function EcoEfectos.Rayo(from, to, color, width)
 		local a, b = points[i], points[i + 1]
 		local length = (b - a).Magnitude
 		if length > 0.05 then
-			local bolt = EcoEfectos.Part(Vector3.new(width or 0.35, width or 0.35, length), CFrame.lookAt((a + b) / 2, b), color, Enum.PartType.Block, 0)
+			local w = width or 0.35
+			local bolt = EcoEfectos.Part(Vector3.new(w * 2.2, w * 2.2, length), CFrame.lookAt((a + b) / 2, b), color, Enum.PartType.Block, 0.45)
 			fadeAndDestroy(bolt, 0.22, { Size = Vector3.new(0.05, 0.05, length) })
+			local core = EcoEfectos.Part(Vector3.new(w, w, length), CFrame.lookAt((a + b) / 2, b), Color3.new(1, 1, 1), Enum.PartType.Block, 0)
+			fadeAndDestroy(core, 0.18, { Size = Vector3.new(0.03, 0.03, length) })
 		end
 	end
+	if quiet then
+		return
+	end
 	EcoEfectos.Burst(to, color, 10, 0.6, 22)
+	EcoEfectos.Destello(to, color, 3.5, 0.14)
 	EcoEfectos.Sound("Golpe", to)
 end
 
@@ -455,6 +486,8 @@ function EcoEfectos.Explosion(center, radius, color)
 	local ball = EcoEfectos.Part(Vector3.new(1, 1, 1), CFrame.new(center), color, Enum.PartType.Ball, 0.1)
 	fadeAndDestroy(ball, 0.3, { Size = Vector3.new(radius * 2, radius * 2, radius * 2) })
 	EcoEfectos.Ring(EcoEfectos.Ground(center) + Vector3.new(0, 0.3, 0), radius * 1.2, color, 0.3, 0.5)
+	EcoEfectos.OndaChoque(EcoEfectos.Ground(center) + Vector3.new(0, 0.35, 0), color, radius * 1.4, Vector3.yAxis, 0.3)
+	EcoEfectos.Destello(center, color, radius * 1.1, 0.18)
 	EcoEfectos.Burst(center, color, 30, 1.1, 45)
 	EcoEfectos.Burst(center, Color3.fromRGB(255, 240, 200), 14, 0.8, 30)
 	EcoEfectos.Sound("Estallido", center)
@@ -713,6 +746,338 @@ function EcoEfectos.Nube(center, color, duration)
 	cloud.Material = Enum.Material.SmoothPlastic
 	fadeAndDestroy(cloud, duration + 0.4)
 	local _ = color
+end
+
+-- =====================================================================================================
+-- ---------- Estilo: arcos, destellos y estelas (lo que hace que las habilidades se vean "de anime") ----------
+-- Todo con piezas de neón (el brillo de la iluminación las hace resplandecer) y texturas que trae Roblox.
+-- =====================================================================================================
+
+local ELEMENT_TEXTURES = {
+	Embers = "rbxasset://textures/particles/fire_sparks_main.dds",
+	Vortex = "rbxasset://textures/particles/forcefield_vortex_main.dds",
+}
+local WHITE = Color3.new(1, 1, 1)
+
+-- Arco de corte en media luna: núcleo blanco por fuera y borde de color, que BARRE en `sweep` s (aparece del
+-- primer al último tramo) y se desvanece afinándose. El arco va de `fromDeg` a `toDeg`, medidos desde `axisA`
+-- girando hacia `axisB` (p. ej. A = frente y B = derecha: un tajo horizontal de izquierda a derecha).
+-- opts: width (grosor máximo), sweep, fade, core (false: sin núcleo blanco), transparency.
+function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, opts)
+	opts = opts or {}
+	local width = opts.width or 1.1
+	local sweep = opts.sweep or 0.07
+	local fade = opts.fade or 0.2
+	local base = opts.transparency or 0.12
+	axisA, axisB = axisA.Unit, axisB.Unit
+	local normal = axisA:Cross(axisB)
+	if normal.Magnitude < 0.01 then
+		return
+	end
+	normal = normal.Unit
+	local from, to = math.rad(fromDeg), math.rad(toDeg)
+	local length = radius * math.abs(to - from)
+	local count = math.clamp(math.floor(length / 0.95), 6, 18)
+	local segLength = length / count * 1.2
+	local segments = {}
+	for i = 1, count do
+		local t = (i - 0.5) / count
+		local angle = from + (to - from) * t
+		local radial = axisA * math.cos(angle) + axisB * math.sin(angle)
+		local profile = math.sin(math.pi * t) ^ 0.7 -- fino en las puntas, grueso en el medio
+		local w = math.max(0.12, width * profile)
+		local position = center + radial * radius
+		local frame = CFrame.fromMatrix(position, radial, normal)
+		local outer = EcoEfectos.Part(Vector3.new(w, 0.1, segLength), frame, color, Enum.PartType.Block, 1)
+		local core = nil
+		if opts.core ~= false then
+			core = EcoEfectos.Part(Vector3.new(w * 0.36, 0.12, segLength), frame * CFrame.new(w * 0.28, 0, 0), WHITE, Enum.PartType.Block, 1)
+		end
+		segments[i] = { outer = outer, core = core, w = w, frame = frame, appear = (i - 1) / count * sweep }
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		local elapsed = os.clock() - start
+		local alive = false
+		for _, seg in ipairs(segments) do
+			local life = elapsed - seg.appear
+			if life < 0 then
+				alive = true
+			else
+				local k = math.clamp(life / fade, 0, 1)
+				if k < 1 then
+					alive = true
+				end
+				local thin = 1 - 0.75 * k
+				seg.outer.Transparency = base + (1 - base) * k
+				seg.outer.Size = Vector3.new(seg.w * thin, 0.1, segLength)
+				if seg.core then
+					seg.core.Transparency = k
+					seg.core.Size = Vector3.new(seg.w * 0.36 * thin, 0.12, segLength)
+					seg.core.CFrame = seg.frame * CFrame.new(seg.w * 0.28 * thin, 0, 0)
+				end
+			end
+		end
+		if not alive then
+			connection:Disconnect()
+			for _, seg in ipairs(segments) do
+				seg.outer:Destroy()
+				if seg.core then
+					seg.core:Destroy()
+				end
+			end
+		end
+	end)
+end
+
+-- Tajo horizontal delante de un personaje (o de un punto) hacia `dir`, un poco inclinado
+function EcoEfectos.Tajo(origin, dir, color, radius, tiltDeg, opts)
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	flat = if flat.Magnitude > 0.05 then flat.Unit else Vector3.new(0, 0, -1)
+	local right = flat:Cross(Vector3.yAxis).Unit
+	local tilt = math.rad(tiltDeg or 0)
+	local up = Vector3.yAxis * math.cos(tilt) + right * math.sin(tilt)
+	local axisB = up:Cross(flat).Unit -- "derecha" inclinada
+	EcoEfectos.Arco(origin, flat, axisB, radius or 3.4, -80, 80, color, opts)
+end
+
+-- Destello de impacto: estrella de agujas de neón mirando a la cámara, que se abre y se cierra en un instante
+function EcoEfectos.Destello(position, color, size, duration)
+	size = size or 4.5
+	duration = duration or 0.16
+	local camera = Workspace.CurrentCamera
+	local toCamera = if camera then camera.CFrame.Position - position else Vector3.new(0, 0, 1)
+	if toCamera.Magnitude < 0.01 then
+		toCamera = Vector3.new(0, 0, 1)
+	end
+	local base = CFrame.lookAt(position, position + toCamera.Unit)
+	local spin = math.random() * math.pi
+	local rays = {}
+	for k = 0, 3 do
+		local long = k % 2 == 0
+		local length = size * (if long then 1 else 0.55)
+		local frame = base * CFrame.Angles(0, 0, spin + k * math.pi / 4) * CFrame.Angles(0, math.rad(90), 0)
+		for layer = 1, 2 do
+			local thickness = size * (if layer == 1 then 0.16 else 0.07)
+			local part = EcoEfectos.Part(Vector3.new(thickness, thickness, length * (if layer == 1 then 1.1 else 1)), frame, if layer == 1 then color else WHITE, Enum.PartType.Block, if layer == 1 then 0.35 else 0)
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Scale = Vector3.new(0.2, 0.2, 0.2)
+			mesh.Parent = part
+			table.insert(rays, { part = part, mesh = mesh, base = part.Transparency })
+		end
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		local t = (os.clock() - start) / duration
+		local scale = if t < 0.3 then 0.2 + 0.8 * (t / 0.3) else math.max(0, 1 - (t - 0.3) / 0.7)
+		for _, ray in ipairs(rays) do
+			ray.mesh.Scale = Vector3.new(math.max(scale, 0.05), math.max(scale, 0.05), math.max(scale * 1.15, 0.05))
+			ray.part.Transparency = ray.base + (1 - ray.base) * math.clamp((t - 0.5) / 0.5, 0, 1)
+		end
+		if t >= 1 then
+			connection:Disconnect()
+			for _, ray in ipairs(rays) do
+				ray.part:Destroy()
+			end
+		end
+	end)
+end
+
+-- Rayas de velocidad que salen disparadas del punto de impacto (en 3D)
+function EcoEfectos.Rayas(position, color, count, length, duration)
+	count = count or 6
+	length = length or 4
+	duration = duration or 0.16
+	local streaks = {}
+	for _ = 1, count do
+		local dir = Vector3.new(math.random() - 0.5, (math.random() - 0.3) * 0.9, math.random() - 0.5)
+		dir = if dir.Magnitude > 0.05 then dir.Unit else Vector3.new(1, 0, 0)
+		local part = EcoEfectos.Part(Vector3.new(0.1, 0.1, 0.5), CFrame.lookAt(position, position + dir), if math.random() < 0.5 then WHITE else color, Enum.PartType.Block, 0.05)
+		table.insert(streaks, { part = part, dir = dir, length = length * (0.6 + math.random() * 0.6) })
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		local t = math.clamp((os.clock() - start) / duration, 0, 1)
+		local ease = 1 - (1 - t) ^ 3
+		for _, s in ipairs(streaks) do
+			local len = s.length * (0.25 + 0.75 * ease) * (1 - t * 0.5)
+			local head = position + s.dir * (0.6 + s.length * ease)
+			s.part.Size = Vector3.new(0.1 * (1 - t) + 0.02, 0.1 * (1 - t) + 0.02, len)
+			s.part.CFrame = CFrame.lookAt(head - s.dir * len / 2, head)
+			s.part.Transparency = 0.05 + 0.95 * t
+		end
+		if t >= 1 then
+			connection:Disconnect()
+			for _, s in ipairs(streaks) do
+				s.part:Destroy()
+			end
+		end
+	end)
+end
+
+-- Onda de choque con textura (plana, perpendicular a `normal`; por defecto, en el suelo)
+function EcoEfectos.OndaChoque(position, color, radius, normal, duration)
+	normal = (normal or Vector3.yAxis).Unit
+	local helper = if math.abs(normal.Y) > 0.95 then Vector3.xAxis else Vector3.yAxis
+	local right = helper:Cross(normal).Unit
+	local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.fromMatrix(position, right, normal), color, nil, 1)
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = anchor
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Texture = TEXTURES.Shockwave
+	emitter.Color = ColorSequence.new(WHITE:Lerp(color, 0.5), color)
+	emitter.LightEmission = 1
+	emitter.LightInfluence = 0
+	emitter.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Speed = NumberRange.new(0.01)
+	emitter.SpreadAngle = Vector2.new(0, 0)
+	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, radius * 2) })
+	emitter.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
+	emitter.Lifetime = NumberRange.new(duration or 0.28)
+	emitter.LockedToPart = true
+	emitter.Rate = 0
+	emitter.Parent = attachment
+	emitter:Emit(1)
+	Debris:AddItem(anchor, (duration or 0.28) + 0.2)
+end
+
+-- Partículas propias de cada elemento: viento (chispas blancas), agua (gotas), oscuridad (humo), fuego (brasas),
+-- trueno (chispazos). `amount` multiplica la cantidad.
+function EcoEfectos.Elemento(position, element, amount)
+	amount = amount or 1
+	local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.new(position), WHITE, nil, 1)
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = anchor
+	local function emit(props, count)
+		local emitter = Instance.new("ParticleEmitter")
+		emitter.Rate = 0
+		emitter.LightInfluence = 0
+		for key, value in pairs(props) do
+			emitter[key] = value
+		end
+		emitter.Parent = attachment
+		emitter:Emit(math.max(1, math.floor(count * amount + 0.5)))
+	end
+	if element == "Agua" then
+		emit({ Texture = TEXTURES.Sparks, Color = ColorSequence.new(Color3.fromRGB(200, 240, 255), Color3.fromRGB(70, 160, 255)), LightEmission = 0.7, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 0.1) }), Lifetime = NumberRange.new(0.35, 0.7), Speed = NumberRange.new(14, 30), SpreadAngle = Vector2.new(70, 70), EmissionDirection = Enum.NormalId.Top, Acceleration = Vector3.new(0, -70, 0), Drag = 1 }, 18)
+		emit({ Texture = TEXTURES.Smoke, Color = ColorSequence.new(Color3.fromRGB(180, 225, 255)), LightEmission = 0.4, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 3.5) }), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) }), Lifetime = NumberRange.new(0.3, 0.5), Speed = NumberRange.new(3, 8), SpreadAngle = Vector2.new(180, 180) }, 5)
+	elseif element == "Fuego" then
+		emit({ Texture = ELEMENT_TEXTURES.Embers, Color = ColorSequence.new(Color3.fromRGB(255, 230, 120), Color3.fromRGB(255, 90, 20)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.4, 0.9), Speed = NumberRange.new(10, 24), SpreadAngle = Vector2.new(180, 180), Acceleration = Vector3.new(0, 18, 0), Drag = 3 }, 16)
+		emit({ Texture = TEXTURES.Fire, Color = ColorSequence.new(Color3.fromRGB(255, 200, 90), Color3.fromRGB(255, 60, 10)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.4), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.2, 0.4), Speed = NumberRange.new(4, 10), SpreadAngle = Vector2.new(180, 180) }, 8)
+	elseif element == "Oscuridad" then
+		emit({ Texture = TEXTURES.Smoke, Color = ColorSequence.new(Color3.fromRGB(70, 20, 110), Color3.fromRGB(15, 5, 25)), LightEmission = 0, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.4), NumberSequenceKeypoint.new(1, 4.5) }), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) }), Lifetime = NumberRange.new(0.45, 0.85), Speed = NumberRange.new(3, 8), SpreadAngle = Vector2.new(180, 180), RotSpeed = NumberRange.new(-90, 90) }, 9)
+		emit({ Texture = TEXTURES.Sparks, Color = ColorSequence.new(Color3.fromRGB(220, 160, 255)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.15, 0.35), Speed = NumberRange.new(18, 34), SpreadAngle = Vector2.new(180, 180), Drag = 6 }, 10)
+	elseif element == "Trueno" then
+		emit({ Texture = TEXTURES.Sparks, Color = ColorSequence.new(WHITE, Color3.fromRGB(255, 235, 90)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.08, 0.22), Speed = NumberRange.new(30, 55), SpreadAngle = Vector2.new(180, 180), Drag = 9 }, 20)
+		for _ = 1, 2 do
+			local dir = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5)
+			if dir.Magnitude > 0.05 then
+				EcoEfectos.Rayo(position, position + dir.Unit * (2.5 + math.random() * 2), Color3.fromRGB(255, 240, 140), 0.18, true)
+			end
+		end
+	else -- Viento (y cualquier otro)
+		emit({ Texture = TEXTURES.Sparks, Color = ColorSequence.new(WHITE, Color3.fromRGB(150, 255, 230)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.15, 0.35), Speed = NumberRange.new(20, 40), SpreadAngle = Vector2.new(180, 180), Drag = 5 }, 14)
+		emit({ Texture = ELEMENT_TEXTURES.Vortex, Color = ColorSequence.new(Color3.fromRGB(200, 255, 240)), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 4) }), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) }), Lifetime = NumberRange.new(0.25), Speed = NumberRange.new(0), RotSpeed = NumberRange.new(400, 600) }, 1)
+	end
+	Debris:AddItem(anchor, 1.2)
+end
+
+-- Estelas de color en manos y pies mientras dura una habilidad (blanco que se tiñe del color del Eco)
+local LIMBS = { "RightHand", "LeftHand", "RightFoot", "LeftFoot", "Right Arm", "Left Arm", "Right Leg", "Left Leg" }
+function EcoEfectos.Estela(character, color, duration)
+	if not character then
+		return
+	end
+	duration = duration or 0.45
+	local untilTime = os.clock() + duration
+	for _, name in ipairs(LIMBS) do
+		local limb = character:FindFirstChild(name)
+		if limb and limb:IsA("BasePart") then
+			local trail = limb:FindFirstChild("UmbralEstelaEco")
+			if not trail then
+				local r6 = limb.Size.Y > 1.5 -- brazo o pierna entera (R6): la estela va en la punta
+				local tip = if r6 then -limb.Size.Y / 2 + 0.2 else 0
+				local a0 = Instance.new("Attachment")
+				a0.Name = "UmbralEstelaEcoA"
+				a0.Position = Vector3.new(0, tip + 0.28, 0)
+				a0.Parent = limb
+				local a1 = Instance.new("Attachment")
+				a1.Name = "UmbralEstelaEcoB"
+				a1.Position = Vector3.new(0, tip - 0.28, 0)
+				a1.Parent = limb
+				trail = Instance.new("Trail")
+				trail.Name = "UmbralEstelaEco"
+				trail.Attachment0 = a0
+				trail.Attachment1 = a1
+				trail.LightEmission = 1
+				trail.Lifetime = 0.24
+				trail.FaceCamera = true
+				trail.MinLength = 0.05
+				trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.05), NumberSequenceKeypoint.new(1, 1) })
+				trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.15) })
+				trail.Parent = limb
+			end
+			trail.Color = ColorSequence.new(WHITE:Lerp(color, 0.35), color)
+			trail.Enabled = true
+			trail:SetAttribute("Hasta", untilTime)
+			task.delay(duration, function()
+				if trail.Parent and (trail:GetAttribute("Hasta") or 0) <= os.clock() + 0.01 then
+					trail.Enabled = false
+				end
+			end)
+		end
+	end
+end
+
+-- Cuadro de impacto: un instante de alto contraste y casi sin color (y un velo blanco) en los golpes grandes.
+-- Se apaga con el ajuste "Destellos al golpear" del menú.
+local impactEffect, impactGui = nil, nil
+function EcoEfectos.ImpactFrame(color, strength)
+	local feedback = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig")).Feedback
+	if not feedback.Flashes then
+		return
+	end
+	strength = strength or 1
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	if not impactEffect or not impactEffect.Parent then
+		impactEffect = Instance.new("ColorCorrectionEffect")
+		impactEffect.Name = "UmbralCuadroImpacto"
+		impactEffect.Parent = camera
+	end
+	impactEffect.Contrast = 0.55 * strength
+	impactEffect.Saturation = -0.55 * strength
+	impactEffect.Brightness = 0.1 * strength
+	impactEffect.TintColor = WHITE:Lerp(color, 0.2)
+	task.delay(0.05, function()
+		tween(impactEffect, 0.18, { Contrast = 0, Saturation = 0, Brightness = 0, TintColor = WHITE })
+	end)
+	local player = Players.LocalPlayer
+	if not impactGui or not impactGui.Parent then
+		impactGui = Instance.new("ScreenGui")
+		impactGui.Name = "UmbralVeloImpacto"
+		impactGui.IgnoreGuiInset = true
+		impactGui.ResetOnSpawn = false
+		impactGui.DisplayOrder = 3
+		local frame = Instance.new("Frame")
+		frame.Name = "Velo"
+		frame.Size = UDim2.fromScale(1, 1)
+		frame.BorderSizePixel = 0
+		frame.BackgroundTransparency = 1
+		frame.Parent = impactGui
+		impactGui.Parent = player:WaitForChild("PlayerGui")
+	end
+	local veil = impactGui.Velo
+	veil.BackgroundColor3 = WHITE:Lerp(color, 0.3)
+	veil.BackgroundTransparency = 1 - 0.32 * strength
+	tween(veil, 0.14, { BackgroundTransparency = 1 })
 end
 
 

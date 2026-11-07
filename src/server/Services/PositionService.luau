@@ -60,14 +60,21 @@ local function flatDistance(a, b)
 	return Vector3.new(d.X, 0, d.Z).Magnitude
 end
 
+-- Ping (ida y vuelta, s) del jugador. Studio no cuenta su latencia simulada en GetNetworkPing: en el lugar de
+-- pruebas con -Retraso se suma (atributo LatenciaSimulada de Workspace, por sentido), para que las ventanas se
+-- comporten como con una conexión real. En el juego normal ese atributo no existe.
+function PositionService.Ping(player)
+	return player:GetNetworkPing() + (Workspace:GetAttribute("LatenciaSimulada") or 0) * 2
+end
+
 -- Retroceso máximo aceptado para este jugador (latencia de ida y vuelta, con tope)
 function PositionService.Rewind(player)
-	return math.min(player:GetNetworkPing(), net.MaxRewind)
+	return math.min(PositionService.Ping(player), net.MaxRewind)
 end
 
 -- Latencia de ida (aprox. la mitad del ping), con tope
 function PositionService.OneWay(player)
-	return math.min(player:GetNetworkPing() / 2, net.MaxRewind / 2)
+	return math.min(PositionService.Ping(player) / 2, net.MaxRewind / 2)
 end
 
 function PositionService.Teleporting(player)
@@ -279,10 +286,14 @@ function PositionService.ConfirmedAt(player, t)
 	end
 end
 
--- Para teletransportes legítimos (reaparecer, pruebas): durante un instante, un salto no es sospechoso
-function PositionService.AllowTeleport(player, seconds)
-	teleportAllowance[player] = now() + (seconds or 0.5)
-	teleportCut[player] = now()
+-- Para teletransportes legítimos (reaparecer, pruebas): durante un instante, un salto no es sospechoso.
+-- `cutAt` (opcional): hora sincronizada en que el personaje se mueve, si la sabe quien lo mueve (el cliente,
+-- en las pruebas); si no, ahora. Lo informado antes del corte es del lugar viejo.
+function PositionService.AllowTeleport(player, seconds, cutAt)
+	local t = now()
+	teleportAllowance[player] = t + (seconds or 0.5)
+	local validCut = type(cutAt) == "number" and cutAt == cutAt and cutAt >= t - net.MaxRewind - net.ClockSlack and cutAt <= t + 0.5
+	teleportCut[player] = if validCut then cutAt else t
 	-- Lo informado ANTES no se borra (un golpe dado justo antes todavía se confirma con ello); al
 	-- interpolar no se cruza el corte (ver reportedAt). El historial OBSERVADO tampoco se borra: es lo que vio el servidor, y un golpe dado justo antes del
 	-- teletransporte todavía se juzga con él

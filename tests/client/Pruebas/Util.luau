@@ -120,7 +120,9 @@ function ctx.teleport(position, look)
 	ctx.humanoid:Move(Vector3.zero)
 	ctx.root.AssemblyLinearVelocity = Vector3.zero
 	if ctx.remote then
-		ctx.remote:FireServer("teletransporte") -- el servidor no lo cuenta como movimiento imposible
+		-- El servidor no lo cuenta como movimiento imposible. Se le dice A QUÉ HORA se mueve el personaje: con
+		-- latencia, su propia hora de llegada es posterior y descartaría las primeras muestras del lugar nuevo
+		ctx.remote:FireServer("teletransporte", game:GetService("Workspace"):GetServerTimeNow() + 0.05)
 		task.wait(0.05)
 		ctx.humanoid:Move(Vector3.zero)
 		ctx.root.AssemblyLinearVelocity = Vector3.zero
@@ -164,6 +166,23 @@ function ctx.trackJump(maxTime, onFrame)
 end
 
 -- Prepara al personaje: listo, sin controles de teclado (para que no pisen la dirección de prueba)
+-- Motivos de rechazo de habilidades, en orden (el atributo solo guarda el último)
+ctx.rejections = {}
+player:GetAttributeChangedSignal("EcosRechazados"):Connect(function()
+	table.insert(ctx.rejections, tostring(player:GetAttribute("EcoRechazado")))
+	if #ctx.rejections > 40 then
+		table.remove(ctx.rejections, 1)
+	end
+end)
+-- Los últimos `n` motivos (para el detalle de una prueba que falla)
+function ctx.lastRejections(n)
+	local list = {}
+	for i = math.max(1, #ctx.rejections - (n or 3) + 1), #ctx.rejections do
+		table.insert(list, ctx.rejections[i])
+	end
+	return if #list > 0 then table.concat(list, " → ") else "ninguno"
+end
+
 function ctx.start()
 	ctx.bindCharacter(player.Character or player.CharacterAdded:Wait())
 	local ready = ctx.waitUntil(function()
@@ -177,6 +196,13 @@ function ctx.start()
 		require(camera).SetLocked(false)
 	end
 	ctx.settle()
+	-- Diagnóstico de red: ping medido por cada lado y desfase del reloj sincronizado
+	task.wait(1)
+	print(string.format(
+		"[UMBRAL-PRUEBAS] red · ping del cliente %d ms · ping según el servidor %s ms",
+		math.floor(player:GetNetworkPing() * 1000 + 0.5),
+		tostring(player:GetAttribute("PingServidor"))
+	))
 	return ready
 end
 

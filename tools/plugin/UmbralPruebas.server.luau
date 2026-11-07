@@ -15,6 +15,22 @@ local context = if RunService:IsEdit() then "edicion" elseif RunService:IsServer
 local KEY = "UmbralPruebas_" .. context
 local MAX_LINES = 400
 
+-- Latencia simulada (-Retraso): si una ejecución anterior se cortó sin devolverla, se devuelve aquí, en
+-- cualquier lugar que se abra (así nunca queda puesta en las sesiones normales de Studio).
+local LAG_KEY = "UmbralPruebas_RetrasoPrevio"
+local function restoreLag()
+	pcall(function()
+		local previous = plugin:GetSetting(LAG_KEY)
+		if type(previous) == "number" then
+			settings().Network.IncomingReplicationLag = previous
+			plugin:SetSetting(LAG_KEY, nil)
+		end
+	end)
+end
+if context == "edicion" then
+	restoreLag()
+end
+
 -- ¿Es el lugar de pruebas? En edición la marca ya está; en el cliente llega al replicarse.
 local marker = if context == "edicion"
 	then ReplicatedStorage:FindFirstChild(MARKER)
@@ -113,11 +129,22 @@ task.spawn(function()
 		return
 	end
 
+	local lagValue = marker:FindFirstChild("Retraso")
+	local lag = lagValue and tonumber(lagValue.Value)
+	if lag and lag > 0 then
+		local okLag, err = pcall(function()
+			plugin:SetSetting(LAG_KEY, settings().Network.IncomingReplicationLag)
+			settings().Network.IncomingReplicationLag = lag
+		end)
+		add("info", if okLag then string.format("latencia simulada: %d ms por sentido", math.floor(lag * 1000 + 0.5)) else "no se pudo simular la latencia: " .. tostring(err))
+	end
+
 	add("info", "iniciando modo Play")
 	flush()
 	local okRun, result = pcall(function()
 		return StudioTestService:ExecutePlayModeAsync({ origen = "UmbralPruebas" })
 	end)
+	restoreLag()
 	if not okRun then
 		add("ERROR", "no se pudo ejecutar el modo Play: " .. tostring(result))
 		flush()

@@ -12,6 +12,9 @@ pruebas automáticas (la sensación queda PENDIENTE de una persona):
   habilidades + variantes en el aire y relanzamientos.
 - **Armas**: Puños ↔ Espada (Q), golpe tras el Paso y golpe en picada para cada arma.
 - **Movimiento a lo Sekiro**: gancho (E) a orbes del mapa y a enemigos; postura enemiga y Golpe de Gracia.
+- **Pulido**: habilidades que no se pierden (búfer, cambio de Eco correcto con ping), combos entre Ecos, variantes
+  en el aire con su propio enfriamiento, efectos estilo anime, Alt + tecla para ver qué hace cada habilidad y una
+  Grieta con más luz y color. Pruebas nuevas: `Combos`, `Estres` y la opción de latencia simulada.
 - Guía para probarlo: [COMO-JUGAR.md](COMO-JUGAR.md). Diseño y estado: [HABILIDADES-V2.md](HABILIDADES-V2.md).
 
 ## Resumen
@@ -21,7 +24,7 @@ pruebas automáticas (la sensación queda PENDIENTE de una persona):
 | Fase 2 · Combate corporal | PROBADO. Sensación: PENDIENTE ([PRUEBAS-FASE2.md](PRUEBAS-FASE2.md)) |
 | Fase 3 · Defensa, Contrapaso, Resonancia | INTEGRADO y PROBADO salvo los defectos conocidos de abajo. Sensación y legibilidad: PENDIENTE ([PRUEBAS-FASE3.md](PRUEBAS-FASE3.md)) |
 | Auditoría (`auditoria-fase3`) | INTEGRADA en `main` con correcciones ([AUDITORIA-FASE3.md](AUDITORIA-FASE3.md)) |
-| Compensación de latencia | AUDITADA y corregida; red adversa simulada PENDIENTE |
+| Compensación de latencia | AUDITADA y corregida; habilidades, armas y defensa PROBADAS con 100 ms simulados por sentido (`-Retraso 0.1`); red real PENDIENTE |
 | Integridad del servidor (combo, golpes, defensas, posiciones, Resonancia) | REVISADA; pruebas adversariales PROBADAS |
 | Arena gris de duelo | IMPLEMENTADA (`tools/mapa.mjs`, al final de la línea amarilla). Duelos PvP: PENDIENTE (Fase 4) |
 | La Grieta (mazmorra de muestra con ambiente) | IMPLEMENTADA solo en el lugar de desarrollo (`tools/mazmorra.mjs`). Revisada a ojo en Studio; no es el mundo definitivo |

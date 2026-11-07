@@ -8,11 +8,22 @@
 | `Armas` | Q a la Espada (se ve en la mano), combo de espada, golpe de otra arma rechazado, vuelta a Puños, patada voladora tras el Paso, patada en picada |
 | `GanchoYGracia` | Gancho a un orbe (llega e impulsa) y a un enemigo (abre la patada voladora, aceptada por el servidor), postura que se llena, QUEBRADO y Golpe de Gracia, fijar enemigo (cámara y encarar) |
 | `RevisionCodex` | Dos definitivas en el mismo cuadro cobran una vez, Descenso desde el suelo rechazado, Levante en el aire rechazado sin gastar el enfriamiento |
+| `Combos` | Combos rápidos a ritmo de jugador, sin un solo rechazo del servidor: Viento completo (golpes → Ciclón → Cuchilla → Levante → subir → golpe aéreo → Descenso), entre Ecos (Levante → Bola Infernal en el aire → Relámpago), Oscuridad (Daga → Paso Sombrío detona y recarga → Fauces), Agua y Trueno (Burbuja → Pararrayos → Juicio) |
+| `Estres` | 12 s de teclas al azar (golpes, habilidades, Pasos, saltos, cambios de Eco y de arma, gancho, guardia, fijar): después el personaje queda libre, se mueve, golpea y lanza habilidades aceptadas, sin errores de scripts |
+
+Opciones de `tools/ejecutar-pruebas.ps1`:
+- `-Suites "Eco,Combos"` corre solo esas suites.
+- `-Retraso 0.1` simula 100 ms de latencia por sentido (el servidor la suma al ping, que Studio no la cuenta). Con
+  latencia, las pruebas que miden tiempos de pantalla pueden ir justas; lo importante es que no haya rechazos.
+- `-Suites Vitrina` (solo a mano): lanza cada habilidad frente a un muñeco, una por una; la tecla N pasa a la
+  siguiente. Sirve para revisar a ojo cómo se ve cada una.
 
 ## Para una persona (lo que las pruebas no pueden juzgar)
 Marca cada punto: ✔ bien · ✘ mal (y por qué).
 
 **Sensación**
+- [ ] Los efectos nuevos (arcos, destellos, estelas, partículas del elemento) se ven espectaculares sin tapar la pelea.
+- [ ] Alt + Z/X/C/V explica bien cada habilidad; la ficha del Eco ayuda al cambiar.
 - [ ] Las habilidades salen al instante al pulsar, sin quedarse quieto.
 - [ ] Se entiende qué hace cada habilidad al verla (efecto, sonido, animación).
 - [ ] La barra deja claro cuándo está lista cada tecla y por qué no sale.

@@ -95,6 +95,11 @@ const service = (className, props = [], children = []) => ({ className, name: cl
 
 // --run-id=XXXX identifica una ejecución de pruebas (lo pone tools/ejecutar-pruebas.ps1)
 const RUN_ID = (process.argv.find((a) => a.startsWith('--run-id=')) || '--run-id=manual').slice('--run-id='.length);
+// --retraso=0.1 simula esa latencia de red (segundos) durante las pruebas; --suites=Eco,Ecos corre solo esas suites
+const argValue = (name) => (process.argv.find((a) => a.startsWith(`--${name}=`)) || '').slice(name.length + 3);
+const TEST_LAG = argValue('retraso');
+const TEST_SUITES = argValue('suites');
+const markerValue = (name, value) => ({ className: 'StringValue', name, props: [['string', 'Value', value]], children: [] });
 
 const runSpeed = configNumber('RunSpeed');
 const jumpHeight = configNumber('JumpHeight');
@@ -112,6 +117,7 @@ function workspaceTree(withTests) {
 function lightingService(withTests) {
   if (withTests) {
     return service('Lighting', [
+      ['token', 'Technology', 3], // ShadowMap: sombras del sol (sin esto Studio avisa que la iluminación de compatibilidad está obsoleta)
       ['float', 'ClockTime', 14.5],
       ['float', 'Brightness', 2],
       ['color3', 'Ambient', [0.27, 0.29, 0.35]],
@@ -135,7 +141,11 @@ function placeTree(withTests) {
             className: 'Folder',
             name: 'UmbralPruebasAutomaticas',
             props: [],
-            children: [{ className: 'StringValue', name: 'RunId', props: [['string', 'Value', RUN_ID]], children: [] }],
+            children: [
+              markerValue('RunId', RUN_ID),
+              ...(TEST_LAG ? [markerValue('Retraso', TEST_LAG)] : []),
+              ...(TEST_SUITES ? [markerValue('Suites', TEST_SUITES)] : []),
+            ],
           }]
         : []),
     ]),

@@ -734,7 +734,7 @@ function SparringService.Start()
 			player:SetAttribute("UltimoRechazo", "golpe de gracia sin enemigo quebrado")
 			return
 		end
-		if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
+		if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
 			return
 		end
 		local character = player.Character

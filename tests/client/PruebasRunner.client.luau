@@ -18,10 +18,27 @@ local SUITES = {
 	{ "Armas", "Armas" },
 	{ "GanchoYGracia", "GanchoYGracia" },
 	{ "RevisionCodex", "RevisionCodex" },
+	{ "Combos", "Combos" },
+	{ "Estres", "Estres" },
+	{ "Vitrina", "Vitrina", manual = true }, -- solo si se pide: -Suites Vitrina (revisión a ojo)
 }
+
+-- Solo algunas suites (tools/ejecutar-pruebas.ps1 -Suites "Eco,Ecos"): la marca trae la lista
+local marker = game:GetService("ReplicatedStorage"):FindFirstChild("UmbralPruebasAutomaticas")
+local onlyValue = marker and marker:FindFirstChild("Suites")
+local only = nil
+if onlyValue and onlyValue.Value ~= "" then
+	only = {}
+	for name in string.gmatch(onlyValue.Value, "[^,%s]+") do
+		only[name] = true
+	end
+end
 
 if ctx.start() then
 	for _, suite in ipairs(SUITES) do
+		if (only and not only[suite[1]]) or (suite.manual and not (only and only[suite[1]])) then
+			continue
+		end
 		-- Cada suite se carga por separado: un error en una (incluso de sintaxis) no detiene las demás
 		local ok, err = pcall(function()
 			require(Pruebas:WaitForChild(suite[2]))(ctx)

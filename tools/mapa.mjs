@@ -4,7 +4,7 @@
 //   -X: slalom de pilares (cambios de dirección)     +X: pilares de altura de salto
 //   +X+Z: rampas y escalera                          -X+Z: túnel y muro (cámara y choques)
 
-export const MATERIAL = { Plastic: 256, SmoothPlastic: 272, Neon: 288, Wood: 512, WoodPlanks: 528, Marble: 784, Slate: 800, Concrete: 816, Granite: 832, Brick: 848, Pebble: 864, Cobblestone: 880, Rock: 896, CorrodedMetal: 1040, Metal: 1088, Glass: 1568 };
+export const MATERIAL = { Plastic: 256, SmoothPlastic: 272, Neon: 288, Wood: 512, WoodPlanks: 528, Marble: 784, Basalt: 788, Slate: 800, CrackedLava: 804, Concrete: 816, Limestone: 820, Granite: 832, Pavement: 836, Brick: 848, Pebble: 864, Cobblestone: 880, Rock: 896, Sandstone: 912, CorrodedMetal: 1040, Metal: 1088, Fabric: 1312, Ground: 1360, Glacier: 1552, Glass: 1568 };
 const FACE = { Right: 0, Top: 1, Back: 2, Left: 3, Bottom: 4, Front: 5 };
 const IDENT = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
@@ -13,6 +13,20 @@ export function rotY(deg) {
   const c = Math.round(Math.cos(r) * 1e6) / 1e6;
   const s = Math.round(Math.sin(r) * 1e6) / 1e6;
   return { x: [c, 0, -s], y: [0, 1, 0], z: [s, 0, c] };
+}
+
+// Giro en Y, luego inclinación en X y en Z (grados): para cristales y escombros que no queden rectos
+export function rotYXZ(yDeg, xDeg = 0, zDeg = 0) {
+  const r = (d) => (d * Math.PI) / 180;
+  const [cy, sy, cx, sx, cz, sz] = [Math.cos(r(yDeg)), Math.sin(r(yDeg)), Math.cos(r(xDeg)), Math.sin(r(xDeg)), Math.cos(r(zDeg)), Math.sin(r(zDeg))];
+  const Ry = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]];
+  const Rx = [[1, 0, 0], [0, cx, -sx], [0, sx, cx]];
+  const Rz = [[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]];
+  const mul = (A, B) => A.map((row) => [0, 1, 2].map((j) => row[0] * B[0][j] + row[1] * B[1][j] + row[2] * B[2][j]));
+  const M = mul(mul(Ry, Rx), Rz);
+  const round = (v) => Math.round(v * 1e6) / 1e6;
+  const col = (j) => [round(M[0][j]), round(M[1][j]), round(M[2][j])];
+  return { x: col(0), y: col(1), z: col(2) };
 }
 
 // Orientación cuya cara Front (-Z local) mira hacia `target`, solo girando en Y.

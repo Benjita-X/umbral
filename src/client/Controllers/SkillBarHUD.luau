@@ -4,6 +4,10 @@
 --     que le falta. Encima, el nombre del Eco puesto (1-5 para cambiar).
 --   · Celular: los mismos datos dentro de los botones de cada habilidad.
 --   · Avisos: nombre del combo (sinergia) en grande y "no salió: motivo" si el servidor rechazó la habilidad.
+--   · Ficha del Eco: qué hace cada tecla. Sale al cambiar de Eco (la primera vez de cada uno, o fuera de combate)
+--     y al pulsar el número del Eco que ya llevas puesto. Se esconde sola o al usar una habilidad.
+--   · Pista de una habilidad: Alt + su tecla (o el ratón encima de la casilla, con el ratón suelto) muestra qué
+--     hace, su enfriamiento, su daño y su variante en el aire.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -298,8 +302,216 @@ function SkillBarHUD.Start(ecoController)
 			notice("No salió: " .. tostring(reason))
 		end
 	end)
+
+	-- Ficha del Eco
+	local card = Instance.new("CanvasGroup")
+	card.Name = "Ficha"
+	card.AnchorPoint = if touch then Vector2.new(0.5, 0) else Vector2.new(0.5, 1)
+	card.Position = if touch then UDim2.new(0.5, 0, 0, 58) else UDim2.new(0.5, 0, 1, -98 - SLOT - 44)
+	card.Size = UDim2.fromOffset(450, 120)
+	card.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
+	card.BackgroundTransparency = 0.2
+	card.GroupTransparency = 1
+	card.Visible = false
+	corner(card)
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Thickness = 1.5
+	cardStroke.Transparency = 0.35
+	cardStroke.Parent = card
+	local cardPadding = Instance.new("UIPadding")
+	cardPadding.PaddingTop = UDim.new(0, 7)
+	cardPadding.PaddingBottom = UDim.new(0, 7)
+	cardPadding.PaddingLeft = UDim.new(0, 12)
+	cardPadding.PaddingRight = UDim.new(0, 12)
+	cardPadding.Parent = card
+	local cardList = Instance.new("UIListLayout")
+	cardList.Padding = UDim.new(0, 3)
+	cardList.SortOrder = Enum.SortOrder.LayoutOrder
+	cardList.Parent = card
+	card.Parent = gui
+
+	local function hex(c)
+		return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
+	local cardToken = 0
+	local shownKits = {}
+	local function hideCard(duration)
+		cardToken += 1
+		local token = cardToken
+		local tween = TweenService:Create(card, TweenInfo.new(duration or 0.35), { GroupTransparency = 1 })
+		tween:Play()
+		tween.Completed:Connect(function()
+			if token == cardToken then
+				card.Visible = false
+			end
+		end)
+	end
+	-- Muestra la ficha. Sin `force`, solo la primera vez de cada Eco o fuera de combate. Devuelve si salió.
+	local function showCard(force)
+		local kit = ecoController.Kit()
+		local name = ecoController.KitName()
+		local last = ecoController.State.lastCast
+		local fighting = last ~= nil and os.clock() - last.time < 3
+		if not force and shownKits[name] and fighting then
+			return false
+		end
+		shownKits[name] = true
+		for _, child in ipairs(card:GetChildren()) do
+			if child:IsA("TextLabel") then
+				child:Destroy()
+			end
+		end
+		local gamepad = UserInputService:GetLastInputType().Name:sub(1, 7) == "Gamepad"
+		local rows = 0
+		local function row(value, height, color)
+			rows += 1
+			text(card, "Fila" .. rows, {
+				Size = UDim2.new(1, 0, 0, height),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				RichText = true,
+				Text = value,
+				LayoutOrder = rows,
+				TextColor3 = color or READY_COLOR,
+				TextStrokeTransparency = 0.7,
+			})
+		end
+		local accent = hex(kit.color)
+		row(string.format("<b>%s</b>   ·   %s", Texto.Mayusculas(kit.name), kit.role or ""), 18, kit.color)
+		for _, slot in ipairs(eco.SlotOrder) do
+			local key = if gamepad then (eco.Gamepad[slot] or slot) else slot
+			for _, entry in ipairs({ { kit.slots[slot], key }, { kit.air and kit.air[slot], key .. " en el aire" } }) do
+				local spec = entry[1] and skills[entry[1]]
+				if spec then
+					row(string.format('<font color="%s"><b>%s</b></font>   <b>%s</b>  —  %s', accent, entry[2], Texto.Mayusculas(spec.label), spec.desc or ""), 15)
+				end
+			end
+		end
+		card.Size = UDim2.fromOffset(if touch then 420 else 540, 14 + 18 + (rows - 1) * 15 + (rows - 1) * 3)
+		cardStroke.Color = kit.color
+		cardToken += 1
+		local token = cardToken
+		card.Visible = true
+		TweenService:Create(card, TweenInfo.new(0.15), { GroupTransparency = 0 }):Play()
+		task.delay(4.5, function()
+			if token == cardToken then
+				hideCard()
+			end
+		end)
+		return true
+	end
+	SkillBarHUD.ShowCard = showCard
 	ecoController.KitChanged:Connect(function()
-		notice(Texto.Mayusculas(ecoController.Kit().name))
+		if not showCard(false) then
+			notice(Texto.Mayusculas(ecoController.Kit().name))
+		end
+	end)
+	-- Pista de una habilidad, encima de su casilla
+	local tip = Instance.new("Frame")
+	tip.Name = "Pista"
+	tip.AnchorPoint = Vector2.new(0.5, 1)
+	tip.Size = UDim2.fromOffset(300, 92)
+	tip.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
+	tip.BackgroundTransparency = 0.12
+	tip.Visible = false
+	corner(tip)
+	local tipStroke = Instance.new("UIStroke")
+	tipStroke.Thickness = 1.5
+	tipStroke.Parent = tip
+	local tipPadding = Instance.new("UIPadding")
+	tipPadding.PaddingTop = UDim.new(0, 6)
+	tipPadding.PaddingBottom = UDim.new(0, 6)
+	tipPadding.PaddingLeft = UDim.new(0, 10)
+	tipPadding.PaddingRight = UDim.new(0, 10)
+	tipPadding.Parent = tip
+	local tipList = Instance.new("UIListLayout")
+	tipList.Padding = UDim.new(0, 2)
+	tipList.SortOrder = Enum.SortOrder.LayoutOrder
+	tipList.Parent = tip
+	local tipTitle = text(tip, "Titulo", { Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Font = Enum.Font.GothamBlack })
+	local tipDesc = text(tip, "Descripcion", { Size = UDim2.new(1, 0, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, LayoutOrder = 2, Font = Enum.Font.Gotham })
+	local tipStats = text(tip, "Datos", { Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, TextColor3 = Color3.fromRGB(190, 196, 215), Font = Enum.Font.Gotham })
+	local tipAir = text(tip, "Aire", { Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 4, Font = Enum.Font.Gotham })
+	tip.Parent = gui
+	local tipToken = 0
+	local function hideTip()
+		tipToken += 1
+		tip.Visible = false
+	end
+	local function statsOf(spec)
+		local parts = { string.format("Enfriamiento %g s", spec.cooldown) }
+		local damage = spec.damage or spec.tickDamage
+		if damage then
+			table.insert(parts, string.format("Daño %g%s", damage, if spec.tickDamage and not spec.damage then " por golpe" else ""))
+		end
+		if (spec.cost or 0) > 0 then
+			table.insert(parts, string.format("Cuesta %d de Resonancia", spec.cost))
+		end
+		return table.concat(parts, "  ·  ")
+	end
+	-- Muestra la pista de la tecla `slot` del Eco puesto. `hold`: se queda mientras siga el ratón encima.
+	local function showTip(slot, hold)
+		local kit = ecoController.Kit()
+		local spec = skills[kit.slots[slot] or ""]
+		local s = slots[slot]
+		if not spec or not s then
+			return
+		end
+		local gamepad = UserInputService:GetLastInputType().Name:sub(1, 7) == "Gamepad"
+		local key = if gamepad then (eco.Gamepad[slot] or slot) else slot
+		tipTitle.Text = string.format("%s  ·  %s", key, Texto.Mayusculas(spec.label))
+		tipTitle.TextColor3 = kit.color
+		tipDesc.Text = spec.desc or ""
+		tipStats.Text = statsOf(spec)
+		local airSpec = kit.air and kit.air[slot] and skills[kit.air[slot]]
+		tipAir.Text = if airSpec then string.format("En el aire: %s — %s", Texto.Mayusculas(airSpec.label), airSpec.desc or "") else ""
+		tipAir.TextColor3 = kit.color
+		tipAir.Visible = airSpec ~= nil
+		tip.Size = UDim2.fromOffset(310, if airSpec then 104 else 86)
+		tipStroke.Color = kit.color
+		local frame = s.frame
+		local position = frame.AbsolutePosition
+		local guiInset = gui.AbsolutePosition
+		tip.Position = UDim2.fromOffset(position.X - guiInset.X + frame.AbsoluteSize.X / 2, position.Y - guiInset.Y - 10)
+		tip.Visible = true
+		tipToken += 1
+		local token = tipToken
+		if not hold then
+			task.delay(5, function()
+				if token == tipToken then
+					tip.Visible = false
+				end
+			end)
+		end
+	end
+	SkillBarHUD.ShowTip = showTip
+	if ecoController.InfoRequested then
+		ecoController.InfoRequested:Connect(function(_, slot)
+			if slot then
+				showTip(slot, false)
+			else
+				showCard(true)
+			end
+		end)
+	end
+	-- Soltar Alt esconde la pista; con el ratón libre, pasar por encima de una casilla la muestra
+	UserInputService.InputEnded:Connect(function(inputObject)
+		if inputObject.KeyCode == Enum.KeyCode.LeftAlt or inputObject.KeyCode == Enum.KeyCode.RightAlt then
+			hideTip()
+		end
+	end)
+	for slot, s in pairs(slots) do
+		if s.frame:IsA("GuiObject") and not s.frame:IsA("TextButton") then
+			s.frame.Active = true
+			s.frame.MouseEnter:Connect(function()
+				showTip(slot, true)
+			end)
+			s.frame.MouseLeave:Connect(hideTip)
+		end
+	end
+	ecoController.Used:Connect(function()
+		if card.Visible then
+			hideCard(0.15)
+		end
 	end)
 
 	RunService.Heartbeat:Connect(function()
@@ -322,8 +534,10 @@ function SkillBarHUD.Start(ecoController)
 			end
 		end
 		for slot, s in pairs(slots) do
-			local remaining = ecoController.CooldownRemaining(slot)
-			local length = ecoController.State.cooldownLength[slot] or 1
+			-- En el aire, la casilla con variante aérea muestra el enfriamiento de esa variante (es otro)
+			local key = if air and kit.air and kit.air[slot] then slot .. "aire" else slot
+			local remaining = ecoController.CooldownRemaining(key)
+			local length = ecoController.State.cooldownLength[key] or 1
 			local swapping = ecoController.State.swapUntil - os.clock() > 0 and remaining <= ecoController.State.swapUntil - os.clock() + 0.01
 			if swapping then
 				length = eco.SwapCooldown

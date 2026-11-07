@@ -102,7 +102,7 @@ return function(ctx)
 	record(
 		"[Eco] Z Cuchilla: el proyectil daña a 20 studs y no cuesta Resonancia",
 		math.abs(dealt - skills.Cuchilla.damage) < 0.01 and used == "Cuchilla" and resonance() < 0.5,
-		string.format("%.1f de daño (objetivo %d) · usada %s · Resonancia %d (cero: las básicas no cuestan) · último %s", dealt, skills.Cuchilla.damage, tostring(used), math.floor(resonance()), tostring(player:GetAttribute("UltimoEco")))
+		string.format("%.1f de daño (objetivo %d) · usada %s · Resonancia %d (cero: las básicas no cuestan) · último %s · rechazos: %s", dealt, skills.Cuchilla.damage, tostring(used), math.floor(resonance()), tostring(player:GetAttribute("UltimoEco")), ctx.lastRejections(2))
 	)
 
 	-- ---------- 2. El servidor respeta el enfriamiento ----------
@@ -144,12 +144,20 @@ return function(ctx)
 	waitUntil(function()
 		return h1.Health < before
 	end, 1.5)
-	task.wait(0.4)
-	local d1 = flatDistance(r1.Position, ctx.root.Position)
+	-- Lo más cerca que se le ve en esta pantalla: el arrastre (física del servidor) se ve unos 0,3-0,4 s DESPUÉS
+	-- de que llega el daño, así que se mira un rato (el aturdimiento lo deja quieto ahí) y no en un instante fijo
+	local closest = d0
+	local watchStart = os.clock()
+	while os.clock() - watchStart < 0.9 and closest > 4.5 do
+		closest = math.min(closest, flatDistance(r1.Position, ctx.root.Position))
+		task.wait()
+	end
+	local d1 = closest
+	local r1Start = nil
 	record(
 		"[Eco] X Ciclón: atrae al enemigo hasta tu frente y lo daña",
 		math.abs((before - h1.Health) - skills.Ciclon.damage) < 0.01 and d1 < d0 - 3 and d1 < 6.5,
-		string.format("distancia %.1f → %.1f studs · %.1f de daño (objetivo %d)", d0, d1, before - h1.Health, skills.Ciclon.damage)
+		string.format("distancia %.1f → %.1f studs · %.1f de daño (objetivo %d) · último %s · muñeco en %s · tú en %s · en el aire %s · física del servidor %s fps · arrastre %s · reinicios %s", d0, d1, before - h1.Health, skills.Ciclon.damage, tostring(player:GetAttribute("UltimoEco")), tostring(Vector3.new(math.floor(r1.Position.X), math.floor(r1.Position.Y), math.floor(r1.Position.Z))), tostring(Vector3.new(math.floor(ctx.root.Position.X), math.floor(ctx.root.Position.Y), math.floor(ctx.root.Position.Z))), tostring(not ctx.grounded()), tostring(player:GetAttribute("FisicaServidor")), tostring(r1:GetAttribute("UltimoArrastre")), tostring(muneco1:GetAttribute("Reinicios")))
 	)
 
 	-- ---------- 6. Sinergia: Ciclón y enseguida Cuchilla = REMOLINO CORTANTE ----------
@@ -165,7 +173,7 @@ return function(ctx)
 	record(
 		"[Eco] Sinergia: Ciclón → Cuchilla es REMOLINO CORTANTE (más daño)",
 		player:GetAttribute("UltimaSinergia") == "REMOLINO CORTANTE" and math.abs(synergyDamage - expected) < 0.01,
-		string.format("sinergia '%s' · %.1f de daño (normal %d, combo %.1f)", tostring(player:GetAttribute("UltimaSinergia")), synergyDamage, skills.Cuchilla.damage, expected)
+		string.format("sinergia '%s' · %.1f de daño (normal %d, combo %.1f) · último %s · rechazos: %s", tostring(player:GetAttribute("UltimaSinergia")), synergyDamage, skills.Cuchilla.damage, expected, tostring(player:GetAttribute("UltimoEco")), ctx.lastRejections(2))
 	)
 
 	-- ---------- 7. El Ciclón aturde a un enemigo (interrumpe lo que hacía) ----------
@@ -193,17 +201,24 @@ return function(ctx)
 	Input.Trigger("HabilidadC")
 	local peak, heightAtHold = 0, 0
 	local t0 = os.clock()
-	while os.clock() - t0 < 0.9 do
+	local riseStart = nil
+	-- (termina en cuanto mide la altura sostenida: la ventana para pulsar C otra vez dura poco más de 1 s)
+	while os.clock() - t0 < 1.6 and heightAtHold == 0 do
 		task.wait()
-		peak = math.max(peak, r3.Position.Y - y0)
-		if os.clock() - t0 >= 0.6 and heightAtHold == 0 then
-			heightAtHold = r3.Position.Y - y0
+		local height = r3.Position.Y - y0
+		peak = math.max(peak, height)
+		-- Medido desde que el muñeco empieza a subir EN ESTA PANTALLA (con latencia eso llega más tarde)
+		if not riseStart and height > 0.5 then
+			riseStart = os.clock()
+		end
+		if riseStart and os.clock() - riseStart >= 0.5 and heightAtHold == 0 then
+			heightAtHold = height
 		end
 	end
 	record(
 		"[Eco] C Levante: lanza al enemigo y flota arriba (combo aéreo)",
 		peak >= 6 and heightAtHold >= 4 and math.abs((before - h3.Health) - skills.Levante.damage) < 0.01,
-		string.format("subió %.1f studs · a los 0,6 s seguía a %.1f · %.1f de daño (objetivo %d)", peak, heightAtHold, before - h3.Health, skills.Levante.damage)
+		string.format("subió %.1f studs · 0,5 s después de empezar a subir seguía a %.1f · %.1f de daño (objetivo %d)", peak, heightAtHold, before - h3.Health, skills.Levante.damage)
 	)
 
 	-- ---------- 9. C otra vez: Ascenso (subes tras el lanzado) ----------

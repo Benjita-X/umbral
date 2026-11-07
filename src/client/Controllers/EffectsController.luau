@@ -14,6 +14,54 @@ local shared = ReplicatedStorage:WaitForChild("Shared")
 local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
 local AnimationLibrary = require(shared:WaitForChild("Combat"):WaitForChild("AnimationLibrary"))
 local CameraController = require(script.Parent:WaitForChild("CameraController"))
+local EcoEfectos = require(script.Parent:WaitForChild("EcoEfectos"))
+local Players = game:GetService("Players")
+
+-- Color del Eco que lleva puesto este jugador (golpes y estelas se tiñen de su elemento)
+local function ecoColor()
+	local kit = CombatConfig.Eco.Kits[Players.LocalPlayer:GetAttribute("Eco") or ""]
+	return if kit then kit.color else Color3.fromRGB(200, 225, 255)
+end
+
+-- Partículas del elemento que suelta la hoja de la espada mientras corta (como una técnica elemental)
+local BLADE_PARTICLES = {
+	Viento = { texture = "rbxasset://textures/particles/sparkles_main.dds", color = { Color3.new(1, 1, 1), Color3.fromRGB(150, 255, 230) }, light = 1, size = 0.35, speed = { 2, 5 }, life = { 0.15, 0.3 }, accel = Vector3.zero },
+	Agua = { texture = "rbxasset://textures/particles/sparkles_main.dds", color = { Color3.fromRGB(210, 240, 255), Color3.fromRGB(70, 160, 255) }, light = 0.7, size = 0.4, speed = { 3, 8 }, life = { 0.3, 0.5 }, accel = Vector3.new(0, -40, 0) },
+	Oscuridad = { texture = "rbxasset://textures/particles/smoke_main.dds", color = { Color3.fromRGB(80, 30, 120), Color3.fromRGB(20, 5, 30) }, light = 0, size = 0.9, speed = { 1, 3 }, life = { 0.3, 0.55 }, accel = Vector3.zero },
+	Fuego = { texture = "rbxasset://textures/particles/fire_main.dds", color = { Color3.fromRGB(255, 210, 100), Color3.fromRGB(255, 60, 10) }, light = 1, size = 0.9, speed = { 2, 5 }, life = { 0.2, 0.4 }, accel = Vector3.new(0, 10, 0) },
+	Trueno = { texture = "rbxasset://textures/particles/sparkles_main.dds", color = { Color3.new(1, 1, 1), Color3.fromRGB(255, 235, 90) }, light = 1, size = 0.4, speed = { 8, 16 }, life = { 0.08, 0.18 }, accel = Vector3.zero },
+}
+local function bladeParticles(limb, enabled)
+	local emitter = limb:FindFirstChild("UmbralElementoHoja")
+	local element = Players.LocalPlayer:GetAttribute("Eco") or CombatConfig.Eco.Default
+	local spec = BLADE_PARTICLES[element]
+	if emitter and emitter:GetAttribute("Elemento") ~= element then
+		emitter:Destroy()
+		emitter = nil
+	end
+	if not emitter then
+		if not enabled or not spec then
+			return
+		end
+		emitter = Instance.new("ParticleEmitter")
+		emitter.Name = "UmbralElementoHoja"
+		emitter:SetAttribute("Elemento", element)
+		emitter.Texture = spec.texture
+		emitter.Color = ColorSequence.new(spec.color[1], spec.color[2])
+		emitter.LightEmission = spec.light
+		emitter.LightInfluence = 0
+		emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, spec.size), NumberSequenceKeypoint.new(1, 0) })
+		emitter.Lifetime = NumberRange.new(spec.life[1], spec.life[2])
+		emitter.Speed = NumberRange.new(spec.speed[1], spec.speed[2])
+		emitter.SpreadAngle = Vector2.new(180, 180)
+		emitter.Acceleration = spec.accel
+		emitter.Rate = 70
+		emitter.Shape = Enum.ParticleEmitterShape.Box
+		emitter.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+		emitter.Parent = limb
+	end
+	emitter.Enabled = enabled
+end
 
 local EffectsController = {}
 
@@ -167,6 +215,11 @@ function EffectsController.Impact(position, attack, targetModel)
 	light.Parent = part
 	Debris:AddItem(light, 0.07)
 
+	local color = ecoColor()
+	EcoEfectos.Destello(position, color, if heavy then 5.5 else 3.2, if heavy then 0.17 else 0.12)
+	if heavy then
+		EcoEfectos.Rayas(position, color, 7, 4.5)
+	end
 	playSound(if heavy then "HitHeavy" else "Hit", part)
 	if attack.heavy then
 		playSound("Boom", part)
@@ -211,15 +264,20 @@ function EffectsController.SetTrail(character, limbName, enabled)
 		trail.Name = "UmbralEstela"
 		trail.Attachment0 = a0
 		trail.Attachment1 = a1
-		trail.Color = ColorSequence.new(Color3.fromRGB(200, 225, 255))
-		trail.LightEmission = 0.8
-		trail.Lifetime = 0.12
+		trail.LightEmission = 1
+		trail.Lifetime = if long then 0.16 else 0.12
 		trail.FaceCamera = true
 		trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
 		trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.2) })
 		trail.Parent = limb
 	end
+	if enabled then
+		trail.Color = ColorSequence.new(Color3.new(1, 1, 1), ecoColor())
+	end
 	trail.Enabled = enabled
+	if limb.Size.Z > 2 then
+		bladeParticles(limb, enabled)
+	end
 end
 
 -- Número de daño confirmado por el servidor

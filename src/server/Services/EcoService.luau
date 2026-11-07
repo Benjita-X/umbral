@@ -104,6 +104,11 @@ local function equipped(player, skillName)
 end
 
 -- Comprobaciones comunes antes de usar una habilidad
+-- Clave del enfriamiento: la tecla; las variantes en el aire (air = true) llevan el suyo ("Caire")
+local function cooldownKey(spec)
+	return if spec.air then spec.slot .. "aire" else spec.slot
+end
+
 local function canUse(player, skillName, t)
 	local spec = skills[skillName]
 	local r = recordFor(player)
@@ -116,12 +121,12 @@ local function canUse(player, skillName, t)
 	if r.swapUntil and t < r.swapUntil - COOLDOWN_SLACK then
 		return false, "cambiando de Eco"
 	end
-	if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
+	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
 		return false, "aturdido"
 	end
 	-- Enfriamiento por tecla, medido entre las horas (validadas) de los pedidos: la variación de la red no
 	-- rechaza un uso legítimo justo al terminar el enfriamiento
-	local last = r.cooldowns[spec.slot]
+	local last = r.cooldowns[cooldownKey(spec)]
 	if last and t - last < spec.cooldown - COOLDOWN_SLACK then
 		return false, "enfriamiento"
 	end
@@ -275,7 +280,7 @@ local function begin(player, skillName, t, position, look)
 		refuse(player, why)
 		return nil
 	end
-	local release = reserve(player, spec.slot, t)
+	local release = reserve(player, cooldownKey(spec), t)
 	PositionService.Report(player, t, position, look)
 	local origin = attackerAt(player, t)
 	local character = player.Character
@@ -945,9 +950,10 @@ function EcoService.ResetCooldowns(player)
 	end
 end
 
--- Cambia el Eco del jugador. Las 4 teclas quedan en enfriamiento SwapCooldown (no se encadenan definitivas
--- cambiando de Eco). Devuelve true si cambió.
-function EcoService.Equip(player, name)
+-- Cambia el Eco del jugador. Las 4 teclas quedan en espera SwapCooldown, contada desde `t` (la hora
+-- sincronizada en que el jugador pulsó, si es válida; si no, desde que pulsó según su latencia).
+-- Los enfriamientos son por tecla y se comparten entre Ecos: cambiar no da habilidades extra. Devuelve true si cambió.
+function EcoService.Equip(player, name, t)
 	if type(name) ~= "string" or not eco.Kits[name] then
 		return false
 	end
@@ -955,7 +961,8 @@ function EcoService.Equip(player, name)
 		return true
 	end
 	local r = recordFor(player)
-	r.swapUntil = now() + eco.SwapCooldown
+	local pressed = if PositionService.ValidTime(player, t) then math.min(t, now()) else now() - PositionService.OneWay(player)
+	r.swapUntil = pressed + eco.SwapCooldown
 	r.descent = nil
 	player:SetAttribute("Eco", name)
 	return true
@@ -973,13 +980,13 @@ function EcoService.Start()
 	equipRemote.Name = "ElegirEco"
 	equipRemote.Parent = remotes
 	local lastEquip = {}
-	equipRemote.OnServerEvent:Connect(function(player, name)
+	equipRemote.OnServerEvent:Connect(function(player, name, t)
 		local clock = os.clock()
 		if clock - (lastEquip[player] or -math.huge) < 0.25 then
-			return -- tope: cambiar de Eco no es algo que se haga 4 veces por segundo
+			return -- tope: cambiar de Eco no es algo que se haga 4 veces por segundo (el cliente los junta)
 		end
 		lastEquip[player] = clock
-		EcoService.Equip(player, name)
+		EcoService.Equip(player, name, t)
 	end)
 	local function setup(player)
 		if not eco.Kits[player:GetAttribute("Eco") or ""] then

@@ -242,7 +242,7 @@ return function(ctx)
 		end, 1.5)
 		Input.Trigger("HabilidadC")
 		dealt = damageAfter(h, before, 0.1)
-		record("[Ecos] Fuego C en el aire: Meteoro estalla al aterrizar", dealt >= skills.Meteoro.damage - 0.05, string.format("%.1f de daño (objetivo %d) · motivo si falló: %s", dealt, skills.Meteoro.damage, tostring(player:GetAttribute("EcoRechazado"))))
+		record("[Ecos] Fuego C en el aire: Meteoro estalla al aterrizar", dealt >= skills.Meteoro.damage - 0.05, string.format("%.1f de daño (objetivo %d) · rechazos: %s", dealt, skills.Meteoro.damage, ctx.lastRejections(3)))
 		ctx.settle()
 
 		-- Infierno: anillo que quema a los de adentro

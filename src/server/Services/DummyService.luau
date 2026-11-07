@@ -244,6 +244,7 @@ function DummyService.Start()
 				info.humanoid.Health = math.min(info.maxHealth, info.humanoid.Health + settings.RegenPerSecond * dt)
 			end
 			if not info.noReset and idle >= settings.ResetDelay and (info.root.Position - info.spawn.Position).Magnitude > 3 then
+				model:SetAttribute("Reinicios", (model:GetAttribute("Reinicios") or 0) + 1) -- diagnóstico (pruebas)
 				model:PivotTo(info.spawn)
 				info.root.AssemblyLinearVelocity = Vector3.zero
 			end

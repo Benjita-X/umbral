@@ -175,12 +175,16 @@ function DamageService.DragTo(targetRoot, point, duration)
 	params.FilterDescendantsInstances = { targetRoot.Parent }
 	params.RespectCanCollide = true
 	local ok, hit = pcall(Workspace.Spherecast, Workspace, targetRoot.Position, 1, offset, params)
+	local blocker = "nada"
 	if ok and hit then
 		local model = hit.Instance:FindFirstAncestorOfClass("Model")
 		if not (model and model:FindFirstChildOfClass("Humanoid")) then
 			distance = math.max(0, hit.Distance - 1.2)
+			blocker = hit.Instance:GetFullName()
 		end
 	end
+	-- Diagnóstico (pruebas): cuánto se arrastra y qué lo frenó
+	targetRoot:SetAttribute("UltimoArrastre", string.format("%.1f de %.1f · %s", distance, offset.Magnitude, blocker))
 	if distance < 0.2 then
 		return
 	end
@@ -407,7 +411,7 @@ local function handleStart(player, seq, attackName, t, position, look)
 	if #times >= validation.MaxStartsPerSecond then
 		return reject(player, "demasiados inicios por segundo")
 	end
-	if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
+	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
 		return reject(player, "inicio aturdido")
 	end
 	-- Cada golpe es de un arma: solo vale con el arma que lleva puesta
@@ -661,7 +665,7 @@ local function handleHit(player, payload)
 	if not b then
 		return reject(player, problem)
 	end
-	if DefenseService.IsStunned(player, player:GetNetworkPing() + 0.1) then
+	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
 		return reject(player, "aturdido")
 	end
 

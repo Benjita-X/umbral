@@ -101,6 +101,11 @@ corto (no se puede encadenar definitivas cambiando).
 | Combo aéreo completo (Levante → subir → golpe en el aire) | ✔ | suite `Eco` |
 | Revisión visual en Studio (cámara fija, barra, espada, Ciclón, Levante, Bola Infernal) | ✔ a mano | — |
 | Tutorial (pasos de habilidades, sinergia y espada), menú (Ecos, apuntado, cámara), README, DECISIONES #73-#93 | ✔ | — |
+| **Pulido (día siguiente)**: búfer de teclas, cambio de Eco de 0,6 s medido desde el pulso, enfriamiento propio de las variantes en el aire | ✔ | suites `Combos` y `Eco`; con latencia simulada (`-Retraso 0.1`) |
+| Combos rápidos entre habilidades y Ecos, sin rechazos; 12 s de teclas al azar sin que nada quede trabado | ✔ | suites `Combos` y `Estres` |
+| Efectos estilo anime (arcos en media luna, destellos, rayas, ondas, estelas, partículas por elemento, cuadro de impacto; espada del color del Eco) | ✔ | — (revisión a ojo con `-Suites Vitrina`) |
+| Pista de habilidad (Alt + tecla), ficha del Eco, descripciones en el menú, paso de Ecos en el tutorial | ✔ | suite `Eco` (menú) |
+| La Grieta con más luz, color y vida (racimos de cristales, braseros, estandartes, runas, polvo de luz, niebla) | ✔ | — |
 
 ## Pendiente / ideas siguientes
 - Probar a mano la sensación (apuntado con ratón, tiempos de enfriamiento, daño) y ajustar números en

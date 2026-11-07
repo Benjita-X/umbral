@@ -1,6 +1,24 @@
 # Cómo jugar el prototipo (rama `experimental/habilidades-v2`)
 
-## Lo nuevo de esta noche (resumen)
+## Lo último (pulido)
+- **Las habilidades se ven mucho mejor**: arcos de corte en media luna con filo blanco, destellos en estrella y
+  rayas al golpear, ondas de choque, estelas de color en manos y pies, partículas de cada elemento (gotas, brasas,
+  humo, chispas) y un "cuadro de impacto" en los combos con nombre y las definitivas. La espada se tiñe del Eco y
+  suelta su elemento al cortar.
+- **La Grieta con más vida**: más luz y color, piedra con tonos, cristales en racimos, braseros, estandartes, runas
+  que brillan, polvo de luz flotando y niebla azul en el abismo.
+- **Alt + Z/X/C/V**: muestra qué hace esa habilidad (sin lanzarla). La tecla Fn no sirve: los juegos no la reciben.
+  Con el ratón suelto (Ctrl), pasar por encima de una casilla también la muestra.
+- **Ficha del Eco**: al cambiar de Eco (o al pulsar el número del que ya llevas) aparece qué hace cada tecla.
+- **Combos entre Ecos**: cambiar de Eco tarda 0,6 s, así que se puede cambiar a mitad de un combo. Los
+  enfriamientos son por tecla y se comparten entre Ecos.
+- **Las variantes en el aire tienen su propio enfriamiento**: Levante → C (subir) → golpes → C en el aire
+  (Descenso) ya se puede cerrar entero; igual Puño Volcánico → salto → Meteoro.
+- **Las habilidades ya no se pierden**: pulsar un poco antes de tiempo (al final del enfriamiento, de un
+  aturdimiento o de una picada) la guarda 0,3 s y sale sola. Con ping, la primera habilidad tras cambiar de Eco ya
+  no se rechaza.
+
+## Lo nuevo de la primera noche (resumen)
 - **Habilidades rehechas**: una tecla por habilidad (Z X C V), salen al instante y sin quedarte quieto, cortan tus
   golpes, y la barra de abajo muestra cuándo vuelven a estar listas. Las básicas no gastan nada.
 - **5 Ecos** (teclas 1-5): Viento, Agua, Oscuridad, Fuego infernal y Trueno, con 20 habilidades más variantes en
@@ -32,6 +50,8 @@
 | Gancho (al orbe brillante o al enemigo marcado con el círculo) | **E** |
 | Cámara fija (el personaje mira hacia la mira) / soltar el ratón | **Ctrl** |
 | Fijar un enemigo (la cámara lo sigue; un tirón del ratón cambia de enemigo) | **R** |
+| Ver qué hace una habilidad (sin lanzarla) | **Alt + Z/X/C/V** |
+| Ver la ficha del Eco puesto | su número (**1-5**) |
 | Menú (controles, Ecos, ajustes) | M |
 
 La **cámara fija** viene activada: mueves la cámara con el ratón, el personaje mira hacia la mira y los golpes y

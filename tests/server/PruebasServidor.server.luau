@@ -26,7 +26,7 @@ local function endTest(value)
 	end
 end
 
-remote.OnServerEvent:Connect(function(player, action, payload)
+remote.OnServerEvent:Connect(function(player, action, payload, extra)
 	if action == "teletransporte" then
 		-- Las pruebas mueven al personaje de golpe: se avisa al historial de posiciones para que no lo
 		-- marque como movimiento imposible. SOLO existe en el lugar de pruebas (este script no se
@@ -34,7 +34,7 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
 		local module = services and services:FindFirstChild("PositionService")
 		if module then
-			require(module).AllowTeleport(player, 1)
+			require(module).AllowTeleport(player, 1, payload)
 		end
 	elseif action == "perfil" then
 		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Companero")) do
@@ -66,7 +66,8 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 		-- Consulta el estado real de defensa del jugador (pruebas de los hallazgos #3 y #4 de Codex)
 		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
 		local DefenseService = require(services:WaitForChild("DefenseService"))
-		local now = workspace:GetServerTimeNow()
+		-- `extra`: la hora (del cliente) a la que se consulta; con latencia, la de llegada sería tarde
+		local now = if type(extra) == "number" then extra else workspace:GetServerTimeNow()
 		if payload == "desvio_doble" then
 			local first, press = DefenseService.FindDeflect(player, now + 0.03)
 			DefenseService.Consume(press)
@@ -139,3 +140,24 @@ task.delay(900, function()
 end)
 
 print("[UMBRAL-PRUEBAS] Servidor de pruebas listo")
+
+-- Diagnóstico: el ping que mide el servidor de cada jugador (las pruebas lo imprimen)
+task.spawn(function()
+	while true do
+		for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+			player:SetAttribute("PingServidor", math.floor(player:GetNetworkPing() * 1000 + 0.5))
+			player:SetAttribute("FisicaServidor", math.floor(workspace:GetRealPhysicsFPS() + 0.5))
+		end
+		task.wait(0.25)
+	end
+end)
+
+-- Latencia simulada (-Retraso): Studio no la cuenta en GetNetworkPing; los servicios la suman con este atributo
+do
+	local marker = game:GetService("ReplicatedStorage"):FindFirstChild("UmbralPruebasAutomaticas")
+	local lag = marker and marker:FindFirstChild("Retraso")
+	local seconds = lag and tonumber(lag.Value)
+	if seconds and seconds > 0 then
+		workspace:SetAttribute("LatenciaSimulada", seconds)
+	end
+end
