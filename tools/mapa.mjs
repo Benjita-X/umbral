@@ -88,7 +88,7 @@ export function buildMovementLab(options = {}) {
   const zones = [];
 
   // Suelo y punto de aparición
-  zones.push(part({ name: 'Suelo', size: [600, 2, 600], pos: [0, -1, 0], color: [74, 80, 94], material: 'Concrete' }));
+  zones.push(part({ name: 'Suelo', size: [600, 8, 600], pos: [0, -4, 0], color: [74, 80, 94], material: 'Concrete' })); // 8 de grosor: nada lo atraviesa
   zones.push(
     part({
       name: 'Aparicion',

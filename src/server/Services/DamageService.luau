@@ -39,7 +39,7 @@ DamageService.HitApplied = hitApplied.Event
 local attackWhiffed = Instance.new("BindableEvent")
 DamageService.AttackWhiffed = attackWhiffed.Event
 
-local FORCE = 1e7
+local FORCE = 4e5 -- suficiente para el empuje; con 1e7 los golpes metían al objetivo dentro de las paredes
 local validation = CombatConfig.Validation
 local records = {} -- [player] = { lastSeq, lastSeqTime, seqTargets = { [seq] = { [model] = true } }, recent = { tiempos }, starts = { [seq] = inicio }, lastStart }
 local confirmedRemote
@@ -90,6 +90,18 @@ local function knockback(targetRoot, direction, speed, up)
 		push.MaxAxesForce = Vector3.new(FORCE, 0, FORCE)
 		push.Enabled = false
 		push.Parent = targetRoot
+	end
+	-- El empuje se acorta si hay una pared detrás del objetivo (no lo mete dentro ni lo atraviesa)
+	if speed > 0 and direction.Magnitude > 0.01 then
+		local travel = speed * CombatConfig.Dummy.KnockbackTime
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { targetRoot.Parent }
+		params.RespectCanCollide = true
+		local ok, hit = pcall(Workspace.Spherecast, Workspace, targetRoot.Position, 0.9, direction.Unit * (travel + 1), params)
+		if ok and hit and math.abs(hit.Normal.Y) < 0.6 then
+			speed = math.max(0, hit.Distance - 1) / CombatConfig.Dummy.KnockbackTime
+		end
 	end
 	local token = (push:GetAttribute("Token") or 0) + 1
 	push:SetAttribute("Token", token)

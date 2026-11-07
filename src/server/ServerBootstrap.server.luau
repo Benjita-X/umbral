@@ -15,6 +15,7 @@ local SparringService = require(services:WaitForChild("SparringService"))
 local GrietaService = require(services:WaitForChild("GrietaService"))
 local EcoService = require(services:WaitForChild("EcoService"))
 local RecoveryService = require(services:WaitForChild("RecoveryService"))
+local PersonajeService = require(services:WaitForChild("PersonajeService"))
 
 Workspace.Gravity = MovementConfig.Gravity
 
@@ -25,6 +26,7 @@ DefenseService.Start()
 ResonanceService.Start()
 EcoService.Start() -- Ecos del jugador (EXPERIMENTAL)
 RecoveryService.Start() -- recuperación de vida: Respiro fuera de combate y punto seguro (EXPERIMENTAL)
+PersonajeService.Start() -- red de seguridad (nadie muere por caer al vacío) y respaldo de la apariencia
 DummyService.Start()
 SparringService.Start()
 GrietaService.Start() -- solo actúa si el mapa tiene la Grieta (lugar de desarrollo)

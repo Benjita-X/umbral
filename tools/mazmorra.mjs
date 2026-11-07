@@ -51,7 +51,7 @@ function wallX(name, x, z0, z1, y0, y1) {
 // Sala cerrada: piso (tope en y0), techo y paredes laterales. Las paredes frontal y trasera van aparte.
 function shell(name, x0, x1, z0, z1, y0, height, floorMaterial = 'Cobblestone') {
   return [
-    box(name + 'Piso', [x0, y0 - 2, z0], [x1, y0, z1], FLOOR, floorMaterial),
+    box(name + 'Piso', [x0, y0 - 8, z0], [x1, y0, z1], FLOOR, floorMaterial), // 8 de grosor: nada lo atraviesa
     box(name + 'Techo', [x0, y0 + height, z0], [x1, y0 + height + 2, z1], STONE_DARK, 'Rock'),
     ...wallX(name + 'ParedO', x0 - 1, z0, z1, y0 - 2, y0 + height + 2),
     ...wallX(name + 'ParedE', x1 + 1, z0, z1, y0 - 2, y0 + height + 2),
@@ -167,7 +167,7 @@ export function buildDungeon() {
   items.push(sign('Bienvenida', 'LA GRIETA · muestra de ambiente · sigue las antorchas', P(0, 14, 39.8), P(0, 14, 0), [22, 3, 0.4]));
 
   // ---------- B. Pasillo ----------
-  items.push(box('PasilloPiso', [-5, -2, 41], [5, 0, 61], FLOOR, 'Cobblestone'));
+  items.push(box('PasilloPiso', [-5, -8, 41], [5, 0, 61], FLOOR, 'Cobblestone'));
   items.push(box('PasilloTecho', [-5, 12, 41], [5, 14, 61], STONE_DARK, 'Rock'));
   items.push(...wallX('PasilloParedO', -6, 41, 61, -2, 14), ...wallX('PasilloParedE', 6, 41, 61, -2, 14));
   items.push(...torch('AntorchaPasillo', -5, 6, 51, -1));
@@ -183,9 +183,9 @@ export function buildDungeon() {
   // Tres pisos con huecos de 8 (un salto corriendo: a 22 studs/s un salto recorre ~11,4) y 16 (salto + Paso
   // en el aire). Tocar el foso devuelve a PuntoRetornoAbismo (GrietaService).
   const C0 = 61, C1 = 121;
-  items.push(box('AbismoBordeInicio', [-20, -2, C0], [20, 0, 74], FLOOR, 'Cobblestone'));
-  items.push(box('AbismoIsla', [-7, -2, 82], [7, 0, 92], FLOOR, 'Cobblestone'));
-  items.push(box('AbismoBordeFinal', [-20, -2, 108], [20, 0, C1], FLOOR, 'Cobblestone'));
+  items.push(box('AbismoBordeInicio', [-20, -6, C0], [20, 0, 74], FLOOR, 'Cobblestone'));
+  items.push(box('AbismoIsla', [-7, -6, 82], [7, 0, 92], FLOOR, 'Cobblestone'));
+  items.push(box('AbismoBordeFinal', [-20, -6, 108], [20, 0, C1], FLOOR, 'Cobblestone'));
   const retorno = P(0, 3.2, 68);
   items.push(part({ name: 'PuntoRetornoAbismo', size: [1, 1, 1], pos: retorno, rot: facing(retorno, P(0, 3.2, 200)), transparency: 1, collide: false, color: [255, 255, 255] }));
   items.push(box('AbismoFoso', [-20, -16, C0], [20, -14, C1], STONE_DARK, 'Rock'));

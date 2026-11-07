@@ -382,6 +382,9 @@ local CombatConfig = {
 		OutOfCombat = 6,
 		RegenPerSecond = 10,
 		SafeZoneRadius = 10, -- studs alrededor de una aparición (SpawnLocation) que curan entero
+		-- Red de seguridad: si un jugador cae más de esto por debajo del último suelo firme que pisó
+		-- (un fallo de la física, atravesar el suelo, salirse del mapa), vuelve a ese suelo sin morir
+		SafetyDrop = 40,
 	},
 
 	-- Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento (botón Eco: Q / Y / ECO).
@@ -396,7 +399,7 @@ local CombatConfig = {
 			Torbellino = { cost = 50, cooldown = 4, damage = 9, radius = 7, knockback = 35, knockUp = 10, holdTime = 0.35, maxHeight = 4.5 },
 			-- Eco justo después de un Paso: el Paso deja un corte de viento que daña a quien atravesaste.
 			Estela = { cost = 30, cooldown = 2.5, damage = 10, width = 3.5, afterDash = 0.45, knockback = 20, knockUp = 6 },
-			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 110, minHeight = 3.5 }, -- minHeight: altura mínima sobre el suelo para empezarlo
+			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 90, minHeight = 3.5 }, -- minHeight: altura mínima sobre el suelo para empezarlo
 		},
 	},
 

@@ -7,6 +7,7 @@ local ctx = require(Pruebas:WaitForChild("Util"))
 local SUITES = {
 	{ "Movimiento", "Movimiento" },
 	{ "Paredes", "Paredes" },
+	{ "Choques", "Choques" },
 	{ "Combate", "Combate" },
 	{ "Defensa", "Defensa" },
 	{ "Auditoria", "Auditoria" },

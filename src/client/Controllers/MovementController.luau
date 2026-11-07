@@ -10,7 +10,10 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
 
-local FORCE = 1e7
+-- Fuerza de las restricciones de velocidad (Paso, avances, paredes). Alcanza de sobra para acelerar al
+-- personaje en un cuadro, pero NO aplasta la geometría: con 1e7 un Paso contra una pared metía al personaje
+-- en el muro o lo hundía en el suelo (y caía al vacío).
+local FORCE = 4e5
 local player = Players.LocalPlayer
 
 local MovementController = {}
@@ -63,6 +66,9 @@ local mantleUsed = false -- un agarre de borde por salto
 local sliding = false -- deslizándose por una pared (fuerza vertical constante)
 local wallParams = RaycastParams.new()
 wallParams.FilterType = Enum.RaycastFilterType.Exclude
+local blockParams = RaycastParams.new()
+blockParams.FilterType = Enum.RaycastFilterType.Exclude
+blockParams.RespectCanCollide = true
 local baseSpeed = Config.RunSpeed -- velocidad de carrera/sprint antes de multiplicadores
 
 -- Bloqueos y multiplicadores que piden otros sistemas (combate, menús...), por clave
@@ -93,6 +99,43 @@ local function resetAir()
 	lastWallNormal = nil
 	wallRunUsed = false
 	mantleUsed = false
+end
+
+-- ---------- Choques ----------
+-- ¿Hay un obstáculo sólido (no un personaje) en esa dirección horizontal, a menos de `distance`? Se usa una
+-- esfera del ancho del cuerpo a la altura del torso (los escalones bajos y el suelo no cuentan).
+local function obstacleAhead(direction, distance)
+	if not root then
+		return nil
+	end
+	local dir = flat(direction)
+	if dir.Magnitude < 0.01 or distance <= 0 then
+		return nil
+	end
+	blockParams.FilterDescendantsInstances = { root.Parent, Workspace.CurrentCamera }
+	local ok, hit = pcall(Workspace.Spherecast, Workspace, root.Position, 0.9, dir.Unit * distance, blockParams)
+	if not ok or not hit or math.abs(hit.Normal.Y) > 0.6 then
+		return nil
+	end
+	local model = hit.Instance:FindFirstAncestorOfClass("Model")
+	if model and model:FindFirstChildOfClass("Humanoid") then
+		return nil -- los luchadores se atraviesan entre sí
+	end
+	return hit
+end
+
+-- Quita la parte de la velocidad que va contra la pared (para no seguir empujando)
+local function stopAgainst(normal)
+	local n = flat(normal)
+	if n.Magnitude < 0.01 then
+		return
+	end
+	n = n.Unit
+	local v = root.AssemblyLinearVelocity
+	local into = v:Dot(n)
+	if into < 0 then
+		root.AssemblyLinearVelocity = v - n * into
+	end
 end
 
 -- ---------- Paredes ----------
@@ -402,6 +445,9 @@ local function setupCharacter(character)
 
 	local newHumanoid = character:WaitForChild("Humanoid")
 	local newRoot = character:WaitForChild("HumanoidRootPart")
+	-- El personaje no tropieza ni cae al chocar fuerte (un Paso contra una pared lo tumbaba)
+	newHumanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	newHumanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 	newHumanoid.UseJumpPower = false
 	newHumanoid.JumpHeight = Config.JumpHeight
 	newHumanoid.WalkSpeed = Config.RunSpeed
@@ -471,7 +517,14 @@ local function update(dt)
 	if dash then
 		dash.elapsed += dt
 		local remaining = Config.DashDistance - flat(root.Position - dash.startPos).Magnitude
-		if remaining <= 0.05 or dash.elapsed >= Config.DashDuration * 1.5 then
+		local wall = obstacleAhead(dash.dir, dash.speed * dt * 1.5 + 0.4)
+		if wall then
+			-- Choque: el Paso termina en la pared, sin seguir empujando (así no se atraviesa nada)
+			endDash()
+			exitBlend = nil
+			dashVelocity.Enabled = false
+			stopAgainst(wall.Normal)
+		elseif remaining <= 0.05 or dash.elapsed >= Config.DashDuration * 1.5 then
 			endDash()
 		elseif remaining < dash.speed * dt then
 			-- Último tramo: frenar lo justo para no pasarse de la distancia
@@ -481,6 +534,11 @@ local function update(dt)
 		-- Empuje del salto de pared: unos instantes sin que el control lo anule
 		wallPush.remaining -= dt
 		dashVelocity.VectorVelocity = wallPush.velocity
+		local wall = obstacleAhead(wallPush.velocity, wallPush.velocity.Magnitude * dt * 1.5 + 0.4)
+		if wall then
+			wallPush.remaining = 0
+			stopAgainst(wall.Normal)
+		end
 		if wallPush.remaining <= 0 then
 			wallPush = nil
 			dashVelocity.Enabled = false
@@ -489,7 +547,11 @@ local function update(dt)
 		-- Correr por la pared: sigue el muro a la velocidad que traía, bajando despacio
 		wallRun.remaining -= dt
 		local still = wallIn(-wallRun.normal)
-		if wallRun.remaining <= 0 or not still or state.grounded then
+		local corner = obstacleAhead(wallRun.tangent, wallRun.speed * dt * 1.5 + 0.6)
+		if corner then
+			stopAgainst(corner.Normal)
+		end
+		if wallRun.remaining <= 0 or not still or state.grounded or corner then
 			endWallRun()
 		else
 			dashVelocity.VectorVelocity = wallRun.tangent * wallRun.speed + Vector3.new(0, -Config.WallRunSink, 0)
@@ -502,6 +564,11 @@ local function update(dt)
 		else
 			lunge.remaining -= dt
 			dashVelocity.VectorVelocity = lunge.velocity
+			local wall = obstacleAhead(lunge.velocity, lunge.velocity.Magnitude * dt * 1.5 + 0.4)
+			if wall then
+				lunge.remaining = 0
+				stopAgainst(wall.Normal)
+			end
 			if lunge.remaining <= 0 then
 				lunge = nil
 				dashVelocity.Enabled = false
@@ -513,6 +580,11 @@ local function update(dt)
 		local moveDir = flat(humanoid.MoveDirection)
 		local target = if moveDir.Magnitude > 0.1 then moveDir.Unit * Config.SprintSpeed else Vector3.zero
 		dashVelocity.VectorVelocity = exitBlend.from:Lerp(target, alpha)
+		local wall = obstacleAhead(dashVelocity.VectorVelocity, dashVelocity.VectorVelocity.Magnitude * dt * 1.5 + 0.4)
+		if wall then
+			alpha = 1
+			stopAgainst(wall.Normal)
+		end
 		if alpha >= 1 then
 			exitBlend = nil
 			dashVelocity.Enabled = false

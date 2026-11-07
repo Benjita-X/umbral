@@ -37,7 +37,7 @@ local SparringService = {}
 
 local sparring = CombatConfig.Sparring
 local defense = CombatConfig.Defense
-local FORCE = 1e7
+local FORCE = 4e5 -- suficiente para mover al enemigo; con 1e7 atravesaba paredes al lanzarse
 local npcs = {} -- [model] = estado
 local resultRemote
 local noticeRemote -- avisos grandes y chicos (Guardián, enemigo vencido, Contratiempo)
@@ -436,7 +436,20 @@ local function startActive(s)
 	}
 	setPhase(s, "Atacando", s.attackName, attack.active)
 	if (attack.lunge or 0) > 0 then
-		drive(s, flat(s.commitCFrame.LookVector).Unit * (attack.lunge / attack.active))
+		-- El lanzamiento se detiene antes de una pared (no la atraviesa ni se mete dentro)
+		local forward = flat(s.commitCFrame.LookVector).Unit
+		local reach = attack.lunge
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { s.model }
+		params.RespectCanCollide = true
+		local ok, hit = pcall(Workspace.Spherecast, Workspace, s.root.Position, 0.9, forward * (reach + 1), params)
+		if ok and hit and math.abs(hit.Normal.Y) < 0.6 and not (hit.Instance:FindFirstAncestorOfClass("Model") and hit.Instance:FindFirstAncestorOfClass("Model"):FindFirstChildOfClass("Humanoid")) then
+			reach = math.max(0, hit.Distance - 1)
+		end
+		if reach > 0.1 then
+			drive(s, forward * (reach / attack.active))
+		end
 	end
 	for _, p in ipairs(alivePlayers()) do
 		task.spawn(resolve, s, info, p.player)
