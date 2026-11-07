@@ -44,6 +44,17 @@ EcoEfectos.Folder = folder
 
 EcoEfectos.Creados = 0 -- piezas de efecto creadas (diagnóstico de la vitrina)
 EcoEfectos.Lento = 1 -- la vitrina lo sube para ver los efectos en cámara lenta (alarga duraciones)
+local budgetCheck, saturated = 0, false
+function EcoEfectos.Saturado()
+	local clock = os.clock()
+	if clock - budgetCheck > 0.2 then
+		budgetCheck = clock
+		local camera = Workspace.CurrentCamera
+		local f = camera and camera:FindFirstChild("UmbralEfectosEco")
+		saturated = f ~= nil and #f:GetChildren() > 380
+	end
+	return saturated
+end
 function EcoEfectos.Part(size, cframe, color, shape, transparency)
 	EcoEfectos.Creados += 1
 	local part = Instance.new("Part")
@@ -843,6 +854,9 @@ end
 
 -- Espiral: trazos de neón que suben girando alrededor de un eje vertical (viento, agua, fuego que asciende)
 function EcoEfectos.Espiral(base, height, radius, color, duration, streaks)
+	if EcoEfectos.Saturado() then
+		return
+	end
 	duration = (duration or 0.45) * EcoEfectos.Lento
 	streaks = streaks or 3
 	local parts = {}
@@ -879,6 +893,9 @@ end
 -- Escombros y grietas en el suelo (golpes contra el suelo): piedras del color del suelo que saltan en arco y
 -- grietas oscuras que se abren. Sin física (no chocan con nadie): la trayectoria se calcula aquí.
 function EcoEfectos.Escombros(position, strength)
+	if EcoEfectos.Saturado() then
+		return
+	end
 	strength = strength or 1
 	local ignore = { folder() }
 	for _, other in ipairs(Players:GetPlayers()) do
@@ -1070,6 +1087,9 @@ end
 
 -- Rayas de velocidad que salen disparadas del punto de impacto (en 3D)
 function EcoEfectos.Rayas(position, color, count, length, duration)
+	if EcoEfectos.Saturado() then
+		return
+	end
 	count = count or 6
 	length = length or 4
 	duration = (duration or 0.16) * EcoEfectos.Lento
@@ -1131,7 +1151,7 @@ end
 -- Partículas propias de cada elemento: viento (chispas blancas), agua (gotas), oscuridad (humo), fuego (brasas),
 -- trueno (chispazos). `amount` multiplica la cantidad.
 function EcoEfectos.Elemento(position, element, amount)
-	amount = amount or 1
+	amount = (amount or 1) * (if EcoEfectos.Saturado() then 0.4 else 1)
 	local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.new(position), WHITE, nil, 1)
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = anchor
@@ -1358,6 +1378,28 @@ function EcoEfectos.WatchStates()
 					end)
 				elseif not fury and aura then
 					aura:Destroy()
+				end
+				local resistUntil = model:GetAttribute("ResisteHasta")
+				if resistUntil and resistUntil > now and model:GetAttribute("UmbralResisteVisto") ~= resistUntil then
+					model:SetAttribute("UmbralResisteVisto", resistUntil)
+					local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.new(root.Position + Vector3.new(0, 3.5, 0)), Color3.new(1, 1, 1), nil, 1)
+					local gui = Instance.new("BillboardGui")
+					gui.Size = UDim2.fromOffset(150, 34)
+					gui.AlwaysOnTop = true
+					gui.LightInfluence = 0
+					local label = Instance.new("TextLabel")
+					label.BackgroundTransparency = 1
+					label.Size = UDim2.fromScale(1, 1)
+					label.Font = Enum.Font.GothamBlack
+					label.TextScaled = true
+					label.Text = "¡RESISTE!"
+					label.TextColor3 = Color3.fromRGB(235, 240, 255)
+					label.TextStrokeTransparency = 0
+					label.Parent = gui
+					gui.Parent = anchor
+					tween(label, 0.9, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+					Debris:AddItem(anchor, 1)
+					EcoEfectos.OndaChoque(root.Position, Color3.fromRGB(230, 235, 255), 4, Vector3.yAxis, 0.3)
 				end
 				local wallUntil = model:GetAttribute("ParedHasta")
 				if wallUntil and wallUntil > now and model:GetAttribute("UmbralParedVista") ~= wallUntil then

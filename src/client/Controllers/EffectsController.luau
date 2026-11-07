@@ -352,9 +352,13 @@ function EffectsController.DefenseFeedback(result, character, from)
 	if not root then
 		return
 	end
+	local own = character == Players.LocalPlayer.Character
 	if result == "contrapaso" or result == "esquiva" then
 		EffectsController.Afterimage(character, result == "contrapaso")
 		playSound("Dodge", root)
+		if own and result == "contrapaso" then
+			EcoEfectos.ImpactFrame(Color3.fromRGB(150, 210, 255), 0.45)
+		end
 		return
 	end
 	local style = DEFENSE_STYLE[result]
@@ -375,6 +379,10 @@ function EffectsController.DefenseFeedback(result, character, from)
 		SpreadAngle = Vector2.new(70, 70),
 		Drag = 6,
 	}, style.count)
+	if result == "desvio_perfecto" and own then
+		EcoEfectos.ImpactFrame(Color3.fromRGB(255, 225, 140), 0.5)
+		EcoEfectos.Destello(part.Position, Color3.fromRGB(255, 220, 120), 5, 0.16)
+	end
 	if result == "desvio_perfecto" or result == "ruptura" then
 		burst(attachment, TEXTURES.Shockwave, {
 			Color = ColorSequence.new(style.color),

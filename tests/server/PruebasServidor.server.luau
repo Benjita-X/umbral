@@ -81,6 +81,32 @@ remote.OnServerEvent:Connect(function(player, action, payload, extra)
 		if humanoid then
 			humanoid.Health = payload
 		end
+	elseif action == "mover_muneco" then
+		-- Coloca un muñeco en un punto (prueba de la pared); vuelve solo a su sitio al quedarse quieto
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Objetivo")) do
+			if model.Name == payload and typeof(extra) == "Vector3" then
+				model:PivotTo(CFrame.new(extra))
+				-- Un rasguño mínimo: cuenta como golpe reciente y no vuelve a su sitio enseguida
+				local humanoid = model:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					humanoid.Health -= 0.01
+				end
+			end
+		end
+	elseif action == "malabar_largo" then
+		-- Mantiene a un muñeco "en malabar" más de lo permitido (prueba del tope de malabar)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local DamageService = require(services:WaitForChild("DamageService"))
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Objetivo")) do
+			if model.Name == payload then
+				task.spawn(function()
+					for _ = 1, 12 do
+						DamageService.MarkJuggle(model, 1)
+						task.wait(0.45)
+					end
+				end)
+			end
+		end
 	elseif action == "curar" then
 		-- Solo la vida (las pruebas de habilidad necesitan conservar postura y aturdimiento)
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")

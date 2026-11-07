@@ -679,7 +679,7 @@ local CombatConfig = {
 			-- Z · proyectil: una cuchilla de viento que vuela recto hacia donde apuntas, atraviesa enemigos (cada uno
 			-- recibe un corte) y se detiene en las paredes. Aturde un instante e interrumpe preparaciones.
 			-- En el aire puede apuntar hacia abajo y te sostiene un instante (airStall).
-			Cuchilla = { slot = "Z", label = "Cuchilla", desc = "Corte de viento a distancia que atraviesa enemigos.", cooldown = 3, damage = 9, speed = 120, range = 60, radius = 2.5, knockback = 14, knockUp = 0, stun = 0.45, maxPitch = 50, airMaxPitch = 75, airStall = 0.25 },
+			Cuchilla = { slot = "Z", retreat = true, label = "Cuchilla", desc = "Corte de viento a distancia que atraviesa enemigos.", cooldown = 3, damage = 9, speed = 120, range = 60, radius = 2.5, knockback = 14, knockUp = 0, stun = 0.45, maxPitch = 50, airMaxPitch = 75, airStall = 0.25 },
 			-- X · atrae a los cercanos hasta tu frente y los aturde. En el aire: los sube hasta ti y los deja flotando.
 			Ciclon = { slot = "X", label = "Ciclón", desc = "Atrae a los cercanos hasta tu frente. En el aire, los sube contigo.", cooldown = 6, damage = 7, radius = 12, pullTo = 3.5, airHeight = 14, stun = 0.9, airStun = 1.2, airSuspend = 0.7 },
 			-- C · columna que lanza al aire (≈10 studs). Pulsar C otra vez enseguida: Ascenso (subes tras el lanzado).
@@ -693,7 +693,7 @@ local CombatConfig = {
 
 			-- ---------- Agua ----------
 			-- Z · burbuja lenta: atrapa al primer enemigo y lo sube flotando dentro (combo aéreo)
-			Burbuja = { slot = "Z", label = "Burbuja", desc = "Burbuja lenta que atrapa al primero y lo eleva.", cooldown = 4, damage = 6, speed = 70, range = 45, radius = 2.2, lift = 4, trap = 1.3, stun = 1.4, maxPitch = 40, airMaxPitch = 70 },
+			Burbuja = { slot = "Z", retreat = true, label = "Burbuja", desc = "Burbuja lenta que atrapa al primero y lo eleva.", cooldown = 4, damage = 6, speed = 70, range = 45, radius = 2.2, lift = 4, trap = 1.3, stun = 1.4, maxPitch = 40, airMaxPitch = 70 },
 			-- X · surfeas sobre una ola: arrastras a los del camino y los sueltas al final
 			Oleaje = { slot = "X", label = "Oleaje", desc = "Surfeas una ola y arrastras a los del camino.", cooldown = 6, damage = 8, distance = 16, duration = 0.32, width = 4.5, carry = 2.5, stun = 0.6, knockUp = 14 },
 			-- C · géiser en el punto apuntado: aviso y erupción que lanza
@@ -705,7 +705,7 @@ local CombatConfig = {
 			-- Z · salto de sombra (nunca atraviesa paredes): cortas a quien cruzas; Z otra vez: vuelves a tu sombra
 			PasoSombrio = { slot = "Z", label = "Paso Sombrío", desc = "Saltas por la sombra cortando al pasar. Z otra vez: vuelves.", cooldown = 5, damage = 5, distance = 16, duration = 0.12, width = 3.5, stun = 0.4, recastWindow = 2.5, returnMax = 34 },
 			-- X · daga que marca 4 s: golpear al marcado lo detona (daño extra) y recarga el Paso Sombrío
-			Daga = { slot = "X", label = "Daga Marcada", desc = "Marca 4 s. Golpear al marcado lo detona y recarga Z.", cooldown = 5, damage = 6, speed = 140, range = 40, radius = 1.6, mark = 4, detonate = 12, stun = 0.3, maxPitch = 40, airMaxPitch = 70 },
+			Daga = { slot = "X", retreat = true, label = "Daga Marcada", desc = "Marca 4 s. Golpear al marcado lo detona y recarga Z.", cooldown = 5, damage = 6, speed = 140, range = 40, radius = 1.6, mark = 4, detonate = 12, stun = 0.3, maxPitch = 40, airMaxPitch = 70 },
 			-- C · fauces de sombra en un cono al frente: inmovilizan y bajan a los que flotan
 			Fauces = { slot = "C", label = "Fauces", desc = "Cono de sombra que inmoviliza y baja a los que flotan.", cooldown = 6, damage = 9, range = 11, angle = 50, stun = 1.3 },
 			-- V · forma sombría: los ataques te atraviesan, corres más y cada golpe suma un corte; estalla al final
@@ -713,7 +713,7 @@ local CombatConfig = {
 
 			-- ---------- Fuego infernal ----------
 			-- Z · bola que explota al chocar y deja el suelo ardiendo
-			BolaInfernal = { slot = "Z", label = "Bola Infernal", desc = "Bola que explota al chocar y deja el suelo ardiendo.", cooldown = 4, damage = 10, speed = 90, range = 50, radius = 2, blast = 6, burn = 3, groundTime = 2, groundRadius = 5, knockback = 30, knockUp = 10, stun = 0.4, maxPitch = 40, airMaxPitch = 75 },
+			BolaInfernal = { slot = "Z", retreat = true, label = "Bola Infernal", desc = "Bola que explota al chocar y deja el suelo ardiendo.", cooldown = 4, damage = 10, speed = 90, range = 50, radius = 2, blast = 6, burn = 3, groundTime = 2, groundRadius = 5, knockback = 30, knockUp = 10, stun = 0.4, maxPitch = 40, airMaxPitch = 75 },
 			-- X · Paso de fuego que deja un rastro ardiente
 			EstelaArdiente = { slot = "X", label = "Estela Ardiente", desc = "Paso de fuego que deja un rastro que quema.", cooldown = 6, damage = 6, distance = 14, duration = 0.24, width = 3.5, trailTime = 2.5, burn = 2, stun = 0.3 },
 			-- C · embestida corta y puñetazo que explota
@@ -725,7 +725,7 @@ local CombatConfig = {
 
 			-- ---------- Trueno ----------
 			-- Z · rayo instantáneo al enemigo apuntado que salta a 2 más cercanos
-			Rayo = { slot = "Z", label = "Rayo", desc = "Rayo instantáneo que salta a 2 enemigos más.", cooldown = 3, damage = 8, range = 26, cone = 30, jumps = 2, jumpRange = 13, falloff = 0.75, stun = 0.5 },
+			Rayo = { slot = "Z", retreat = true, label = "Rayo", desc = "Rayo instantáneo que salta a 2 enemigos más.", cooldown = 3, damage = 8, range = 26, cone = 30, jumps = 2, jumpRange = 13, falloff = 0.75, stun = 0.5 },
 			-- X · te vuelves rayo y cruzas: daña y aturde a todos en el camino
 			Relampago = { slot = "X", label = "Relámpago", desc = "Cruzas como un rayo y aturdes a los del camino.", cooldown = 6, damage = 9, distance = 16, duration = 0.12, width = 3.5, stun = 0.8 },
 			-- C · tótem que electrocuta al más cercano cada medio segundo

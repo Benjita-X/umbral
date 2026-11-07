@@ -530,10 +530,12 @@ function SkillBarHUD.Start(ecoController)
 		tipDesc.Text = spec.desc or ""
 		tipStats.Text = statsOf(spec)
 		local airSpec = kit.air and kit.air[slot] and skills[kit.air[slot]]
-		tipAir.Text = if airSpec then string.format("En el aire: %s — %s", Texto.Mayusculas(airSpec.label), airSpec.desc or "") else ""
+		tipAir.Text = if airSpec then string.format("En el aire: %s — %s", Texto.Mayusculas(airSpec.label), airSpec.desc or "")
+			elseif spec.retreat then "Retrocediendo (S): además das un paso atrás"
+			else ""
 		tipAir.TextColor3 = kit.color
-		tipAir.Visible = airSpec ~= nil
-		tip.Size = UDim2.fromOffset(310, if airSpec then 104 else 86)
+		tipAir.Visible = airSpec ~= nil or spec.retreat == true
+		tip.Size = UDim2.fromOffset(310, if tipAir.Visible then 104 else 86)
 		tipStroke.Color = kit.color
 		local frame = s.frame
 		local position = frame.AbsolutePosition

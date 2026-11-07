@@ -132,9 +132,13 @@ return function(ctx)
 	if recast then
 		Input.Trigger("HabilidadC")
 	end
+	local peakUp = 0
 	waitUntil(function()
-		return r3.Position.Y - y0 >= 5 and math.abs(r3.Position.Y - ctx.root.Position.Y) < 4.5
-	end, 1)
+		peakUp = math.max(peakUp, r3.Position.Y - y0)
+		-- Como un jugador: se golpea cuando el muñeco ya llegó arriba, a tu lado (subir llega antes que él)
+		return r3.Position.Y - y0 >= 6 and math.abs(r3.Position.Y - ctx.root.Position.Y) < 3
+	end, 1.3)
+	local atAirHit = string.format("recast %s · muñeco subió %.1f · tú a %.1f del suelo · muñeco a %.1f de ti", tostring(recast), peakUp, ctx.root.Position.Y - y0, (r3.Position - ctx.root.Position).Magnitude)
 	local airBefore = h3.Health
 	Input.Trigger("Atacar")
 	local airHit = damageAfter(h3, airBefore, 0.5) > 0
@@ -158,8 +162,8 @@ return function(ctx)
 		"[Combos] Viento completo: golpes, Ciclón, Cuchilla, Levante, subir, golpe aéreo y Descenso",
 		total >= 6 and airHit and descent and ecoRejected == 0 and hitRejected == 0 and elapsed < 5.5,
 		string.format(
-			"%d golpes en %.1f s · combos: %s · golpe aéreo %s · en el aire al pedir el Descenso %s · Descenso %s (%s) · al pedirlo: %s · al caer: %s · rechazos: habilidades %d (%s), golpes %d",
-			total, elapsed, if #synergies > 0 then table.concat(synergies, ", ") else "ninguno", tostring(airHit), tostring(inAir), tostring(descent), tostring(player:GetAttribute("UltimoEco")), atPress, atLanding, ecoRejected, ctx.lastRejections(2), hitRejected
+			"%d golpes en %.1f s · combos: %s · golpe aéreo %s · en el aire al pedir el Descenso %s · Descenso %s (%s) · al golpear en el aire: %s · al pedirlo: %s · al caer: %s · rechazos: habilidades %d (%s), golpes %d",
+			total, elapsed, if #synergies > 0 then table.concat(synergies, ", ") else "ninguno", tostring(airHit), tostring(inAir), tostring(descent), tostring(player:GetAttribute("UltimoEco")), atAirHit, atPress, atLanding, ecoRejected, ctx.lastRejections(2), hitRejected
 		)
 	)
 	ctx.settle()
@@ -304,6 +308,33 @@ return function(ctx)
 		wet and reactions[1] == "ELECTROCUCIÓN" and reactions[2] == "PULSO UMBRÍO" and ecoRejected == 0,
 		string.format("mojado %s · reacciones: %s · %.1f s · rechazos %d (%s)", tostring(wet), if #reactions > 0 then table.concat(reactions, " → ") else "ninguna", elapsed, ecoRejected, ctx.lastRejections(2))
 	)
+
+	-- ---------- 6. Contra la pared: Puño Volcánico estampa al muñeco en el muro y queda marcado ----------
+	resetAll()
+	equip("Fuego")
+	resetAll()
+	h2 = healthy(m2)
+	local r2w = m2:WaitForChild("HumanoidRootPart")
+	ctx.remote:FireServer("mover_muneco", "Muneco2", Vector3.new(-60, r2w.Position.Y, 64.5)) -- el Muro: cara en z = 69
+	task.wait(0.4)
+	ctx.teleport(Vector3.new(-60, 4, 57), Vector3.new(0, 0, 1))
+	local wallBefore = h2.Health
+	press("HabilidadC", "C")
+	local splat = waitUntil(function()
+		return (m2:GetAttribute("ParedHasta") or 0) > Workspace:GetServerTimeNow()
+	end, 1.2)
+	record(
+		"[Combos] Contra la pared: un empujón fuerte estampa al enemigo en el muro",
+		splat,
+		string.format("estampado %s · daño %.1f · muñeco en z = %.1f", tostring(splat), wallBefore - h2.Health, r2w.Position.Z)
+	)
+
+	-- ---------- 7. Tope de malabar: tras 4,5 s en el aire se suelta y resiste ----------
+	ctx.remote:FireServer("malabar_largo", "Muneco1")
+	local resisted = waitUntil(function()
+		return (m1:GetAttribute("ResisteHasta") or 0) > Workspace:GetServerTimeNow()
+	end, 7)
+	record("[Combos] Tope de malabar: tras 4,5 s en el aire, el enemigo se suelta (¡RESISTE!)", resisted, "resiste " .. tostring(resisted))
 
 	resetAll()
 	equip("Viento")

@@ -97,8 +97,35 @@ function DamageService.HeightAboveFloor(model)
 	return (root.Position.Y - hit.Position.Y) - (humanoid.HipHeight + root.Size.Y / 2)
 end
 
+-- Malabar con tope: tras MAX_JUGGLE s seguidos en el aire, el objetivo se suelta, cae y RESISTE nuevos
+-- lanzamientos un rato (no hay combos aéreos infinitos)
+local MAX_JUGGLE, RESIST_TIME = 4.5, 2
+local juggleSince = setmetatable({}, { __mode = "k" })
+local resistUntil = setmetatable({}, { __mode = "k" })
+
+function DamageService.Resisting(model)
+	return (resistUntil[model] or 0) > os.clock()
+end
+
 function DamageService.MarkJuggle(model, seconds)
-	juggles[model] = math.max(juggles[model] or 0, os.clock() + seconds)
+	local clock = os.clock()
+	if DamageService.Resisting(model) then
+		return
+	end
+	local current = juggles[model]
+	if not current or clock > current then
+		juggleSince[model] = clock -- empieza un malabar nuevo
+	elseif juggleSince[model] and clock - juggleSince[model] > MAX_JUGGLE then
+		juggles[model] = nil
+		resistUntil[model] = clock + RESIST_TIME
+		model:SetAttribute("ResisteHasta", Workspace:GetServerTimeNow() + RESIST_TIME)
+		local root = model:FindFirstChild("HumanoidRootPart")
+		if root then
+			DamageService.Release(root)
+		end
+		return
+	end
+	juggles[model] = math.max(juggles[model] or 0, clock + seconds)
 end
 
 -- ¿Está en el aire por un lanzamiento (y todavía lejos del suelo)?
@@ -135,7 +162,7 @@ end
 
 -- Sostiene al objetivo en el aire durante duration s (sin gravedad; riseSpeed > 0 lo sube despacio)
 function DamageService.Suspend(targetRoot, duration, riseSpeed)
-	if not targetRoot or duration <= 0 then
+	if not targetRoot or duration <= 0 or DamageService.Resisting(targetRoot.Parent) then
 		return
 	end
 	local hold = constraintOn(targetRoot, "UmbralSuspension", Vector3.new(0, FORCE, 0))
@@ -658,7 +685,11 @@ function DamageService.ApplyExternalHit(player, target, spec)
 			stun = math.max(stun, juggle.HitStun)
 		else
 			DamageService.Release(root)
-			knockback(root, direction, spec.knockback or 0, spec.knockUp or 0)
+			local up = spec.knockUp or 0
+			if DamageService.Resisting(target) then
+				up = math.min(up, 8)
+			end
+			knockback(root, direction, spec.knockback or 0, up)
 		end
 		if spec.juggle then
 			DamageService.MarkJuggle(target, spec.juggle)

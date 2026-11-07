@@ -646,6 +646,17 @@ local function attempt(slot)
 	end
 	cast[skillName](spec, slot)
 	EcoEfectos.Estela(character(), color(), if (spec.cost or 0) > 0 then 0.9 else 0.45)
+	-- Variante en retirada: una habilidad a distancia lanzada mientras retrocedes (S) añade un paso atrás
+	-- (atacar y alejarse a la vez). Solo en el suelo; el lanzamiento ya salió desde donde estabas.
+	if spec.retreat and movement.State.grounded then
+		local root, humanoid = rootPart(), humanoidOf()
+		local moving = humanoid and humanoid.MoveDirection
+		local facing = root and flat(root.CFrame.LookVector)
+		if moving and facing and moving.Magnitude > 0.5 and facing.Magnitude > 0.1 and moving.Unit:Dot(facing.Unit) < -0.55 then
+			EcoEfectos.Silueta(character(), color(), 0.3, 0.5)
+			movement.Lunge(flat(moving).Unit, 58, 0.14, true)
+		end
+	end
 	if (spec.cost or 0) > 0 then
 		ultimateFlash(color())
 	end
