@@ -548,12 +548,25 @@ local function onDefenseResult(data)
 	if result == "desvio_perfecto" or result == "contrapaso" then
 		state.counterUntil = os.clock() + defense.CounterWindow
 	end
+	-- La duración del aturdimiento la decide el servidor (anticadena, expuesto); 0 = Aguante
+	local serverStun = if type(data.stun) == "number" then data.stun else nil
 	if result == "golpe" then
-		stun(defense.HitStun, false)
+		local duration = serverStun or defense.HitStun
+		if duration > 0 then
+			stun(duration, false)
+		end
 		movement.Knockback(away, defense.HitKnockback, 0.15)
 	elseif result == "ruptura" then
-		stun(defense.GuardBreakStun, true)
+		local duration = serverStun or defense.GuardBreakStun
+		if duration > 0 then
+			stun(duration, true)
+		end
 		movement.Knockback(away, defense.HitKnockback * 0.6, 0.12)
+	end
+	if serverStun == 0 and (result == "golpe" or result == "ruptura") then
+		events.DefenseResult:Fire(data, "AGUANTE")
+		Effects.DefenseFeedback(result, character, from)
+		return
 	end
 	Effects.DefenseFeedback(result, character, from)
 	events.DefenseResult:Fire(data, CALLOUTS[result])

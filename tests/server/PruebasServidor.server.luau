@@ -37,13 +37,31 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 			require(module).AllowTeleport(player, 1)
 		end
 	elseif action == "perfil" then
-		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Sparring")) do
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Companero")) do
 			model:SetAttribute("Perfil", payload)
 		end
 	elseif action == "retraso" then
-		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Sparring")) do
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Companero")) do
 			model:SetAttribute("Retraso", payload)
 		end
+	elseif action == "vida_enemigo" then
+		-- Fija la vida de los enemigos con una etiqueta (p. ej. dejar uno a punto de caer)
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged(payload.tag)) do
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = payload.value
+			end
+		end
+	elseif action == "cadena_aturdimiento" then
+		-- Aplica 4 aturdimientos seguidos y devuelve las duraciones reales (prueba del Aguante)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local DefenseService = require(services:WaitForChild("DefenseService"))
+		local durations = {}
+		for _ = 1, 4 do
+			table.insert(durations, string.format("%.3f", DefenseService.Stun(player, payload or 0.35)))
+			task.wait(0.05)
+		end
+		player:SetAttribute("PruebaCadena", table.concat(durations, ","))
 	elseif action == "curar" then
 		-- Solo la vida (las pruebas de habilidad necesitan conservar postura y aturdimiento)
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -54,7 +72,7 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 		player:LoadCharacterAsync()
 	elseif action == "patron" then
 		-- Fija el patrón de ataques del compañero de combate (p. ej. "Golpe" o "Barrido")
-		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Sparring")) do
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Companero")) do
 			model:SetAttribute("Patron", payload)
 		end
 	elseif action == "resonancia" then
@@ -63,6 +81,11 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 		player:SetAttribute("Postura", 0)
 		player:SetAttribute("AturdidoHasta", nil)
 		player:SetAttribute("ContraataqueHasta", nil)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local defenseModule = services and services:FindFirstChild("DefenseService")
+		if defenseModule then
+			require(defenseModule).ClearStunChain(player)
+		end
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
 			humanoid.Health = humanoid.MaxHealth

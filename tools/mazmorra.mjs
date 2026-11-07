@@ -195,6 +195,8 @@ export function buildDungeon() {
   for (const z of [66, 116]) {
     items.push(...torch('AntorchaAbismoO', -20, 6, z, -1), ...torch('AntorchaAbismoE', 20, 6, z, 1));
   }
+  items.push(enemy('Acechador', 0, 0, 89));
+  items.push(sign('CartelAcechador', 'ACECHADOR · si fallas un golpe pesado cerca de él, te embiste', P(0, 6, 92.2), P(0, 6, 0), [10, 1.6, 0.3]));
   items.push(enemy('Centinela', 0, 0, 117));
   items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
   items.push(sign('CartelAbismo', 'salta (8) · después salta y da un Paso en el aire (16)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));

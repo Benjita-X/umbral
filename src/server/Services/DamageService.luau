@@ -34,6 +34,11 @@ local DamageService = {}
 local hitApplied = Instance.new("BindableEvent")
 DamageService.HitApplied = hitApplied.Event
 
+-- Se dispara cuando un golpe que deja una recuperación larga (remate o golpe fuerte) termina SIN conectar:
+-- (jugador, nombreDelAtaque, horaFinDeLaRecuperación). Condición verificable para los Golpes de Oportunidad.
+local attackWhiffed = Instance.new("BindableEvent")
+DamageService.AttackWhiffed = attackWhiffed.Event
+
 local FORCE = 1e7
 local validation = CombatConfig.Validation
 local records = {} -- [player] = { lastSeq, lastSeqTime, seqTargets = { [seq] = { [model] = true } }, recent = { tiempos }, starts = { [seq] = inicio }, lastStart }
@@ -207,6 +212,16 @@ local function handleStart(player, seq, attackName, t)
 	}
 	record.lastStart = start
 	record.starts[seq] = start
+	-- Remate o golpe fuerte: si al terminar su ventana activa no conectó, es un golpe fallado (castigable)
+	if def.finisher then
+		local activeEnd = def.startup + def.active + 0.1
+		task.delay(activeEnd, function()
+			if not start.hit and player.Parent then
+				local recovery = def.recovery * CombatConfig.WhiffRecoveryMultiplier
+				attackWhiffed:Fire(player, attackName, Workspace:GetServerTimeNow() + recovery)
+			end
+		end)
+	end
 	record.starts[seq - 12] = nil -- limpiar inicios viejos
 end
 
@@ -221,7 +236,8 @@ local function startFor(player, seq)
 end
 
 -- Ritmo (sin repetidos ni ráfagas imposibles) y aplicación del golpe
-local function applyHit(player, attackName, def, seq, target, charge, b)
+-- `geometry`: { attacker, target } = CFrames en el INSTANTE del golpe (las mismas que juzgaron el alcance)
+local function applyHit(player, attackName, def, seq, target, charge, b, geometry)
 	local record = recordFor(player)
 	local now = os.clock()
 	if seq < record.lastSeq - 8 then
@@ -251,6 +267,9 @@ local function applyHit(player, attackName, def, seq, target, charge, b)
 		return reject(player, "demasiados golpes por segundo")
 	end
 	targets[target] = true
+	if record.starts[seq] then
+		record.starts[seq].hit = true
+	end
 	table.insert(recent, now)
 
 	local damage = def.damage + (def.chargeBonus or 0) * charge
@@ -264,7 +283,7 @@ local function applyHit(player, attackName, def, seq, target, charge, b)
 	local note, keepFacing = nil, false
 	if modifier then
 		local multiplier
-		multiplier, note, keepFacing = modifier(player, target, attackName, b)
+		multiplier, note, keepFacing = modifier(player, target, attackName, b, geometry)
 		damage *= multiplier or 1
 	end
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
@@ -393,7 +412,7 @@ local function handleHit(player, payload)
 				t - start.t
 			))
 		end
-		applyHit(player, attackName, def, seq, target, charge, current)
+		applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame })
 	end)
 end
 

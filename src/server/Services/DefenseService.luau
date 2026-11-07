@@ -185,11 +185,29 @@ function DefenseService.AddPosture(player, amount, canBreak)
 	return false
 end
 
+-- Aturde al jugador y devuelve la duración REAL aplicada (0 si está en Aguante), para que el cliente use
+-- la misma. Anticadena: cada aturdimiento seguido dura menos y al tercero llega el Aguante.
 function DefenseService.Stun(player, duration)
 	local r = recordFor(player)
 	local t = now()
+	if r.aguanteUntil and t < r.aguanteUntil then
+		return 0
+	end
+	r.recentStuns = r.recentStuns or {}
+	local window = defense.StunChainWindow
+	while r.recentStuns[1] and t - r.recentStuns[1] > window do
+		table.remove(r.recentStuns, 1)
+	end
+	local applied = duration * defense.StunChainFactor ^ #r.recentStuns
+	table.insert(r.recentStuns, t)
 	r.stunStart = t
-	player:SetAttribute("AturdidoHasta", t + duration)
+	player:SetAttribute("AturdidoHasta", t + applied)
+	if #r.recentStuns >= defense.StunChainMax then
+		r.recentStuns = {}
+		r.aguanteUntil = t + applied + defense.AguanteTime
+		player:SetAttribute("AguanteHasta", r.aguanteUntil)
+	end
+	return applied
 end
 
 -- ¿Aturdido? `grace` evita castigar acciones que el cliente hizo antes de enterarse del aturdimiento
@@ -200,6 +218,14 @@ function DefenseService.IsStunned(player, grace)
 		return false
 	end
 	return t - recordFor(player).stunStart > (grace or 0)
+end
+
+-- Borra la cadena de aturdimientos y el Aguante (reaparecer, pruebas)
+function DefenseService.ClearStunChain(player)
+	local r = recordFor(player)
+	r.recentStuns = {}
+	r.aguanteUntil = nil
+	player:SetAttribute("AguanteHasta", nil)
 end
 
 -- Abre la ventana de Contraataque (el cliente la recibe con la latencia de ida ya sumada)

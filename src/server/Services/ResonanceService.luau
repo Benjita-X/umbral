@@ -81,7 +81,10 @@ function ResonanceService.Gain(player, reason, source, repeatKey)
 	for _, g in ipairs(gains) do
 		recent += g.amount
 	end
-	local granted = math.max(0, math.min(amount, settings.MaxGainPerSecond - recent))
+	-- Las recompensas por vencer no pasan por el tope por segundo (ese tope frena el farmeo de golpes; vencer
+	-- ya está limitado porque el enemigo tarda en levantarse)
+	local isReward = reason == "VencerComun" or reason == "VencerGuardian"
+	local granted = if isReward then amount else math.max(0, math.min(amount, settings.MaxGainPerSecond - recent))
 	if source and granted > 0 then
 		table.insert(i.bySource[source].gains, { t = now, amount = granted })
 	end

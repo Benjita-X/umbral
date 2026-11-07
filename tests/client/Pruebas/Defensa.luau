@@ -55,7 +55,7 @@ return function(ctx)
 	-- ---------- Compañero de combate ----------
 	local npc = nil
 	waitUntil(function()
-		npc = CollectionService:GetTagged("Sparring")[1]
+		npc = CollectionService:GetTagged("Companero")[1]
 		return npc ~= nil and npc:GetAttribute("Estado") ~= nil
 	end, 25)
 	record("Compañero de combate listo", npc ~= nil, if npc then "en el Ring, estado " .. tostring(npc:GetAttribute("Estado")) else "no apareció")

@@ -104,7 +104,7 @@ const gravity = configNumber('Gravity');
 // Desarrollo: se aparece en la Grieta (mazmorra de muestra) con su iluminación nocturna.
 // Pruebas: solo el laboratorio, con luz de día (las pruebas miden en él y buscan UN compañero de combate).
 function workspaceTree(withTests) {
-  const maps = buildMovementLab({ labSpawn: withTests });
+  const maps = buildMovementLab({ labSpawn: withTests, testEnemies: withTests });
   if (!withTests) maps[0].children.push(buildDungeon());
   return maps;
 }

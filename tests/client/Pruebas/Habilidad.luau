@@ -22,7 +22,7 @@ return function(ctx)
 
 	local npc = nil
 	waitUntil(function()
-		npc = CollectionService:GetTagged("Sparring")[1]
+		npc = CollectionService:GetTagged("Companero")[1]
 		return npc ~= nil and npc:GetAttribute("Estado") ~= nil
 	end, 10)
 	if not npc then

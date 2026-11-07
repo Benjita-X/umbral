@@ -26,6 +26,7 @@ local TELEGRAPH = {
 	Rapido = { color = Color3.fromRGB(255, 150, 40), heavy = false },
 	Fuerte = { color = Color3.fromRGB(150, 20, 30), heavy = true },
 	Barrido = { color = Color3.fromRGB(170, 80, 255), heavy = true },
+	Embestida = { color = Color3.fromRGB(255, 250, 220), heavy = false }, -- Golpe de Oportunidad: blanco
 }
 
 local enemies = {} -- [model] = { tracks, highlight, ring, current }

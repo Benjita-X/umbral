@@ -117,15 +117,15 @@ Una técnica excepcional por arquetipo, con condición verificable, aviso y resp
 | # | Prueba | Estado |
 |---|---|---|
 | 1 | Jugador de alto nivel vence fácil a enemigos inferiores jugando bien | PENDIENTE (no hay niveles) |
-| 2 | Un inferior castiga ocasionalmente un error real | PENDIENTE (prototipo de un enemigo) |
+| 2 | Un inferior castiga ocasionalmente un error real | **Probado** (rama experimental): el Acechador embiste tras un golpe fuerte fallado; condición verificada por el servidor |
 | 3 | El castigo respeta los topes de daño | PENDIENTE |
 | 4 | No existe una estrategia universal que garantice contraataques | **PARCIAL: probado** con los bots (Machacador 0 %, Reloj fijo 0 %, Solo guardia pierde) |
 | 5 | Los amagues engañan a enemigos técnicos | PENDIENTE |
 | 6 | La IA no lee entradas futuras | PENDIENTE (prueba: la reacción nunca precede al evento del servidor) |
-| 7 | No hay cadenas infinitas de aturdimiento | PENDIENTE (requiere el Aguante) |
+| 7 | No hay cadenas infinitas de aturdimiento | **Probado** (rama experimental): Aguante 0,35 → 0,21 → 0,13 s y el cuarto no entra |
 | 8 | Cinco enemigos sin carga excesiva de CPU | PENDIENTE (MicroProfiler) |
 | 9 | Las defensas válidas se resuelven bien con latencia | PENDIENTE (simulador de red de Studio) |
-| 10 | La IA no genera Resonancia ilimitada | **Probado en parte**: topes por rival y por segundo; falta medir contra los nuevos enemigos |
+| 10 | La IA no genera Resonancia ilimitada | **Probado en parte**: topes por rival y por segundo; vencer da +20 una vez por levantada (20 s) |
 | 11 | Los enemigos pueden perder la oportunidad de contraatacar | PENDIENTE |
 | 12 | Mismas reglas a distintos FPS | **Probado** a ~35 FPS (Paso, salto, combo, desvío) |
 | 13 | El PvP no depende de la rareza | PENDIENTE (Ecos no implementados) |
@@ -175,6 +175,14 @@ Una técnica excepcional por arquetipo, con condición verificable, aviso y resp
 | Críticos aleatorios de 15-20 % | **Descartar** |
 | Migrar a autoridad del servidor | **Experimentar** (prototipo medido), no migrar todavía |
 
+## Resultados de la rama experimental (2026-11-07)
+`experimental/enemigos-grieta`: **103/103 pruebas** (95 de siempre + 8 de enemigos). Corregido gracias a esas pruebas: variables de aviso declaradas tarde (error de script), recompensa que no encontraba al ganador, coraza juzgada con la orientación de después del golpe (ahora la del instante del golpe), recompensa de vencer comida por el tope por segundo.
+
+Implementado como experimento (además de Latido, Centinela y Gemelos):
+- **Acechador** (primer Golpe de Oportunidad): un remate o golpe fuerte que termina sin conectar a menos de 16 studs dispara su **Embestida** (preparación 0,24 s, aviso blanco, daño 9, postura 30, empuje). Como mucho una cada 6 s. Desviable, bloqueable y esquivable.
+- **Aguante** (anticadena) con la duración real del aturdimiento enviada por el servidor (antes el cliente usaba valores fijos y no sabía del ×1,3 de "expuesto").
+- **Enemigos dormidos**: sin jugadores a 80 studs, la IA revisa 4 veces por segundo en vez de cada cuadro.
+
 ## L. Registro de decisiones de esta revisión
 | # | Decisión | Estado |
 |---|---|---|
@@ -185,3 +193,8 @@ Una técnica excepcional por arquetipo, con condición verificable, aviso y resp
 | 58 | Aguante (anticadena) y fichas de ataque | HIPÓTESIS (prioridad alta) |
 | 59 | Mantener el modelo de red actual hasta medir un prototipo de autoridad del servidor | APROBADO (provisional) |
 | 60 | La IA solo usa eventos ya recibidos por el servidor; nunca entradas futuras | APROBADO (regla de diseño) |
+| 61 | Aguante: ×0,6 por aturdimiento dentro de 2 s; al tercero, 0,8 s sin aturdimientos | EXPERIMENTAL (probado) |
+| 62 | El servidor envía la duración real del aturdimiento; el cliente la usa | EXPERIMENTAL (probado) |
+| 63 | Golpe de Oportunidad del Acechador tras golpe pesado fallado | EXPERIMENTAL (probado) |
+| 64 | Las reglas de daño por enemigo usan la geometría del instante del golpe | EXPERIMENTAL (probado) |
+| 65 | Las recompensas por vencer no pasan por el tope de Resonancia por segundo | EXPERIMENTAL (probado) |

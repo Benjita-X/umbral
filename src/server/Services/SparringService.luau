@@ -40,6 +40,8 @@ local defense = CombatConfig.Defense
 local FORCE = 1e7
 local npcs = {} -- [model] = estado
 local resultRemote
+local noticeRemote -- avisos grandes y chicos (Guardián, enemigo vencido, Contratiempo)
+local waveRemote -- onda del Desvío Reflejado
 
 local function now()
 	return Workspace:GetServerTimeNow()
@@ -272,6 +274,7 @@ local function resolve(s, info, player)
 	end
 
 	local result, damage, exposed = nil, 0, false
+	local stunApplied = nil -- duración real del aturdimiento (el cliente usa la misma)
 	-- 1. Desvío (el pesado solo con desvío perfecto)
 	if attack.deflectable then
 		local kind, press = DefenseService.FindDeflect(player, perceived)
@@ -360,10 +363,10 @@ local function resolve(s, info, player)
 	elseif result == "esquiva" then
 		ResonanceService.Gain(player, "Esquiva")
 	elseif result == "ruptura" then
-		DefenseService.Stun(player, defense.GuardBreakStun)
+		stunApplied = DefenseService.Stun(player, defense.GuardBreakStun)
 	elseif result == "golpe" then
 		s.streak = 0
-		DefenseService.Stun(player, defense.HitStun * (if exposed then 1.3 else 1))
+		stunApplied = DefenseService.Stun(player, defense.HitStun * (if exposed then 1.3 else 1))
 	end
 	if damage > 0 then
 		p.humanoid:TakeDamage(damage)
@@ -393,6 +396,7 @@ local function resolve(s, info, player)
 		result = result,
 		damage = damage,
 		exposed = exposed,
+		stun = stunApplied,
 		from = info.originCFrame.Position, -- el empuje sale desde el atacante, no desde el punto adelantado
 	})
 end
@@ -566,8 +570,6 @@ end
 
 -- Guardián de la Grieta: al llegar a 0 de vida queda vencido (aviso a todos), y se levanta para la revancha
 local guardian = sparring.Guardian
-local waveRemote
-local noticeRemote
 -- Vencer a un enemigo: queda tendido (aturdido) un rato, da Resonancia a quien lo venció y se levanta.
 -- El Guardián avisa a todos; un enemigo común solo a quien lo venció. Los Gemelos caen y se levantan juntos.
 local function watchDefeat(s, isGuardian)
@@ -579,6 +581,7 @@ local function watchDefeat(s, isGuardian)
 			return
 		end
 		defeated = true
+		task.wait() -- el golpe que lo venció registra a su autor justo después del cambio de vida
 		local group = { s, s.partner }
 		for _, member in ipairs(group) do
 			drive(member, nil)
@@ -641,7 +644,7 @@ function SparringService.Start()
 	waveRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 
 	-- Coraza frontal (Centinela): de frente no hace daño, por la espalda más; aturdido no protege
-	DamageService.SetModifier(function(_, target, _, b)
+	DamageService.SetModifier(function(_, target, _, b, geometry)
 		local s = npcs[target]
 		if not s or not s.kind or not s.kind.frontArmor then
 			return 1, nil, false
@@ -649,8 +652,11 @@ function SparringService.Start()
 		if s.state == "Aturdido" then
 			return 1, nil, true
 		end
-		local toAttacker = flat(b.attackerRoot.Position - b.targetRoot.Position)
-		local look = flat(b.targetRoot.CFrame.LookVector)
+		-- Orientación y posiciones en el INSTANTE del golpe (no al juzgarlo: para entonces ya se giró)
+		local attackerPos = if geometry and geometry.attacker then geometry.attacker.Position else b.attackerRoot.Position
+		local targetCF = if geometry and geometry.target then geometry.target else b.targetRoot.CFrame
+		local toAttacker = flat(attackerPos - targetCF.Position)
+		local look = flat(targetCF.LookVector)
 		if toAttacker.Magnitude < 0.01 or look.Magnitude < 0.01 then
 			return 1, nil, true
 		end
@@ -661,6 +667,33 @@ function SparringService.Start()
 			return s.kind.backMultiplier, "¡POR LA ESPALDA!", true
 		end
 		return 1, nil, true
+	end)
+
+	-- GOLPE DE OPORTUNIDAD (Acechador): un golpe pesado fallado cerca de él abre su Embestida. Solo reacciona
+	-- a un hecho que el servidor ya comprobó (el golpe terminó sin conectar), nunca a entradas futuras.
+	DamageService.AttackWhiffed:Connect(function(player, _, recoveryEnd)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root then
+			return
+		end
+		for _, s in pairs(npcs) do
+			local kind = s.kind
+			if kind and kind.opportunityRange and s.root and s.model.Parent
+				and (s.state == "Quieto" or s.state == "Recuperando")
+				and now() - (s.lastOpportunity or -math.huge) >= kind.opportunityCooldown
+				and flat(root.Position - s.root.Position).Magnitude <= kind.opportunityRange
+				and recoveryEnd - now() > 0.15 then
+				s.lastOpportunity = now()
+				drive(s, nil)
+				local toPlayer = flat(root.Position - s.root.Position)
+				if toPlayer.Magnitude > 0.1 then
+					s.root.CFrame = CFrame.lookAt(s.root.Position, s.root.Position + toPlayer.Unit)
+				end
+				startWindup(s, "Embestida", false)
+				break -- un solo castigo por error
+			end
+		end
 	end)
 
 	-- Un golpe fuerte que conecta mientras prepara su ataque lo interrumpe (los golpes rápidos no)
@@ -692,6 +725,8 @@ function SparringService.Start()
 				table.insert(tags, "Guardian")
 			elseif kind then
 				table.insert(tags, kindName)
+			else
+				table.insert(tags, "Companero") -- el compañero de combate del Ring (lo usan las pruebas)
 			end
 			task.spawn(function()
 				local model = DummyService.Spawn(marker, {
@@ -738,9 +773,36 @@ function SparringService.Start()
 		end
 	end
 
+	-- Rendimiento: un enemigo sin jugadores cerca (ActiveRange) se duerme y solo revisa SleepCheck veces por
+	-- segundo si alguien se acerca. Nunca se duerme a mitad de un ataque (solo en Quieto o Aturdido).
+	local function anyPlayerNear(s)
+		if not s.root then
+			return false
+		end
+		for _, p in ipairs(alivePlayers()) do
+			if (p.root.Position - s.root.Position).Magnitude <= sparring.ActiveRange then
+				return true
+			end
+		end
+		return false
+	end
 	RunService.Heartbeat:Connect(function(dt)
+		local t = os.clock()
 		for _, s in pairs(npcs) do
-			update(s, dt)
+			local idle = s.state == "Quieto" or s.state == "Aturdido"
+			if idle and t >= (s.nextAwakeCheck or 0) then
+				local wasAsleep = s.asleep
+				s.asleep = not anyPlayerNear(s)
+				s.nextAwakeCheck = t + 1 / sparring.SleepCheck
+				if wasAsleep and not s.asleep and s.state == "Quieto" then
+					s.phaseEnd = math.max(s.phaseEnd, now() + pauseFor(s) * 0.5) -- respiro al llegar
+				end
+			end
+			if not (idle and s.asleep) then
+				update(s, dt)
+			elseif s.state == "Aturdido" and now() >= s.phaseEnd then
+				update(s, dt) -- termina su aturdimiento aunque duerma
+			end
 		end
 	end)
 end

@@ -203,6 +203,7 @@ export function buildMovementLab(options = {}) {
   zones.push(folder('Ring', ring));
 
   zones.push(arena());
+  if (options.testEnemies) zones.push(testEnemies());
 
   return [folder('Maps', [folder('MovementLab', zones)])];
 }
@@ -261,4 +262,18 @@ function arena() {
   // Camino desde el laboratorio hasta la entrada
   items.push(part({ name: 'Camino', size: [3, 0.06, 40], pos: [0, 0.03, -128], color: [255, 190, 70], material: 'Neon', collide: false }));
   return folder('Arena', items);
+}
+
+// Zona de pruebas de enemigos (SOLO en build/UMBRAL-Pruebas.rbxlx): un ejemplar de cada enemigo común,
+// separados más de su alcance de agresión (12) para probarlos de a uno. Lejos del laboratorio (X = 200).
+function testEnemies() {
+  const marker = (name, pos) => part({ name, size: [1, 1, 1], pos, rot: rotY(180), transparency: 1, collide: false, color: [255, 255, 255] });
+  return folder('PruebasEnemigos', [
+    part({ name: 'Piso', size: [60, 0.2, 200], pos: [200, 0.1, 0], color: [70, 60, 80], material: 'Concrete' }),
+    marker('PuntoSparring_Latido', [200, 3.2, 0]),
+    marker('PuntoSparring_Centinela', [200, 3.2, 60]),
+    marker('PuntoSparring_Gemelo', [196, 3.2, -60]),
+    marker('PuntoSparring_Gemelo', [204, 3.2, -60]),
+    marker('PuntoSparring_Acechador', [200, 3.2, -120]),
+  ]);
 }

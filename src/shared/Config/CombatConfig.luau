@@ -193,6 +193,13 @@ local CombatConfig = {
 		CounterTargetRange = 18, -- y llega más lejos (vuelves al rival tras esquivar de lado)
 		CounterMaxLunge = 12,
 		HitStun = 0.35, -- aturdimiento al recibir un golpe
+		-- AGUANTE (anticadena): cada aturdimiento dentro de StunChainWindow dura ×StunChainFactor respecto al
+		-- anterior; al llegar a StunChainMax, AguanteTime segundos sin nuevos aturdimientos (el daño sí entra).
+		-- Así varios enemigos no pueden dejarte inmóvil sin oportunidad de responder.
+		StunChainWindow = 2,
+		StunChainFactor = 0.6,
+		StunChainMax = 3,
+		AguanteTime = 0.8,
 		HitKnockback = 18,
 		JumpClearance = 1.5, -- studs sobre la altura normal para saltar por encima de un barrido
 		TimestampSlack = 0.15, -- margen extra al validar los tiempos que manda el cliente
@@ -246,10 +253,15 @@ local CombatConfig = {
 		Types = {
 			Latido = { label = "Latido", maxHealth = 80, profile = "latido", body = Color3.fromRGB(120, 34, 52), legs = Color3.fromRGB(60, 18, 28), glow = Color3.fromRGB(255, 70, 110), riseAfter = 20, rhythmStreak = 3, rhythmStun = 2.5 },
 			Centinela = { label = "Centinela", maxHealth = 90, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5 },
+			-- Acechador: GOLPE DE OPORTUNIDAD. Si fallas un remate o un golpe fuerte a menos de opportunityRange,
+			-- te castiga con una Embestida durante tu recuperación (como mucho una cada opportunityCooldown s).
+			Acechador = { label = "Acechador", maxHealth = 60, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
 			Gemelo = { label = "Gemelo de Eco", maxHealth = 70, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
 		},
 		ReflectRadius = 10, -- alcance de la onda del Desvío Reflejado
 		ReflectStun = 0.6,
+		ActiveRange = 80, -- rendimiento: sin jugadores a esta distancia, el enemigo duerme
+		SleepCheck = 4, -- veces por segundo que un enemigo dormido revisa si alguien se acerca
 		ReflectMaxTargets = 3, -- tope: un solo desvío no debe vaciar un grupo grande (AUDITORIA-2-AMENAZA.md)
 		Profiles = {
 			basico = { pattern = { "Golpe", "Golpe", "Barrido" }, pause = 1.2, maxDelay = 0 },
@@ -259,6 +271,7 @@ local CombatConfig = {
 			latido = { pattern = { "Rapido" }, pause = 0.7, maxDelay = 0, rhythm = true }, -- ritmo fijo: se aprende
 			centinela = { pattern = { "Golpe", "Golpe", "Fuerte" }, pause = 1.1, maxDelay = 0.2 },
 			gemelo = { pattern = { "Golpe", "Rapido", "Barrido" }, pause = 1.4, maxDelay = 0.3 },
+			acechador = { pattern = { "Rapido", "Golpe" }, pause = 1.6, maxDelay = 0.2 }, -- tranquilo... hasta que fallas
 		},
 		-- Mismo esquema que los golpes del jugador (ver MoveSchema): preparación, impacto, recuperación,
 		-- daño, postura, forma y alcance, y qué defensas admite.
@@ -316,6 +329,27 @@ local CombatConfig = {
 				delayable = true,
 				clip = "SparringFuerte",
 				holdAt = 0.6,
+			},
+			-- Golpe de Oportunidad del Acechador: solo castiga un golpe pesado fallado (ver Types.Acechador).
+			-- Rápido pero avisado (brillo blanco), desviable, bloqueable y esquivable; daño acotado: lo que
+			-- importa es la interrupción, la postura y el empuje.
+			Embestida = {
+				label = "Embestida",
+				startup = 0.24,
+				active = 0.08,
+				recovery = 0.7,
+				damage = 9,
+				posture = 30,
+				shape = "box",
+				range = 5,
+				hitboxSize = Vector3.new(4.5, 6, 5),
+				lunge = 8,
+				deflectable = true,
+				guardable = true,
+				contrapaso = true,
+				delayable = false,
+				opportunity = true, -- no está en ningún patrón: solo la dispara su condición
+				clip = "SparringRapido",
 			},
 			Barrido = {
 				label = "Barrido",
