@@ -42,6 +42,7 @@ local MovementConfig = {
 	WallRunSink = 3, -- studs/s que baja mientras corre por la pared (no flota para siempre)
 	MantleReach = 2.8, -- studs que puede faltar para llegar a un borde: el personaje sube solo
 	MantleCheckDistance = 2.2, -- studs delante del cuerpo donde busca el borde
+	MantleClimbSpeed = 30, -- studs/s de la trepada (sube el borde en ~0,1 s)
 
 	-- Cámara
 	BaseFOV = 70,

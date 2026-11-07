@@ -89,5 +89,31 @@ return function(ctx)
 	)
 	ctx.settle()
 
+	-- ---------- 5. Atascado dentro de un bloque sólido: no se queda ahí ----------
+	ctx.teleport(Vector3.new(150, 4, -14), Vector3.new(0, 0, 1)) -- suelo firme junto al bloque de 10,5
+	task.wait(0.5)
+	ctx.remote:FireServer("teletransporte")
+	task.wait(0.05)
+	ctx.root.AssemblyLinearVelocity = Vector3.zero
+	ctx.root.CFrame = CFrame.new(150, 4, 0) -- dentro del bloque BloqueBorde (8 × 10,5 × 8)
+	task.wait(2.5)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { player.Character }
+	params.RespectCanCollide = true
+	local stillInside = false
+	for _, part in ipairs(workspace:GetPartBoundsInRadius(ctx.root.Position, 0.15, params)) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if not (model and model:FindFirstChildOfClass("Humanoid")) then
+			stillInside = true
+		end
+	end
+	record(
+		"[Choques] Quien queda metido en una pieza sólida no se queda atascado",
+		alive() and not stillInside,
+		string.format("atascado tras 2,5 s: %s · posición (%.0f, %.0f, %.0f)", tostring(stillInside), ctx.root.Position.X, ctx.root.Position.Y, ctx.root.Position.Z)
+	)
+	ctx.settle()
+
 	ctx.teleport(Vector3.new(0, 4, 30), Vector3.new(0, 0, 1))
 end

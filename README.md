@@ -5,6 +5,9 @@ Juego original de acción y combate para Roblox (PC, celular y mando).
 ## Estado
 **Fases 1-3 consolidadas** (movimiento, combate corporal, defensa/Contrapaso/Resonancia) con validación en el servidor y pruebas automáticas. Al apretar Play apareces en **La Grieta**, una mazmorra de muestra con ambiente; el laboratorio gris de pruebas, el Dojo, el Ring y la arena de duelo siguen en la superficie. Detalle en [docs/ESTADO.md](docs/ESTADO.md).
 
+## Jugar (lo más fácil)
+Doble clic en **`JUGAR.cmd`** (en esta carpeta): construye el juego con lo último y lo abre en Roblox Studio. Ahí presiona **F5**.
+
 ## Cómo se arma
 El código vive en `src/` y el mapa en `tools/mapa.mjs`. Un solo comando genera el archivo que abre Roblox Studio:
 

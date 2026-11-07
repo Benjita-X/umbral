@@ -208,8 +208,19 @@ return function(ctx)
 
 	-- 11. Reaparecer: todo debe seguir funcionando con el personaje nuevo
 	ctx.settle()
+	-- Cuántas prendas y accesorios tiene el avatar (para comprobar que reaparece con su apariencia)
+	local function outfit(character)
+		local count = 0
+		for _, child in ipairs(character:GetChildren()) do
+			if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") then
+				count += 1
+			end
+		end
+		return count
+	end
 	if ctx.remote then
 		local oldCharacter = ctx.player.Character
+		local outfitBefore = outfit(oldCharacter)
 		ctx.remote:FireServer("reaparecer")
 		local respawned = waitUntil(function()
 			local character = ctx.player.Character
@@ -220,6 +231,16 @@ return function(ctx)
 				and ctx.Combat.State.ready
 		end, 12)
 		if respawned then
+			-- Apariencia: el personaje nuevo debe llegar con su ropa y accesorios (reporte del jugador: reapareció
+			-- sin avatar). El servidor la reaplica si Roblox no terminó de cargarla.
+			if outfitBefore > 0 then
+				local dressed = waitUntil(function()
+					return ctx.player.Character ~= nil and outfit(ctx.player.Character) >= outfitBefore
+				end, 12)
+				record("Reaparecer con tu avatar", dressed, string.format("prendas y accesorios: %d antes · %d después", outfitBefore, outfit(ctx.player.Character)))
+			else
+				ctx.skip("Reaparecer con tu avatar", "el avatar de esta cuenta no tiene ropa ni accesorios para comparar")
+			end
 			ctx.bindCharacter(ctx.player.Character)
 			ctx.controls:Disable()
 			ctx.settle()

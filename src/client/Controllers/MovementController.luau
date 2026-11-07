@@ -64,6 +64,7 @@ local lastWallNormal = nil -- última pared usada para saltar (no se repite la m
 local wallRunUsed = false -- una carrera por pared por salto
 local mantleUsed = false -- un agarre de borde por salto
 local sliding = false -- deslizándose por una pared (fuerza vertical constante)
+local mantle = nil -- { topY, dir, remaining, overStart }: trepada controlada sobre un borde
 local wallParams = RaycastParams.new()
 wallParams.FilterType = Enum.RaycastFilterType.Exclude
 local blockParams = RaycastParams.new()
@@ -244,12 +245,16 @@ local function tryMantle(moveDir)
 		return
 	end
 	mantleUsed = true
-	if sliding then
-		sliding = false
-		dashVelocity.Enabled = false
-	end
-	local v = root.AssemblyLinearVelocity
-	root.AssemblyLinearVelocity = Vector3.new(v.X, jumpVelocity(rise + 1.2), v.Z) + dir * 8
+	sliding = false
+	-- Trepada controlada (antes era un impulso: según el instante exacto a veces no alcanzaba y caía):
+	-- primero sube en vertical hasta quedar sobre el borde, después avanza por encima
+	mantle = { topY = top.Position.Y, dir = dir, remaining = 0.45, overStart = nil }
+	exitBlend = nil
+	lunge = nil
+	wallPush = nil
+	dashVelocity.MaxAxesForce = Vector3.new(FORCE, FORCE, FORCE)
+	dashVelocity.VectorVelocity = Vector3.new(0, Config.MantleClimbSpeed, 0)
+	dashVelocity.Enabled = true
 	mantledEvent:Fire(rise)
 	log(string.format("Agarre de borde (%.1f studs)", rise))
 	return true
@@ -273,6 +278,7 @@ end
 
 local function stopDashForces()
 	sliding = false
+	mantle = nil
 	dash = nil
 	exitBlend = nil
 	lunge = nil
@@ -355,6 +361,7 @@ local function startDash()
 	lunge = nil
 	wallPush = nil
 	wallRun = nil -- un Paso sale de la pared
+	mantle = nil
 
 	local holdHeight = airborne and Config.AirDashHoldsHeight
 	local speed = Config.DashDistance / Config.DashDuration
@@ -530,6 +537,23 @@ local function update(dt)
 			-- Último tramo: frenar lo justo para no pasarse de la distancia
 			dashVelocity.VectorVelocity = dash.dir * (remaining / math.max(dt, 1 / 240))
 		end
+	elseif mantle then
+		-- Trepada: sube hasta quedar sobre el borde y avanza 1,6 studs por encima
+		mantle.remaining -= dt
+		local standingY = mantle.topY + humanoid.HipHeight + root.Size.Y / 2 + 0.25
+		if root.Position.Y < standingY - 0.15 then
+			dashVelocity.VectorVelocity = Vector3.new(0, Config.MantleClimbSpeed, 0)
+		else
+			mantle.overStart = mantle.overStart or root.Position
+			dashVelocity.VectorVelocity = mantle.dir * 16
+		end
+		local over = mantle.overStart and flat(root.Position - mantle.overStart).Magnitude >= 1.6
+		if mantle.remaining <= 0 or over then
+			mantle = nil
+			dashVelocity.Enabled = false
+			local v = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(v.X, math.min(v.Y, 0), v.Z)
+		end
 	elseif wallPush then
 		-- Empuje del salto de pared: unos instantes sin que el control lo anule
 		wallPush.remaining -= dt
@@ -619,7 +643,7 @@ local function update(dt)
 	-- Paredes en el aire: carrera por la pared, agarre de borde y deslizamiento
 	local moveDir = flat(humanoid.MoveDirection)
 	local wantSlide = false
-	if not state.grounded and not dash and not lunge and not wallPush then
+	if not state.grounded and not dash and not lunge and not wallPush and not mantle then
 		-- Carrera por la pared: en sprint, con un muro al costado y avanzando a lo largo de él
 		if not wallRun and not wallRunUsed and baseSpeed >= Config.WallRunMinSpeed and moveDir.Magnitude > 0.5 and velocity.Y > -8 then
 			local right = flat(root.CFrame.RightVector)
@@ -655,7 +679,7 @@ local function update(dt)
 	end
 	-- Deslizamiento con una fuerza solo vertical y constante: caída suave y exacta (corregir la velocidad
 	-- cuadro a cuadro dejaba que la gravedad acelerara entre correcciones)
-	if wantSlide and not dash and not lunge and not wallPush and not wallRun and not exitBlend then
+	if wantSlide and not dash and not lunge and not wallPush and not wallRun and not exitBlend and not mantle then
 		sliding = true
 		dashVelocity.MaxAxesForce = Vector3.new(0, FORCE, 0)
 		dashVelocity.VectorVelocity = Vector3.new(0, -Config.WallSlideSpeed, 0)
@@ -670,7 +694,7 @@ local function update(dt)
 	state.wallSliding = sliding
 
 	-- Caída más rápida que la subida
-	if not state.grounded and velocity.Y < 0 and not (dash and dash.holdHeight) and not sliding and not wallRun then
+	if not state.grounded and velocity.Y < 0 and not (dash and dash.holdHeight) and not sliding and not wallRun and not mantle then
 		local extra = Workspace.Gravity * (Config.FallGravityMultiplier - 1) * dt
 		local newY = math.max(velocity.Y - extra, -Config.MaxFallSpeed)
 		root.AssemblyLinearVelocity = Vector3.new(velocity.X, newY, velocity.Z)

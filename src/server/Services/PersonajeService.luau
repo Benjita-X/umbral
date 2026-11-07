@@ -3,6 +3,8 @@
 --     CombatConfig.Recovery.SafetyDrop por debajo de él (atravesó el suelo por un fallo de la física, se
 --     salió del mapa...), vuelve a ese suelo sin morir. El foso del Abismo tiene su propio regreso
 --     (GrietaService); esto es la red general para lo inesperado.
+--   · Atascado: si el centro del cuerpo queda DENTRO de una pieza sólida (la física lo metió en una pared)
+--     durante 1 s, también vuelve al último suelo firme.
 --   · Apariencia: si al reaparecer el personaje llega sin su avatar (sin ropa ni accesorios), se le vuelve
 --     a aplicar la apariencia de su cuenta. Roblox a veces no termina de cargarla al reaparecer.
 
@@ -20,6 +22,25 @@ local recovery = CombatConfig.Recovery
 local CHECK_INTERVAL = 0.2
 local lastSafe = {} -- [player] = CFrame sobre el último suelo firme
 local nextCheck = {} -- [player] = os.clock()
+local stuckSince = {} -- [player] = os.clock() desde que el cuerpo está metido en una pieza sólida
+local STUCK_SECONDS = 1
+
+local overlapParams = OverlapParams.new()
+overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+overlapParams.RespectCanCollide = true
+
+-- ¿El centro del cuerpo está metido dentro de una pieza sólida (no un personaje)? Un radio chico: apoyarse
+-- en una pared no cuenta, solo estar adentro.
+local function insideSolid(character, root)
+	overlapParams.FilterDescendantsInstances = { character }
+	for _, part in ipairs(Workspace:GetPartBoundsInRadius(root.Position, 0.15, overlapParams)) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if not (model and model:FindFirstChildOfClass("Humanoid")) then
+			return true
+		end
+	end
+	return false
+end
 
 local groundParams = RaycastParams.new()
 groundParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -112,6 +133,7 @@ function PersonajeService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		lastSafe[player] = nil
 		nextCheck[player] = nil
+		stuckSince[player] = nil
 	end)
 
 	RunService.Heartbeat:Connect(function()
@@ -127,6 +149,17 @@ function PersonajeService.Start()
 					rescue(player, character, root)
 				elseif now >= (nextCheck[player] or 0) then
 					nextCheck[player] = now + CHECK_INTERVAL
+					-- Atascado dentro de una pared: tras STUCK_SECONDS, de vuelta al último suelo firme
+					if insideSolid(character, root) then
+						stuckSince[player] = stuckSince[player] or now
+						if now - stuckSince[player] >= STUCK_SECONDS then
+							stuckSince[player] = nil
+							rescue(player, character, root)
+							continue
+						end
+					else
+						stuckSince[player] = nil
+					end
 					local ground = firmGround(character, root, humanoid)
 					if ground then
 						local standing = humanoid.HipHeight + root.Size.Y / 2 + 0.3

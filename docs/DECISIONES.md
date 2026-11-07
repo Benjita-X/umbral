@@ -71,6 +71,17 @@
 | 52 | Muñecos y enemigos sin estados FallingDown ni Ragdoll | Un compañero tumbado tras chocar con el jugador dejaba de atacar |
 | 53 | Guardián de la Grieta: ojos, cristales y núcleo de neón soldados (sin masa ni colisión) | Que se lea como enemigo; no cambia la Hurtbox estándar |
 
+## Choques y caídas (2026-11-07, reporte del jugador: un Paso contra una pared lo hundió en el suelo)
+| # | Decisión | Por qué |
+|---|---|---|
+| 66 | Fuerza de las restricciones de velocidad 4e5 (antes 1e7) en jugador, enemigos y empujes | Con 1e7 la física resolvía los choques metiendo al personaje en la pared o hundiéndolo en el suelo |
+| 67 | El Paso, los avances de golpes, el empuje del salto de pared, la carrera por la pared y la salida del Paso se detienen al tocar una pared (esfera del ancho del cuerpo) | Antes seguían empujando hasta 0,27 s contra el muro |
+| 68 | Los enemigos acortan su lanzamiento y los empujes se acortan si hay una pared | No quedan metidos en muros |
+| 69 | Suelos de 8 studs de grosor (laboratorio y Grieta) | Ni una caída a 140 studs/s ni la picada del Descenso los atraviesan, aun a 30 FPS |
+| 70 | Red de seguridad (`PersonajeService`): caer 40 studs por debajo del último suelo firme o quedar 1 s metido en una pieza sólida devuelve al último suelo firme, sin morir | Ningún fallo de la física debe matar al jugador |
+| 71 | El personaje del jugador no tropieza (FallingDown y Ragdoll desactivados) | Chocar fuerte lo tumbaba |
+| 72 | Si un personaje reaparece sin ropa ni accesorios, el servidor le vuelve a aplicar la apariencia de su cuenta | El jugador reapareció sin su avatar (Roblox no terminó de cargarlo) |
+
 ## Pendiente de decidir
 - ¿La experiencia será de tu cuenta o de un grupo? (importa si después entran socios)
 - **Antes de publicar:** subir las animaciones a Roblox (o reemplazarlas por otras de un animador) y poner sus IDs en `CombatConfig.AnimationIds`; las generadas por código no funcionan fuera de Studio.
