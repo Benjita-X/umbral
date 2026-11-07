@@ -10,6 +10,39 @@ local Workspace = game:GetService("Workspace")
 
 local EcoEfectos = {}
 
+-- Un solo ciclo por cuadro para todas las animaciones de efectos (en vez de una conexión a Heartbeat por efecto).
+-- Se usa igual que Heartbeat: Stepper:Connect(fn) devuelve algo con :Disconnect(). Si un efecto falla, solo se
+-- apaga ese efecto.
+local stepping = {}
+local Stepper = {}
+function Stepper:Connect(fn)
+	local entry = { fn = fn, alive = true }
+	table.insert(stepping, entry)
+	return {
+		Disconnect = function()
+			entry.alive = false
+		end,
+	}
+end
+RunService.Heartbeat:Connect(function(dt)
+	local i = 1
+	while i <= #stepping do
+		local entry = stepping[i]
+		if entry.alive then
+			local ok, err = pcall(entry.fn, dt)
+			if not ok then
+				entry.alive = false
+				warn("[UMBRAL] Efecto: " .. tostring(err))
+			end
+		end
+		if entry.alive then
+			i += 1
+		else
+			table.remove(stepping, i)
+		end
+	end
+end)
+
 local TEXTURES = {
 	Sparks = "rbxasset://textures/particles/sparkles_main.dds",
 	Smoke = "rbxasset://textures/particles/smoke_main.dds",
@@ -28,6 +61,7 @@ local SOUNDS = {
 	AguaGrave = { id = "rbxasset://sounds/impact_water.mp3", volume = 0.9, speed = 0.7 },
 	Surf = { id = "rbxasset://sounds/action_swim.mp3", volume = 0.6, speed = 1.3 },
 	Remolino = { id = "rbxasset://sounds/action_falling.ogg", volume = 0.45, speed = 1.6 },
+	Chasquido = { id = "rbxasset://sounds/impact_explosion_03.mp3", volume = 0.3, speed = 2.4 },
 }
 
 local function folder()
@@ -45,7 +79,11 @@ EcoEfectos.Folder = folder
 EcoEfectos.Creados = 0 -- piezas de efecto creadas (diagnóstico de la vitrina)
 EcoEfectos.Lento = 1 -- la vitrina lo sube para ver los efectos en cámara lenta (alarga duraciones)
 local budgetCheck, saturated = 0, false
+EcoEfectos.Reducidos = false -- ajuste del menú "Efectos reducidos": siempre como si hubiera demasiados
 function EcoEfectos.Saturado()
+	if EcoEfectos.Reducidos then
+		return true
+	end
 	local clock = os.clock()
 	if clock - budgetCheck > 0.2 then
 		budgetCheck = clock
@@ -178,7 +216,7 @@ function EcoEfectos.Projectile(origin, dir, speed, range, parts, onEnd, relative
 		offsets[i] = if relative then startFrame:ToObjectSpace(part.CFrame) else part.CFrame.Rotation
 	end
 	local connection
-	connection = RunService.Heartbeat:Connect(function(dt)
+	connection = Stepper:Connect(function(dt)
 		local step = math.min(speed / EcoEfectos.Lento * dt, range - traveled)
 		local hit = Workspace:Raycast(position, dir * step, wallParams)
 		-- los personajes no frenan el proyectil (lo decide el servidor): solo las paredes
@@ -276,7 +314,7 @@ function EcoEfectos.Ciclon(center, radius, color, air)
 		local start = os.clock()
 		local duration = (0.32 + i * 0.05) * EcoEfectos.Lento
 		local connection
-		connection = RunService.Heartbeat:Connect(function(dt)
+		connection = Stepper:Connect(function(dt)
 			local alpha = math.clamp((os.clock() - start) / duration, 0, 1)
 			spin += dt * 14
 			local d = radius * 2 * (1 - alpha) + 0.5
@@ -318,9 +356,31 @@ function EcoEfectos.Tornado(center, radius, color, duration)
 		table.insert(rings, { part = ring, height = i * 1.8, radius = r })
 	end
 	local core = EcoEfectos.Part(Vector3.new(14, 3, 3), CFrame.new(ground + Vector3.new(0, 7, 0)) * CFrame.Angles(0, 0, math.rad(90)), color, Enum.PartType.Cylinder, 0.75)
+	do
+		local base = EcoEfectos.Part(Vector3.new(radius * 1.6, 1, radius * 1.6), CFrame.new(ground + Vector3.new(0, 1, 0)), color, Enum.PartType.Block, 1)
+		local dust = Instance.new("ParticleEmitter")
+		dust.Texture = TEXTURES.Smoke
+		dust.Color = ColorSequence.new(Color3.fromRGB(200, 195, 185))
+		dust.LightEmission = 0.2
+		dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.5), NumberSequenceKeypoint.new(1, 4) })
+		dust.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) })
+		dust.Lifetime = NumberRange.new(0.6, 1)
+		dust.Speed = NumberRange.new(4, 9)
+		dust.SpreadAngle = Vector2.new(60, 60)
+		dust.EmissionDirection = Enum.NormalId.Top
+		dust.Acceleration = Vector3.new(0, 6, 0)
+		dust.RotSpeed = NumberRange.new(200, 360)
+		dust.Rate = 45
+		dust.Shape = Enum.ParticleEmitterShape.Box
+		dust.Parent = base
+		task.delay(duration * EcoEfectos.Lento, function()
+			dust.Enabled = false
+			Debris:AddItem(base, 1.2)
+		end)
+	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local elapsed = os.clock() - start
 		for i, ring in ipairs(rings) do
 			local wobble = Vector3.new(math.sin(elapsed * 6 + i) * 0.6, 0, math.cos(elapsed * 6 + i) * 0.6)
@@ -631,7 +691,7 @@ function EcoEfectos.Atrapado(model, color, duration)
 	local bubble = EcoEfectos.Part(Vector3.new(7, 7, 7), root.CFrame, color, Enum.PartType.Ball, 0.7)
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		if not root.Parent or os.clock() - start >= duration then
 			connection:Disconnect()
 			if bubble.Parent then
@@ -704,7 +764,7 @@ function EcoEfectos.AnilloFuego(center, radius, color, duration)
 	EcoEfectos.Circulo(ground, radius, color, duration, 0.8, TEXTURES.Fire)
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local elapsed = os.clock() - start
 		ring.CFrame = CFrame.new(ground + Vector3.new(0, 2, 0)) * CFrame.Angles(0, elapsed * 2, 0) * CFrame.Angles(0, 0, math.rad(90))
 		ring.Transparency = 0.6 + math.sin(elapsed * 10) * 0.08
@@ -758,10 +818,46 @@ function EcoEfectos.Totem(center, color, duration)
 end
 
 function EcoEfectos.Nube(center, color, duration)
-	local cloud = EcoEfectos.Part(Vector3.new(30, 3, 30), CFrame.new(center + Vector3.new(0, 22, 0)), Color3.fromRGB(40, 40, 60), Enum.PartType.Ball, 0.5)
+	-- Nubarrón: humo oscuro y espeso con relámpagos que lo iluminan por dentro
+	local top = center + Vector3.new(0, 22, 0)
+	local cloud = EcoEfectos.Part(Vector3.new(30, 3, 30), CFrame.new(top), Color3.fromRGB(34, 34, 52), Enum.PartType.Ball, 0.55)
 	cloud.Material = Enum.Material.SmoothPlastic
-	fadeAndDestroy(cloud, duration + 0.4)
-	local _ = color
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = cloud
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Texture = TEXTURES.Smoke
+	smoke.Color = ColorSequence.new(Color3.fromRGB(50, 50, 72), Color3.fromRGB(25, 25, 38))
+	smoke.LightEmission = 0
+	smoke.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 7), NumberSequenceKeypoint.new(1, 12) })
+	smoke.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.35), NumberSequenceKeypoint.new(1, 1) })
+	smoke.Lifetime = NumberRange.new(1, 1.6)
+	smoke.Speed = NumberRange.new(2, 5)
+	smoke.SpreadAngle = Vector2.new(180, 20)
+	smoke.RotSpeed = NumberRange.new(-20, 20)
+	smoke.Rate = 30
+	smoke.Shape = Enum.ParticleEmitterShape.Box
+	smoke.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	smoke.Parent = cloud
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Range = 40
+	light.Brightness = 0
+	light.Parent = cloud
+	task.spawn(function()
+		local stop = os.clock() + duration
+		while os.clock() < stop and light.Parent do
+			light.Brightness = 6
+			task.wait(0.05)
+			light.Brightness = 0
+			task.wait(0.15 + math.random() * 0.3)
+		end
+	end)
+	task.delay(duration, function()
+		smoke.Enabled = false
+		if cloud.Parent then
+			fadeAndDestroy(cloud, 0.5)
+		end
+	end)
 end
 
 -- =====================================================================================================
@@ -815,7 +911,7 @@ function EcoEfectos.Arco(center, axisA, axisB, radius, fromDeg, toDeg, color, op
 	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local elapsed = os.clock() - start
 		local alive = false
 		for _, seg in ipairs(segments) do
@@ -866,7 +962,7 @@ function EcoEfectos.Espiral(base, height, radius, color, duration, streaks)
 	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local elapsed = os.clock() - start
 		local done = true
 		for _, s in ipairs(parts) do
@@ -922,7 +1018,7 @@ function EcoEfectos.Escombros(position, strength)
 	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function(dt)
+	connection = Stepper:Connect(function(dt)
 		local elapsed = os.clock() - start
 		for _, r in ipairs(rocks) do
 			if not r.landed then
@@ -1069,7 +1165,7 @@ function EcoEfectos.Destello(position, color, size, duration)
 	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local t = (os.clock() - start) / duration
 		local scale = if t < 0.3 then 0.2 + 0.8 * (t / 0.3) else math.max(0, 1 - (t - 0.3) / 0.7)
 		for _, ray in ipairs(rays) do
@@ -1102,7 +1198,7 @@ function EcoEfectos.Rayas(position, color, count, length, duration)
 	end
 	local start = os.clock()
 	local connection
-	connection = RunService.Heartbeat:Connect(function()
+	connection = Stepper:Connect(function()
 		local t = math.clamp((os.clock() - start) / duration, 0, 1)
 		local ease = 1 - (1 - t) ^ 3
 		for _, s in ipairs(streaks) do
@@ -1400,6 +1496,29 @@ function EcoEfectos.WatchStates()
 					tween(label, 0.9, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 					Debris:AddItem(anchor, 1)
 					EcoEfectos.OndaChoque(root.Position, Color3.fromRGB(230, 235, 255), 4, Vector3.yAxis, 0.3)
+				end
+				local bounceUntil = model:GetAttribute("RebotaHasta")
+				if bounceUntil and bounceUntil > now and model:GetAttribute("UmbralReboteVisto") ~= bounceUntil then
+					model:SetAttribute("UmbralReboteVisto", bounceUntil)
+					EcoEfectos.Destello(root.Position, Color3.fromRGB(255, 225, 150), 5, 0.18)
+					EcoEfectos.Rayas(root.Position, Color3.fromRGB(255, 225, 150), 8, 5)
+					local anchor = EcoEfectos.Part(Vector3.new(0.2, 0.2, 0.2), CFrame.new(root.Position + Vector3.new(0, 3.5, 0)), Color3.new(1, 1, 1), nil, 1)
+					local gui = Instance.new("BillboardGui")
+					gui.Size = UDim2.fromOffset(150, 34)
+					gui.AlwaysOnTop = true
+					gui.LightInfluence = 0
+					local label = Instance.new("TextLabel")
+					label.BackgroundTransparency = 1
+					label.Size = UDim2.fromScale(1, 1)
+					label.Font = Enum.Font.GothamBlack
+					label.TextScaled = true
+					label.Text = "¡REBOTE!"
+					label.TextColor3 = Color3.fromRGB(255, 225, 150)
+					label.TextStrokeTransparency = 0
+					label.Parent = gui
+					gui.Parent = anchor
+					tween(label, 0.7, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+					Debris:AddItem(anchor, 0.8)
 				end
 				local wallUntil = model:GetAttribute("ParedHasta")
 				if wallUntil and wallUntil > now and model:GetAttribute("UmbralParedVista") ~= wallUntil then

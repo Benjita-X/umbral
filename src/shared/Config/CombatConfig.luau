@@ -633,6 +633,7 @@ local CombatConfig = {
 		-- más habilidades seguidas: solo elige cuál sale en cada tecla.
 		Default = "Viento",
 		SwapCooldown = 0.6,
+		PvP = false, -- habilidades contra jugadores: apagado hasta que resuelvan desvío, guardia y Contrapaso
 		SlotOrder = { "Z", "X", "C", "V" },
 		Gamepad = { Z = "Y", X = "L1", C = "L2", V = "R2" }, -- botón del mando de cada tecla
 		Order = { "Viento", "Agua", "Oscuridad", "Fuego", "Trueno" },

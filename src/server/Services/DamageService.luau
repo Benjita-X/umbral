@@ -220,7 +220,10 @@ function DamageService.DragTo(targetRoot, point, duration)
 	drag:SetAttribute("Token", token)
 	drag.VectorVelocity = offset.Unit * (distance / duration)
 	drag.Enabled = true
+	local startPosition = targetRoot.Position
 	task.delay(duration, function()
+		-- Cuánto lo movió de verdad el arrastre (pruebas: la pantalla lo ve con retraso variable)
+		targetRoot:SetAttribute("ArrastreMovido", math.floor((targetRoot.Position - startPosition).Magnitude * 10 + 0.5) / 10)
 		if drag.Parent and drag:GetAttribute("Token") == token then
 			drag.Enabled = false
 			targetRoot.AssemblyLinearVelocity = Vector3.new(0, math.min(targetRoot.AssemblyLinearVelocity.Y, 0), 0)
@@ -236,16 +239,23 @@ local WALL_SPLAT_BONUS = 1.25
 -- COMBO_GAP s), cada golpe hace COMBO_DECAY menos, hasta COMBO_FLOOR. Los golpes pequeños y repetidos (menos de
 -- COMBO_MIN_DAMAGE: tornado, tótem, quemaduras) ni cuentan ni se reducen. Un combo infinito no basta para ganar.
 local COMBO_FREE, COMBO_GAP, COMBO_DECAY, COMBO_FLOOR, COMBO_MIN_DAMAGE = 8, 1.6, 0.07, 0.5, 4
-local comboChains = setmetatable({}, { __mode = "k" })
-local function comboScale(target, damage)
+local comboChains = setmetatable({}, { __mode = "k" }) -- [objetivo] = { [atacante] = cadena }
+local function comboScale(target, damage, attacker)
 	if damage < COMBO_MIN_DAMAGE then
 		return 1
 	end
-	local chain = comboChains[target]
+	-- Por pareja atacante-objetivo: dos jugadores contra el mismo jefe no se reducen el daño entre sí
+	local byAttacker = comboChains[target]
+	if not byAttacker then
+		byAttacker = setmetatable({}, { __mode = "k" })
+		comboChains[target] = byAttacker
+	end
+	local key = attacker or target
+	local chain = byAttacker[key]
 	local clock = os.clock()
 	if not chain or clock - chain.last > COMBO_GAP then
 		chain = { count = 0, last = clock }
-		comboChains[target] = chain
+		byAttacker[key] = chain
 	end
 	chain.count += 1
 	chain.last = clock
@@ -280,6 +290,19 @@ local function knockback(targetRoot, direction, speed, up)
 		push.Enabled = false
 		push.Parent = targetRoot
 	end
+	-- Rebote: empujar contra el muro a un objetivo recién estampado lo devuelve hacia el atacante, un poco en el
+	-- aire (una ruta de combo, no solo daño). Un rebote por estampado.
+	local model = targetRoot.Parent
+	local wallNormal = model:GetAttribute("ParedNormal")
+	if speed > 0 and typeof(wallNormal) == "Vector3" and (model:GetAttribute("ParedHasta") or 0) > Workspace:GetServerTimeNow() and direction:Dot(wallNormal) < -0.3 then
+		model:SetAttribute("ParedHasta", nil)
+		model:SetAttribute("RebotaHasta", Workspace:GetServerTimeNow() + 0.6)
+		direction = (direction - 2 * direction:Dot(wallNormal) * wallNormal)
+		direction = Vector3.new(direction.X, 0, direction.Z)
+		direction = if direction.Magnitude > 0.01 then direction.Unit else Vector3.new(wallNormal.X, 0, wallNormal.Z).Unit
+		speed *= 0.6
+		up = math.max(up, 24)
+	end
 	-- El empuje se acorta si hay una pared detrás del objetivo (no lo mete dentro ni lo atraviesa). Si el empujón
 	-- era fuerte, se estampa: queda pegado un instante y recibe más daño un rato (combo de pared)
 	local wallHit = nil
@@ -298,7 +321,6 @@ local function knockback(targetRoot, direction, speed, up)
 		end
 	end
 	if wallHit then
-		local model = targetRoot.Parent
 		model:SetAttribute("ParedPunto", wallHit.Position)
 		model:SetAttribute("ParedNormal", wallHit.Normal)
 		model:SetAttribute("ParedHasta", Workspace:GetServerTimeNow() + WALL_SPLAT_TIME)
@@ -596,7 +618,7 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		damage *= multiplier or 1
 	end
 	damage *= wallBonus(target)
-	damage *= comboScale(target, damage)
+	damage *= comboScale(target, damage, player)
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
 	-- Solo dan Resonancia los rivales que pelean (no los muñecos), con rendimiento decreciente si se
 	-- repite el mismo golpe contra el mismo rival
@@ -652,6 +674,11 @@ function DamageService.ApplyExternalHit(player, target, spec)
 	if not humanoid or not root then
 		return 0
 	end
+	-- Seguro PvP: las habilidades no pasan por desvío, guardia ni Contrapaso de un JUGADOR; hasta que lo hagan,
+	-- no lo dañan (hoy solo apuntan a muñecos y enemigos, marcados "Objetivo")
+	if Players:GetPlayerFromCharacter(target) and not CombatConfig.Eco.PvP then
+		return 0
+	end
 	local damage = spec.damage
 	local note = nil
 	if modifier and not spec.ignoreModifier then
@@ -661,7 +688,7 @@ function DamageService.ApplyExternalHit(player, target, spec)
 	end
 	if not spec.dot then
 		damage *= wallBonus(target)
-		damage *= comboScale(target, damage)
+		damage *= comboScale(target, damage, player)
 	end
 	humanoid.Health = math.max(0, humanoid.Health - damage)
 	local stun = spec.stun or 0

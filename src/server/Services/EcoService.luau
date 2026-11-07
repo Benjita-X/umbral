@@ -239,10 +239,23 @@ end
 -- Reacciones entre elementos (se definen más abajo, junto a la quemadura y las zonas)
 local reactionFor, react
 
+-- Elemento de cada habilidad, fijo: el Eco al que pertenece (un proyectil lanzado antes de cambiar de Eco
+-- conserva su elemento al impactar). Hallazgo de la auditoría externa.
+local SKILL_ELEMENT = {}
+for kitName, kit in pairs(eco.Kits) do
+	for _, skillName in pairs(kit.slots) do
+		SKILL_ELEMENT[skillName] = kitName
+	end
+	for _, skillName in pairs(kit.air or {}) do
+		SKILL_ELEMENT[skillName] = kitName
+	end
+end
+SKILL_ELEMENT.Detonacion = "Oscuridad" -- la marca de la Daga detona como sombra
+
 -- Aplica el golpe de una habilidad (con su sinergia, si la hay, y la reacción entre elementos). Devuelve el daño.
 local function strike(player, model, skillName, spec, synergy)
 	spec.attackName = "Eco" .. skillName
-	local element = player:GetAttribute("Eco") or eco.Default
+	local element = SKILL_ELEMENT[skillName] or player:GetAttribute("Eco") or eco.Default
 	local reaction = if reactionFor and not spec.dot then reactionFor(element, model) else nil
 	if reaction and reaction.boost then
 		spec.damage *= reaction.boost

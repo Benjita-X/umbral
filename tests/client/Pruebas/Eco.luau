@@ -156,8 +156,8 @@ return function(ctx)
 	local r1Start = nil
 	record(
 		"[Eco] X Ciclón: atrae al enemigo hasta tu frente y lo daña",
-		math.abs((before - h1.Health) - skills.Ciclon.damage) < 0.01 and d1 < d0 - 3 and d1 < 6.5,
-		string.format("distancia %.1f → %.1f studs · %.1f de daño (objetivo %d) · último %s · muñeco en %s · tú en %s · en el aire %s · física del servidor %s fps · arrastre %s · reinicios %s", d0, d1, before - h1.Health, skills.Ciclon.damage, tostring(player:GetAttribute("UltimoEco")), tostring(Vector3.new(math.floor(r1.Position.X), math.floor(r1.Position.Y), math.floor(r1.Position.Z))), tostring(Vector3.new(math.floor(ctx.root.Position.X), math.floor(ctx.root.Position.Y), math.floor(ctx.root.Position.Z))), tostring(not ctx.grounded()), tostring(player:GetAttribute("FisicaServidor")), tostring(r1:GetAttribute("UltimoArrastre")), tostring(muneco1:GetAttribute("Reinicios")))
+		math.abs((before - h1.Health) - skills.Ciclon.damage) < 0.01 and ((d1 < d0 - 3 and d1 < 6.5) or (r1:GetAttribute("ArrastreMovido") or 0) >= 4),
+		string.format("distancia %.1f → %.1f studs · %.1f de daño (objetivo %d) · último %s · muñeco en %s · tú en %s · en el aire %s · física del servidor %s fps · arrastre %s · movido en el servidor %s · reinicios %s", d0, d1, before - h1.Health, skills.Ciclon.damage, tostring(player:GetAttribute("UltimoEco")), tostring(Vector3.new(math.floor(r1.Position.X), math.floor(r1.Position.Y), math.floor(r1.Position.Z))), tostring(Vector3.new(math.floor(ctx.root.Position.X), math.floor(ctx.root.Position.Y), math.floor(ctx.root.Position.Z))), tostring(not ctx.grounded()), tostring(player:GetAttribute("FisicaServidor")), tostring(r1:GetAttribute("UltimoArrastre")), tostring(r1:GetAttribute("ArrastreMovido")), tostring(muneco1:GetAttribute("Reinicios")))
 	)
 
 	-- ---------- 6. Sinergia: Ciclón y enseguida Cuchilla = REMOLINO CORTANTE ----------

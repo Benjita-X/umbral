@@ -247,6 +247,19 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 		},
 		{
+			name = "Efectos reducidos (PC modesto o celular)",
+			get = function()
+				local ok, efectos = pcall(require, script.Parent:WaitForChild("EcoEfectos"))
+				return ok and efectos.Reducidos == true
+			end,
+			set = function(on)
+				local ok, efectos = pcall(require, script.Parent:WaitForChild("EcoEfectos"))
+				if ok then
+					efectos.Reducidos = on
+				end
+			end,
+		},
+		{
 			name = "Destellos al golpear",
 			get = function()
 				return feedback.Flashes

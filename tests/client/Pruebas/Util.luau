@@ -130,6 +130,7 @@ function ctx.teleport(position, look)
 	end
 	ctx.root.CFrame = CFrame.lookAt(position, position + look)
 	ctx.settle()
+	task.wait(0.12) -- que el servidor ya vea el lugar nuevo (nadie juega lanzando a 50 ms de un teletransporte)
 end
 
 function ctx.waitForCharges()

@@ -469,9 +469,20 @@ recastActions.Ascenso = function(r)
 	EcoEfectos.Burst(root.Position - Vector3.new(0, 2, 0), color(), 16, 0.8, 26)
 	EcoEfectos.Sound("Viento", root.Position)
 	shake(0.15)
-	-- Arriba quedas flotando un instante: tiempo para empezar el combo aéreo
+	-- Arriba quedas flotando un instante: tiempo para empezar el combo aéreo. Si el lanzado se desvió (un empujón
+	-- previo lo movió de lado), un impulso corto te deja junto a él: el golpe en el aire no falla por poco.
 	task.delay(apex * 0.92, function()
-		movement.AirStall(0.4)
+		movement.AirStall(0.45)
+		local me = rootPart()
+		local them = r.target and r.target:FindFirstChild("HumanoidRootPart")
+		if me and them and r.target.Parent then
+			local offset = flat(them.Position - me.Position)
+			local gap = offset.Magnitude - 3
+			if gap > 0.8 and offset.Magnitude < 12 and math.abs(them.Position.Y - me.Position.Y) < 6 then
+				movement.Face(offset)
+				movement.Lunge(offset.Unit, 60, math.min(gap / 60, 0.16), true)
+			end
+		end
 	end)
 end
 
@@ -745,6 +756,8 @@ end
 EcoController.Equip = equip
 
 -- ---------- Lo que confirma el servidor ----------
+-- Cada elemento suena distinto al pegar (salpicadura, estallido, chasquido, ráfaga, retumbo)
+local ELEMENT_SOUND = { Agua = "Agua", Fuego = "Estallido", Trueno = "Chasquido", Viento = "Viento", Oscuridad = "Grave" }
 local function onConfirmed(data)
 	if type(data) ~= "table" or type(data.attack) ~= "string" or string.sub(data.attack, 1, 3) ~= "Eco" then
 		return
@@ -759,6 +772,9 @@ local function onConfirmed(data)
 			EcoEfectos.Burst(data.position, kit.color, 8, 0.6, 20)
 		else
 			EcoEfectos.Impacto(data.position, kit.color, element, type(data.synergy) == "string" or damage >= 14)
+			if attacker == player then
+				EcoEfectos.Sound(ELEMENT_SOUND[element] or "Golpe", data.position)
+			end
 		end
 	end
 	if attacker == player and type(data.synergy) == "string" and (data.damage or 0) > 0 then

@@ -221,8 +221,12 @@ function DefenseService.Stun(player, duration)
 	end
 	local applied = duration * defense.StunChainFactor ^ #r.recentStuns
 	table.insert(r.recentStuns, t)
-	r.stunStart = t
-	player:SetAttribute("AturdidoHasta", t + applied)
+	local current = player:GetAttribute("AturdidoHasta")
+	local stillStunned = current ~= nil and current > t
+	if not stillStunned then
+		r.stunStart = t -- (si ya estaba aturdido, la gracia por latencia no se reabre)
+	end
+	player:SetAttribute("AturdidoHasta", math.max(if stillStunned then current else 0, t + applied))
 	if #r.recentStuns >= defense.StunChainMax then
 		r.recentStuns = {}
 		r.aguanteUntil = t + applied + defense.AguanteTime

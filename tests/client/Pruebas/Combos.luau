@@ -323,6 +323,15 @@ return function(ctx)
 	local splat = waitUntil(function()
 		return (m2:GetAttribute("ParedHasta") or 0) > Workspace:GetServerTimeNow()
 	end, 1.2)
+	-- Rebote: un segundo empujón contra el muro (Bola Infernal) lo devuelve hacia ti
+	local bounced = false
+	if splat then
+		press("HabilidadZ", "Z", 0.3)
+		bounced = waitUntil(function()
+			return (m2:GetAttribute("RebotaHasta") or 0) > Workspace:GetServerTimeNow() - 0.5
+		end, 1.2)
+	end
+	record("[Combos] Rebote: empujar contra el muro al enemigo estampado lo devuelve hacia ti", bounced, "rebote " .. tostring(bounced))
 	record(
 		"[Combos] Contra la pared: un empujón fuerte estampa al enemigo en el muro",
 		splat,
