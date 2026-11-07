@@ -256,6 +256,8 @@ local CombatConfig = {
 			-- Acechador: GOLPE DE OPORTUNIDAD. Si fallas un remate o un golpe fuerte a menos de opportunityRange,
 			-- te castiga con una Embestida durante tu recuperación (como mucho una cada opportunityCooldown s).
 			Acechador = { label = "Acechador", maxHealth = 60, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
+			-- Instructor del tutorial: lento, predecible, se cura solo (para practicar sin prisa)
+			Instructor = { label = "Instructor", maxHealth = 150, profile = "instructor", body = Color3.fromRGB(200, 200, 210), legs = Color3.fromRGB(120, 120, 135), glow = Color3.fromRGB(150, 255, 230), riseAfter = 4, regen = true },
 			Gemelo = { label = "Gemelo de Eco", maxHealth = 70, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
 		},
 		ReflectRadius = 10, -- alcance de la onda del Desvío Reflejado
@@ -272,6 +274,7 @@ local CombatConfig = {
 			centinela = { pattern = { "Golpe", "Golpe", "Fuerte" }, pause = 1.1, maxDelay = 0.2 },
 			gemelo = { pattern = { "Golpe", "Rapido", "Barrido" }, pause = 1.4, maxDelay = 0.3 },
 			acechador = { pattern = { "Rapido", "Golpe" }, pause = 1.6, maxDelay = 0.2 }, -- tranquilo... hasta que fallas
+			instructor = { pattern = { "Golpe" }, pause = 1.8, maxDelay = 0 }, -- tutorial: lento y siempre igual
 		},
 		-- Mismo esquema que los golpes del jugador (ver MoveSchema): preparación, impacto, recuperación,
 		-- daño, postura, forma y alcance, y qué defensas admite.
@@ -370,15 +373,30 @@ local CombatConfig = {
 		},
 	},
 
+	-- Recuperación de vida (decisión del hallazgo #10 de Codex, EXPERIMENTAL). Reemplaza la regeneración
+	-- automática de Roblox (que curaba siempre, sin costo):
+	--   PvE: "Respiro" — tras OutOfCombat s sin recibir ni hacer daño, se recupera RegenPerSecond por segundo.
+	--        Punto seguro (aparición): cura entera al tocarlo.
+	--   PvP: sin regeneración en combate (los duelos se juegan con la vida que hay).
+	Recovery = {
+		OutOfCombat = 6,
+		RegenPerSecond = 10,
+		SafeZoneRadius = 10, -- studs alrededor de una aparición (SpawnLocation) que curan entero
+	},
+
 	-- Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento (botón Eco: Q / Y / ECO).
 	-- Cuestan Resonancia y no la devuelven. El servidor decide alcance y daño (EcoService).
 	Eco = {
 		Name = "Eco del Viento",
 		Techniques = {
 			-- En el suelo: onda frontal. Atraviesa corazas e interrumpe al enemigo que prepara un ataque.
-			Rafaga = { cost = 35, cooldown = 2.5, damage = 12, range = 12, hitboxSize = Vector3.new(7, 6, 12), knockback = 45, knockUp = 8 },
+			Rafaga = { cost = 35, cooldown = 2.5, damage = 12, range = 12, hitboxSize = Vector3.new(7, 6, 12), knockback = 45, knockUp = 8, maxHeight = 4.5 }, -- maxHeight: altura máxima sobre el suelo (de pie ≈ 3)
 			-- En el aire: picada y onda circular al aterrizar.
-			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 110 },
+			-- Mantener Eco en el suelo: giro que golpea todo alrededor.
+			Torbellino = { cost = 50, cooldown = 4, damage = 9, radius = 7, knockback = 35, knockUp = 10, holdTime = 0.35, maxHeight = 4.5 },
+			-- Eco justo después de un Paso: el Paso deja un corte de viento que daña a quien atravesaste.
+			Estela = { cost = 30, cooldown = 2.5, damage = 10, width = 3.5, afterDash = 0.45, knockback = 20, knockUp = 6 },
+			Descenso = { cost = 35, cooldown = 3, damage = 14, radius = 8, knockback = 30, knockUp = 18, window = 1.5, plungeSpeed = 110, minHeight = 3.5 }, -- minHeight: altura mínima sobre el suelo para empezarlo
 		},
 	},
 

@@ -1,5 +1,8 @@
--- EcoService: los Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento.
---   · Ráfaga (en el suelo): onda frontal que empuja y daña. Atraviesa corazas e interrumpe preparaciones.
+-- EcoService: los Ecos del jugador (Fase 7, EXPERIMENTAL). Primer Eco: Eco del Viento. Un solo botón,
+-- la técnica sale del contexto:
+--   · Ráfaga (tocar en el suelo): onda frontal. Atraviesa corazas e interrumpe preparaciones.
+--   · Torbellino (mantener en el suelo): giro que golpea todo alrededor.
+--   · Estela (justo después de un Paso): daña a lo largo del recorrido del Paso.
 --   · Descenso (en el aire): caída en picada; al aterrizar, onda circular que levanta.
 -- Cuestan Resonancia: pelear bien carga el Eco. No dan Resonancia (sin bucles infinitos).
 --
@@ -84,6 +87,26 @@ local function targetsIn(player, test, t)
 	return list
 end
 
+-- Reserva el enfriamiento ANTES de cualquier espera: dos pedidos en el mismo cuadro no pasan los dos
+-- (hallazgo #1 de Codex). Devuelve una función para devolver la reserva si luego se rechaza.
+local function reserve(player, technique)
+	local r = recordFor(player)
+	local previous = r.cooldowns[technique]
+	r.cooldowns[technique] = os.clock()
+	return function()
+		r.cooldowns[technique] = previous
+	end
+end
+
+-- Distancia del punto al suelo según el servidor (para saber si alguien está en el aire)
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+local function heightAboveGround(character, position)
+	groundParams.FilterDescendantsInstances = { character }
+	local hit = Workspace:Raycast(position, Vector3.new(0, -60, 0), groundParams)
+	return if hit then position.Y - hit.Position.Y else math.huge
+end
+
 local function attackerAt(player, t)
 	local cframe = PositionService.ConfirmedAt(player, t)
 	if not cframe and PositionService.Teleporting(player) and player.Character then
@@ -98,15 +121,22 @@ local function rafaga(player, t, position, look)
 	if not ok then
 		return refuse(player, why)
 	end
+	local release = reserve(player, "Rafaga")
 	PositionService.Report(player, t, position, look)
 	local attackerCFrame = attackerAt(player, t)
 	if not attackerCFrame then
+		release()
 		return refuse(player, "posición no confirmada")
 	end
+	-- Técnica de suelo: el servidor comprueba que estaba en el suelo (hallazgo #8 de Codex)
+	if not player.Character or heightAboveGround(player.Character, attackerCFrame.Position) > spec.maxHeight then
+		release()
+		return refuse(player, "ráfaga en el aire")
+	end
 	if not ResonanceService.Spend(player, spec.cost) then
+		release()
 		return refuse(player, "Resonancia insuficiente")
 	end
-	recordFor(player).cooldowns.Rafaga = os.clock()
 	local hits = targetsIn(player, function(cframe)
 		return Hurtbox.AttackHits(attackerCFrame, spec.range, spec.hitboxSize, cframe, CombatConfig.Validation.Tolerance)
 	end, t)
@@ -125,19 +155,118 @@ local function rafaga(player, t, position, look)
 	player:SetAttribute("UltimoEco", string.format("Rafaga:%d", #hits))
 end
 
+-- Torbellino (mantener en el suelo): golpea a todos los que estén alrededor
+local function torbellino(player, t, position, look)
+	local spec = eco.Techniques.Torbellino
+	local ok, why = canUse(player, "Torbellino", t)
+	if not ok then
+		return refuse(player, why)
+	end
+	local release = reserve(player, "Torbellino")
+	PositionService.Report(player, t, position, look)
+	local center = attackerAt(player, t)
+	if not center or not player.Character or heightAboveGround(player.Character, center.Position) > spec.maxHeight then
+		release()
+		return refuse(player, if center then "torbellino en el aire" else "posición no confirmada")
+	end
+	if not ResonanceService.Spend(player, spec.cost) then
+		release()
+		return refuse(player, "Resonancia insuficiente")
+	end
+	local hits = targetsIn(player, function(cframe)
+		return Hurtbox.InRadius(center.Position, spec.radius, cframe.Position, 6)
+	end, t)
+	for _, model in ipairs(hits) do
+		local root = model:FindFirstChild("HumanoidRootPart")
+		local away = root and flat(root.Position - center.Position) or Vector3.zero
+		DamageService.ApplyExternalHit(player, model, {
+			attackName = "EcoTorbellino",
+			damage = spec.damage,
+			direction = if away.Magnitude > 0.01 then away.Unit else flat(center.LookVector).Unit,
+			knockback = spec.knockback,
+			knockUp = spec.knockUp,
+			ignoreModifier = true,
+		})
+	end
+	player:SetAttribute("UltimoEco", string.format("Torbellino:%d", #hits))
+end
+
+-- Distancia horizontal de un punto a un segmento
+local function segmentDistance(p, a, b)
+	local ab = flat(b - a)
+	local ap = flat(p - a)
+	local lengthSq = ab:Dot(ab)
+	if lengthSq < 1e-4 then
+		return ap.Magnitude
+	end
+	local alpha = math.clamp(ap:Dot(ab) / lengthSq, 0, 1)
+	return (ap - ab * alpha).Magnitude
+end
+
+-- Estela (Eco justo después de un Paso): daña a lo largo del recorrido del Paso. El servidor exige un Paso
+-- registrado (DefenseService) hace menos de afterDash y usa SUS posiciones de inicio y fin.
+local function estela(player, t, position, look)
+	local spec = eco.Techniques.Estela
+	local ok, why = canUse(player, "Estela", t)
+	if not ok then
+		return refuse(player, why)
+	end
+	local paso = DefenseService.FindPaso(player, t - spec.afterDash - 0.1, t + 0.02)
+	if not paso then
+		return refuse(player, "estela sin Paso")
+	end
+	local release = reserve(player, "Estela")
+	PositionService.Report(player, t, position, look)
+	local finish = attackerAt(player, t)
+	local start = attackerAt(player, paso.t) or (player.Character and PositionService.ObservedAt(player.Character, paso.t))
+	if not finish or not start then
+		release()
+		return refuse(player, "posición no confirmada")
+	end
+	if not ResonanceService.Spend(player, spec.cost) then
+		release()
+		return refuse(player, "Resonancia insuficiente")
+	end
+	local a, b = start.Position, finish.Position
+	local hits = targetsIn(player, function(cframe)
+		return segmentDistance(cframe.Position, a, b) <= spec.width / 2 + Hurtbox.Size.X / 2 and math.abs(cframe.Position.Y - a.Y) <= 6
+	end, t)
+	local dir = flat(b - a)
+	dir = if dir.Magnitude > 0.01 then dir.Unit else flat(finish.LookVector).Unit
+	for _, model in ipairs(hits) do
+		DamageService.ApplyExternalHit(player, model, {
+			attackName = "EcoEstela",
+			damage = spec.damage,
+			direction = dir,
+			knockback = spec.knockback,
+			knockUp = spec.knockUp,
+			ignoreModifier = true,
+		})
+	end
+	player:SetAttribute("UltimoEco", string.format("Estela:%d", #hits))
+end
+
 local function descenso(player, t, position, look)
 	local spec = eco.Techniques.Descenso
 	local ok, why = canUse(player, "Descenso", t)
 	if not ok then
 		return refuse(player, why)
 	end
+	local release = reserve(player, "Descenso")
 	PositionService.Report(player, t, position, look)
+	-- Hay que estar en el aire (posición confirmada y lejos del suelo según el servidor) — hallazgo #2
+	local start = attackerAt(player, t)
+	local character = player.Character
+	if not start or not character or heightAboveGround(character, start.Position) < spec.minHeight then
+		release()
+		return refuse(player, "descenso sin estar en el aire")
+	end
 	if not ResonanceService.Spend(player, spec.cost) then
+		release()
 		return refuse(player, "Resonancia insuficiente")
 	end
 	local r = recordFor(player)
-	r.cooldowns.Descenso = os.clock()
-	r.descent = { t = t, untilTime = t + spec.window }
+	r.descent = { t = t, untilTime = t + spec.window, startY = start.Position.Y, character = character }
 end
 
 local function impacto(player, t, position, look)
@@ -148,10 +277,17 @@ local function impacto(player, t, position, look)
 		return refuse(player, "impacto sin descenso")
 	end
 	r.descent = nil
+	if player.Character ~= descent.character then
+		return refuse(player, "impacto con otro personaje")
+	end
 	PositionService.Report(player, t, position, look)
 	local landing = attackerAt(player, t)
 	if not landing then
 		return refuse(player, "posición no confirmada")
+	end
+	-- Tiene que haber caído de verdad y estar en el suelo (no vale una onda en pleno aire ni sin bajar)
+	if descent.startY - landing.Position.Y < spec.minHeight * 0.5 or heightAboveGround(player.Character, landing.Position) > 5 then
+		return refuse(player, "impacto sin aterrizaje")
 	end
 	local hits = targetsIn(player, function(cframe)
 		return Hurtbox.InRadius(landing.Position, spec.radius, cframe.Position, 6)
@@ -193,6 +329,10 @@ function EcoService.Start()
 				rafaga(player, t, position, look)
 			elseif action == "descenso" then
 				descenso(player, t, position, look)
+			elseif action == "torbellino" then
+				torbellino(player, t, position, look)
+			elseif action == "estela" then
+				estela(player, t, position, look)
 			elseif action == "impacto" then
 				impacto(player, t, position, look)
 			end

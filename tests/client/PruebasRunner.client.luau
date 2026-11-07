@@ -5,19 +5,23 @@ local Pruebas = script.Parent:WaitForChild("Pruebas")
 local ctx = require(Pruebas:WaitForChild("Util"))
 
 local SUITES = {
-	{ "Movimiento", require(Pruebas:WaitForChild("Movimiento")) },
-	{ "Paredes", require(Pruebas:WaitForChild("Paredes")) },
-	{ "Combate", require(Pruebas:WaitForChild("Combate")) },
-	{ "Defensa", require(Pruebas:WaitForChild("Defensa")) },
-	{ "Auditoria", require(Pruebas:WaitForChild("Auditoria")) },
-	{ "Habilidad", require(Pruebas:WaitForChild("Habilidad")) },
-	{ "Enemigos", require(Pruebas:WaitForChild("Enemigos")) },
-	{ "Eco", require(Pruebas:WaitForChild("Eco")) },
+	{ "Movimiento", "Movimiento" },
+	{ "Paredes", "Paredes" },
+	{ "Combate", "Combate" },
+	{ "Defensa", "Defensa" },
+	{ "Auditoria", "Auditoria" },
+	{ "Habilidad", "Habilidad" },
+	{ "Enemigos", "Enemigos" },
+	{ "Eco", "Eco" },
+	{ "RevisionCodex", "RevisionCodex" },
 }
 
 if ctx.start() then
 	for _, suite in ipairs(SUITES) do
-		local ok, err = pcall(suite[2], ctx)
+		-- Cada suite se carga por separado: un error en una (incluso de sintaxis) no detiene las demás
+		local ok, err = pcall(function()
+			require(Pruebas:WaitForChild(suite[2]))(ctx)
+		end)
 		if not ok then
 			ctx.record("Suite " .. suite[1], false, "error: " .. tostring(err))
 		end

@@ -15,6 +15,9 @@ local VitalsHUD = require(controllers:WaitForChild("VitalsHUD"))
 local DebugHUD = require(controllers:WaitForChild("DebugHUD"))
 local PositionReporter = require(controllers:WaitForChild("PositionReporter"))
 local EcoController = require(controllers:WaitForChild("EcoController"))
+local MenuController = require(controllers:WaitForChild("MenuController"))
+local MovementAnimator = require(controllers:WaitForChild("MovementAnimator"))
+local TutorialController = require(controllers:WaitForChild("TutorialController"))
 
 MovementController.Start(InputController)
 CombatController.Start(InputController, MovementController)
@@ -27,6 +30,9 @@ if Config.DebugHUD then
 end
 PositionReporter.Start()
 EcoController.Start(InputController, MovementController, CombatController, CameraController)
+MenuController.Start(MovementController, CombatController, DebugHUD, TutorialController)
+MovementAnimator.Start(MovementController)
+task.spawn(TutorialController.Start, MovementController, CombatController, EcoController)
 InputController.Start()
 
 print("[UMBRAL] Cliente listo")

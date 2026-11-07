@@ -62,6 +62,24 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 			task.wait(0.05)
 		end
 		player:SetAttribute("PruebaCadena", table.concat(durations, ","))
+	elseif action == "consulta_defensa" then
+		-- Consulta el estado real de defensa del jugador (pruebas de los hallazgos #3 y #4 de Codex)
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local DefenseService = require(services:WaitForChild("DefenseService"))
+		local now = workspace:GetServerTimeNow()
+		if payload == "desvio_doble" then
+			local first, press = DefenseService.FindDeflect(player, now + 0.03)
+			DefenseService.Consume(press)
+			local second = DefenseService.FindDeflect(player, now + 0.04)
+			player:SetAttribute("PruebaDefensa", string.format("%s,%s", tostring(first), tostring(second)))
+		elseif payload == "guardia" then
+			player:SetAttribute("PruebaDefensa", tostring(DefenseService.IsGuarding(player, now)))
+		end
+	elseif action == "vida_jugador" then
+		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.Health = payload
+		end
 	elseif action == "curar" then
 		-- Solo la vida (las pruebas de habilidad necesitan conservar postura y aturdimiento)
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -96,10 +114,10 @@ remote.OnServerEvent:Connect(function(player, action, payload)
 	end
 end)
 
-task.delay(540, function()
+task.delay(900, function()
 	if not finished then
 		warn("[UMBRAL-PRUEBAS] Tiempo agotado: cerrando la prueba")
-		endTest({ { name = "Tiempo", ok = false, detail = "la prueba no terminó en 540 s" } })
+		endTest({ { name = "Tiempo", ok = false, detail = "la prueba no terminó en 900 s" } })
 	end
 end)
 

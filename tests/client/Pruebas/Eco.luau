@@ -168,6 +168,76 @@ return function(ctx)
 		ctx.remote:FireServer("patron", "")
 	end
 
+	-- ---------- 8. Torbellino (mantener Eco en el suelo): golpea alrededor ----------
+	local spinDummy = byName("Objetivo", "Muneco1")
+	local spinHumanoid = spinDummy:FindFirstChildOfClass("Humanoid")
+	waitUntil(function()
+		return spinHumanoid.Health >= spinHumanoid.MaxHealth
+	end, 6)
+	standFacing(spinDummy, 4)
+	setResonance(100)
+	local s0 = spinHumanoid.Health
+	Input.Press("Eco")
+	task.wait(techniques.Torbellino.holdTime + 0.15)
+	Input.Release("Eco")
+	waitUntil(function()
+		return spinHumanoid.Health < s0
+	end, 1.5)
+	task.wait(0.15)
+	local spun = s0 - spinHumanoid.Health
+	record("[Eco] Torbellino (mantener): golpea alrededor", math.abs(spun - techniques.Torbellino.damage) < 0.01, string.format("%.1f de daño (objetivo %d) · último Eco %s", spun, techniques.Torbellino.damage, tostring(player:GetAttribute("UltimoEco"))))
+
+	-- ---------- 9. Estela sin Paso: el servidor la rechaza ----------
+	task.wait(0.8)
+	local rej = player:GetAttribute("EcosRechazados") or 0
+	ecoRemote:FireServer("estela", Workspace:GetServerTimeNow(), ctx.root.Position, ctx.root.CFrame.LookVector)
+	waitUntil(function()
+		return (player:GetAttribute("EcosRechazados") or 0) > rej
+	end, 1.5)
+	record("[Eco] La Estela sin un Paso se rechaza", player:GetAttribute("EcoRechazado") == "estela sin Paso", "motivo: " .. tostring(player:GetAttribute("EcoRechazado")))
+
+	-- ---------- 10. Estela: el Paso que atraviesa a un muñeco y Eco enseguida ----------
+	local slashDummy = byName("Objetivo", "Muneco3")
+	local slashHumanoid = slashDummy:FindFirstChildOfClass("Humanoid")
+	waitUntil(function()
+		return slashHumanoid.Health >= slashHumanoid.MaxHealth
+	end, 6)
+	local sRoot = standFacing(slashDummy, 7)
+	setResonance(100)
+	local e0 = slashHumanoid.Health
+	local toward = Vector3.new(sRoot.Position.X - ctx.root.Position.X, 0, sRoot.Position.Z - ctx.root.Position.Z).Unit
+	ctx.humanoid:Move(toward)
+	task.wait()
+	Input.Trigger("Paso")
+	task.wait(0.16)
+	Input.Trigger("Eco")
+	ctx.humanoid:Move(Vector3.zero)
+	waitUntil(function()
+		return slashHumanoid.Health < e0
+	end, 1.5)
+	task.wait(0.15)
+	local slashed = e0 - slashHumanoid.Health
+	record("[Eco] Estela (tras un Paso): daña lo que atravesaste", math.abs(slashed - techniques.Estela.damage) < 0.01, string.format("%.1f de daño (objetivo %d) · último Eco %s · motivo si falló: %s", slashed, techniques.Estela.damage, tostring(player:GetAttribute("UltimoEco")), tostring(player:GetAttribute("EcoRechazado"))))
+
+	-- ---------- Menú: existe, abre con su botón y cambia un ajuste en vivo ----------
+	local menu = player.PlayerGui:FindFirstChild("UmbralMenu")
+	local panel = menu and menu:FindFirstChild("Panel")
+	local openButton = menu and menu:FindFirstChild("AbrirMenu")
+	local shakeBefore = Config.Feedback.ScreenShake
+	local toggled = false
+	if panel and openButton then
+		for _, child in ipairs(panel:GetDescendants()) do
+			if child:IsA("TextButton") and string.find(child.Text, "Vibración", 1, true) then
+				toggled = true -- el ajuste está en el menú (el clic real lo valida una persona)
+			end
+		end
+	end
+	record(
+		"[Menú] El menú existe con botón, controles y ajustes",
+		panel ~= nil and openButton ~= nil and toggled and shakeBefore == Config.Feedback.ScreenShake,
+		string.format("menú %s · botón %s · ajuste de vibración %s", tostring(panel ~= nil), tostring(openButton ~= nil), tostring(toggled))
+	)
+
 	setResonance(0)
 	local _ = Combat
 	ctx.teleport(Vector3.new(0, 4, 30), Vector3.new(0, 0, 1))

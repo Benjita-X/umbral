@@ -96,16 +96,30 @@ local function onDefense(player, action, t, dir, position, look)
 			return a.t < b.t
 		end)
 		r.lastPress = math.max(r.lastPress, time)
-		r.guardDown = time
-		r.guardUp = nil
-		r.postureActivity = time
+		-- El estado de guardia solo avanza con eventos más nuevos que el último (un inicio atrasado no
+		-- reabre una guardia ya soltada) — hallazgo #4 de Codex
+		if time >= (r.guardEventTime or -math.huge) then
+			r.guardEventTime = time
+			r.guardDown = time
+			r.guardUp = nil
+		end
+		r.postureActivity = math.max(r.postureActivity, time)
 		prune(r.presses, time)
 	elseif action == "defender_fin" then
-		r.guardUp = time
-		r.postureActivity = time
-		local last = r.presses[#r.presses]
-		if last and last.released == nil then
-			last.released = time
+		if time >= (r.guardEventTime or -math.huge) then
+			r.guardEventTime = time
+			r.guardUp = time
+		end
+		r.postureActivity = math.max(r.postureActivity, time)
+		-- La pulsación que se suelta es la más nueva ANTERIOR a esta hora
+		for i = #r.presses, 1, -1 do
+			local press = r.presses[i]
+			if press.t <= time then
+				if press.released == nil then
+					press.released = time
+				end
+				break
+			end
 		end
 	elseif action == "paso" then
 		local flatDir = if typeof(dir) == "Vector3" then Vector3.new(dir.X, 0, dir.Z) else Vector3.zero
@@ -123,7 +137,8 @@ function DefenseService.FindDeflect(player, perceived)
 	local best, bestPress = nil, nil
 	for _, press in ipairs(r.presses) do
 		local before = perceived - press.t
-		if press.valid and before >= -0.03 and before <= defense.DeflectWindow then
+		-- Una pulsación ya usada no desvía otro ataque (dos enemigos a la vez) — hallazgo #3 de Codex
+		if press.valid and not press.consumed and before >= -0.03 and before <= defense.DeflectWindow then
 			local kind = if before <= defense.PerfectWindow then "perfecto" else "normal"
 			if kind == "perfecto" or not best then
 				best, bestPress = kind, press

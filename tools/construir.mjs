@@ -153,7 +153,13 @@ function placeTree(withTests) {
       ],
       [
         { className: 'StarterPlayerScripts', name: 'StarterPlayerScripts', props: [], children: [...fromDir(join(SRC, 'client')).children, ...testClient] },
-        { className: 'StarterCharacterScripts', name: 'StarterCharacterScripts', props: [], children: [] },
+        {
+          className: 'StarterCharacterScripts',
+          name: 'StarterCharacterScripts',
+          props: [],
+          // "Health" vacío: reemplaza la regeneración automática de Roblox (la vida la recupera RecoveryService)
+          children: [{ className: 'Script', name: 'Health', props: [['source', 'Source', '-- Vacío a propósito: la vida la recupera RecoveryService en el servidor.']], children: [] }],
+        },
       ],
     ),
   ];

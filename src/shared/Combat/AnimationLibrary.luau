@@ -213,7 +213,121 @@ local POSES = {
 		RightUpperArm = { 20, 0, 70 },
 		LeftUpperArm = { 20, 0, -70 },
 	},
+	-- ---------- Eco del Viento (EXPERIMENTAL) ----------
+	EcoGather = { -- reúne el viento: manos al pecho, torso cargado
+		UpperTorso = { -5, 25, 0 },
+		Head = { 0, -15, 0 },
+		RightUpperArm = { 60, 0, -30 },
+		RightLowerArm = { 105, 0, 0 },
+		LeftUpperArm = { 60, 0, 30 },
+		LeftLowerArm = { 105, 0, 0 },
+	},
+	EcoPush = { -- las dos palmas empujan al frente
+		UpperTorso = { -14, 0, 0 },
+		Head = { -6, 0, 0 },
+		RightUpperArm = { 90, 0, 10 },
+		RightLowerArm = { 0, 0, 0 },
+		LeftUpperArm = { 90, 0, -10 },
+		LeftLowerArm = { 0, 0, 0 },
+	},
+	DiveFist = { -- picada: puño hacia abajo, rodillas recogidas
+		UpperTorso = { -30, 0, 0 },
+		Head = { -15, 0, 0 },
+		RightUpperArm = { 25, 0, -5 },
+		RightLowerArm = { 10, 0, 0 },
+		LeftUpperArm = { -30, 0, 25 },
+		LeftLowerArm = { 30, 0, 0 },
+		RightUpperLeg = { 70, 0, 0 },
+		RightLowerLeg = { -110, 0, 0 },
+		LeftUpperLeg = { 40, 0, 0 },
+		LeftLowerLeg = { -80, 0, 0 },
+	},
+	LandCrouch = { -- aterrizaje: agachado, brazos abiertos
+		LowerTorso = { -10, 0, 0, p = Vector3.new(0, -0.8, 0) },
+		UpperTorso = { -22, 0, 0 },
+		RightUpperLeg = { 60, 0, 0 },
+		RightLowerLeg = { -90, 0, 0 },
+		LeftUpperLeg = { 60, 0, 0 },
+		LeftLowerLeg = { -90, 0, 0 },
+		RightUpperArm = { 25, 0, 45 },
+		LeftUpperArm = { 25, 0, -45 },
+	},
+	SlashWind = { -- Estela: el brazo cargado atrás antes del corte
+		UpperTorso = { -10, -45, 0 },
+		Head = { 0, 30, 0 },
+		RightUpperArm = { 90, 0, 65 },
+		RightLowerArm = { 10, 0, 0 },
+		LeftUpperArm = { 40, 0, 10 },
+		LeftLowerArm = { 95, 0, 0 },
+	},
+	SlashCut = { -- el corte cruza al otro lado
+		UpperTorso = { -12, 40, 0 },
+		Head = { 0, -25, 0 },
+		RightUpperArm = { 90, 0, -45 },
+		RightLowerArm = { 0, 0, 0 },
+		LeftUpperArm = { 30, 0, 20 },
+		LeftLowerArm = { 80, 0, 0 },
+	},
+	-- ---------- Movilidad (EXPERIMENTAL) ----------
+	DashLean = { -- Paso: cuerpo inclinado, brazos atrás
+		UpperTorso = { -28, 0, 0 },
+		Head = { -10, 0, 0 },
+		RightUpperArm = { -45, 0, 15 },
+		LeftUpperArm = { -45, 0, -15 },
+		RightLowerArm = { 20, 0, 0 },
+		LeftLowerArm = { 20, 0, 0 },
+	},
+	WallKick = { -- salto de pared: brazos arriba, una pierna empuja
+		UpperTorso = { 12, 0, 0 },
+		RightUpperArm = { 150, 0, 35 },
+		LeftUpperArm = { 150, 0, -35 },
+		RightUpperLeg = { 45, 0, 10 },
+		RightLowerLeg = { -70, 0, 0 },
+		LeftUpperLeg = { -25, 0, -10 },
+	},
+	WallStride = { -- carrera por la pared: zancada inclinada
+		LowerTorso = { -10, 0, 0 },
+		UpperTorso = { -15, 0, 0 },
+		RightUpperArm = { -40, 0, 10 },
+		LeftUpperArm = { 60, 0, -10 },
+		LeftLowerArm = { 60, 0, 0 },
+		RightUpperLeg = { 55, 0, 0 },
+		RightLowerLeg = { -75, 0, 0 },
+		LeftUpperLeg = { -25, 0, 0 },
+		LeftLowerLeg = { -20, 0, 0 },
+	},
+	MantleReach = { -- agarre: brazos arriba al borde
+		UpperTorso = { -20, 0, 0 },
+		RightUpperArm = { 160, 0, 10 },
+		LeftUpperArm = { 160, 0, -10 },
+		RightLowerArm = { 30, 0, 0 },
+		LeftLowerArm = { 30, 0, 0 },
+		RightUpperLeg = { 70, 0, 0 },
+		RightLowerLeg = { -90, 0, 0 },
+	},
+	MantlePush = { -- se impulsa sobre el borde
+		UpperTorso = { -35, 0, 0 },
+		RightUpperArm = { 30, 0, 15 },
+		LeftUpperArm = { 30, 0, -15 },
+		RightUpperLeg = { 80, 0, 0 },
+		RightLowerLeg = { -100, 0, 0 },
+		LeftUpperLeg = { 30, 0, 0 },
+	},
 }
+
+-- Torbellino: gira sobre sí mismo con los brazos abiertos
+local function spinArms(angle)
+	return {
+		LowerTorso = { 0, angle, 0 },
+		UpperTorso = { -8, 0, 0 },
+		RightUpperArm = { 15, 0, 85 },
+		LeftUpperArm = { 15, 0, -85 },
+		RightLowerArm = { 0, 0, 0 },
+		LeftLowerArm = { 0, 0, 0 },
+		RightUpperLeg = { 15, 0, 5 },
+		LeftUpperLeg = { 15, 0, -5 },
+	}
+end
 
 -- Barrido: agachado y girando con la pierna estirada
 local function sweepSpin(angle)
@@ -348,6 +462,99 @@ local function buildClips()
 			},
 		},
 		Aturdido = holdClip(POSES.Stunned, UPPER_BODY_WITH_ROOT, 0.1),
+
+		-- Eco del Viento (EXPERIMENTAL): una animación propia por técnica
+		EcoRafaga = {
+			joints = UPPER_BODY_WITH_ROOT,
+			priority = Enum.AnimationPriority.Action2,
+			keyframes = {
+				{ time = 0, poses = STANCE, ease = ANTICIPA },
+				{ time = 0.08, poses = POSES.EcoGather, ease = GOLPEA },
+				{ time = 0.16, poses = extend(POSES.EcoPush, 1.08), ease = SECO },
+				{ time = 0.3, poses = POSES.EcoPush, ease = VUELVE },
+				{ time = 0.55, poses = STANCE, ease = VUELVE },
+			},
+		},
+		EcoTorbellino = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action2,
+			keyframes = {
+				{ time = 0, poses = STANCE, ease = ANTICIPA },
+				{ time = 0.06, poses = spinArms(0), ease = SECO },
+				{ time = 0.18, poses = spinArms(120), ease = SECO },
+				{ time = 0.3, poses = spinArms(240), ease = SECO },
+				{ time = 0.42, poses = spinArms(360), ease = VUELVE },
+				{ time = 0.62, poses = STANCE, ease = VUELVE },
+			},
+		},
+		EcoDescenso = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action2,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL, ease = ANTICIPA },
+				{ time = 0.1, poses = POSES.DiveFist, ease = VUELVE },
+				{ time = 3, poses = POSES.DiveFist }, -- se mantiene hasta aterrizar (la pista se detiene)
+			},
+		},
+		EcoAterrizaje = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action2,
+			keyframes = {
+				{ time = 0, poses = POSES.DiveFist, ease = SECO },
+				{ time = 0.06, poses = POSES.LandCrouch, ease = VUELVE },
+				{ time = 0.22, poses = POSES.LandCrouch, ease = VUELVE },
+				{ time = 0.45, poses = NEUTRAL, ease = VUELVE },
+			},
+		},
+		EcoEstela = {
+			joints = UPPER_BODY_WITH_ROOT,
+			priority = Enum.AnimationPriority.Action2,
+			keyframes = {
+				{ time = 0, poses = POSES.SlashWind, ease = GOLPEA },
+				{ time = 0.1, poses = extend(POSES.SlashCut, 1.06), ease = SECO },
+				{ time = 0.22, poses = POSES.SlashCut, ease = VUELVE },
+				{ time = 0.45, poses = STANCE, ease = VUELVE },
+			},
+		},
+		-- Movilidad (EXPERIMENTAL)
+		Paso = {
+			joints = UPPER_BODY_WITH_ROOT,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL, ease = SECO },
+				{ time = 0.04, poses = POSES.DashLean, ease = VUELVE },
+				{ time = 0.16, poses = POSES.DashLean, ease = VUELVE },
+				{ time = 0.3, poses = NEUTRAL, ease = VUELVE },
+			},
+		},
+		SaltoPared = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL, ease = SECO },
+				{ time = 0.06, poses = POSES.WallKick, ease = VUELVE },
+				{ time = 0.25, poses = POSES.WallKick, ease = VUELVE },
+				{ time = 0.45, poses = NEUTRAL, ease = VUELVE },
+			},
+		},
+		CarreraPared = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = NEUTRAL, ease = ANTICIPA },
+				{ time = 0.08, poses = POSES.WallStride, ease = VUELVE },
+				{ time = 3, poses = POSES.WallStride }, -- se mantiene mientras corre (la pista se detiene)
+			},
+		},
+		AgarreBorde = {
+			joints = FULL_BODY,
+			priority = Enum.AnimationPriority.Action,
+			keyframes = {
+				{ time = 0, poses = POSES.MantleReach, ease = VUELVE },
+				{ time = 0.14, poses = POSES.MantlePush, ease = VUELVE },
+				{ time = 0.38, poses = NEUTRAL, ease = VUELVE },
+			},
+		},
 
 		-- Compañero de combate (tiempos sacados de CombatConfig.Sparring)
 		SparringGolpe = {

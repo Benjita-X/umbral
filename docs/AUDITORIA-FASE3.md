@@ -46,7 +46,7 @@ La rama tenía `PositionService` y `PositionReporter` escritos pero **no arranca
 | A2 | Sin límite de tasa en `Posicion` (Unreliable) ni en `Defensa` | CORREGIDO: 45/s y 30/s; exceso se cuenta en atributos |
 | A3 | `Report` solo comparaba la velocidad con la muestra anterior; una muestra insertada desordenada no se comparaba con la siguiente | CORREGIDO: compara con ambas vecinas |
 | A4 | El Paso extra con Resonancia no tenía enfriamiento en el **servidor** (solo una nota) | CORREGIDO: `ExtraDashCooldown` en cliente y servidor (margen 0,15 s de red) |
-| A5 | Las cargas de Paso se recargaban **durante** el propio Paso | CORREGIDO en `MovementController` |
+| A5 | Las cargas de Paso se recargaban **durante** el propio Paso | REVERTIDO: se probó pausar la recarga, pero cambiaba el valor medido de 0,8 s sin un problema concreto. Decisión final: la recarga sigue corriendo durante el Paso (DECISIONES #43) |
 | A6 | `EnemyController` no conocía el Rápido ni el Pesado, no reaccionaba al amague ni a los retrasos | CORREGIDO: clip desde `attack.clip`, colores naranja/rojo oscuro, escucha `FaseInicio`, congela la pose `holdAt` durante el retraso |
 | A7 | `DummyService` no registraba muñecos en el historial y devolvía al compañero a su sitio a la fuerza | CORREGIDO: `PositionService.Track` + opción `noReset` |
 | A8 | Teletransportes de las pruebas marcados como trampa | CORREGIDO: acción `teletransporte` **solo en `tests/server`** (no existe en el lugar de desarrollo) |

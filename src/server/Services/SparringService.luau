@@ -742,7 +742,7 @@ function SparringService.Start()
 					legColor = if isGuardian then Color3.fromRGB(30, 22, 44) elseif kind then kind.legs else Color3.fromRGB(45, 48, 62),
 					tags = tags,
 					noReset = true, -- vuelve a su sitio por su cuenta
-					noRegen = isGuardian or kind ~= nil,
+					noRegen = isGuardian or (kind ~= nil and not kind.regen),
 				})
 				local s = {
 					model = model,

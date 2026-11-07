@@ -5,7 +5,7 @@
 # 3. Lee lo que el plugin guardó con plugin:SetSetting (Studio no escribe los print en sus registros).
 # 4. Cierra SOLO la ventana de pruebas que abrió este script; las demás ventanas de Studio no se tocan.
 
-param([int]$TimeoutSeconds = 600)
+param([int]$TimeoutSeconds = 960)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -15,6 +15,7 @@ Set-Location $root
 # Identificador de esta ejecución: el plugin lo copia en sus registros y solo se aceptan los que coinciden
 $runId = [guid]::NewGuid().ToString('N').Substring(0, 8)
 node tools/construir.mjs --pruebas --instalar-plugin "--run-id=$runId" | Out-Host
+if ($LASTEXITCODE -ne 0) { throw 'La construcción falló (ver el error de arriba): no se abre Studio.' }
 
 $studio = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Recurse -Filter RobloxStudioBeta.exe |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1

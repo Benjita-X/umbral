@@ -86,10 +86,14 @@ return function(ctx)
 	local m0 = mantles
 	ctx.humanoid:Move(Vector3.new(0, 0, 1))
 	jumpFromGround()
+	-- Esperar el agarre y un aterrizaje de verdad (rozar la arista del muro también marca "suelo" un
+	-- instante); recién ahí soltar la dirección, para no cruzar el bloque antes de medir
 	waitUntil(function()
-		return ctx.grounded()
-	end, 2.5)
-	-- Soltar la dirección al aterrizar (si no, sigue caminando y cruza el bloque antes de medir)
+		return mantles > m0
+	end, 1.5)
+	waitUntil(function()
+		return ctx.grounded() and math.abs(ctx.root.AssemblyLinearVelocity.Y) < 1 and ctx.root.Position.Y > 8
+	end, 2)
 	ctx.humanoid:Move(Vector3.zero)
 	local feet = ctx.root.Position.Y - (ctx.humanoid.HipHeight + ctx.root.Size.Y / 2)
 	record(

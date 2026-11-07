@@ -27,8 +27,8 @@ Después de la consolidación: **95 pruebas** (13 nuevas). Resultado de la últi
 ## Defectos conocidos
 | Defecto | Estado |
 |---|---|
-| "Contraataque vuelve al rival" falla (ya fallaba en la línea base): tras el Contrapaso el Contraataque no conecta en la prueba | PENDIENTE: investigar el acercamiento del Contraataque (`CounterTargetRange`/`CounterMaxLunge`) contra el compañero que vuelve a su sitio |
-| Pruebas de defensa con resultados intermitentes (el compañero a veces tarda en volver a atacar) | MITIGADO (deja de esperar si el jugador le bloquea el camino); vigilar |
+| ~~"Contraataque vuelve al rival"~~ | RESUELTO el 2026-11-07 (avance que llega a mitad de la ventana activa; commit `2ec774f`) |
+| ~~El compañero tarda o deja de atacar~~ | RESUELTO el 2026-11-07 (luchadores sin colisión entre sí y sin tropiezos; commit `2ec774f`) |
 | El compañero empieza a atacar a 12 studs pero su golpe llega a ~10 | PENDIENTE de diseño: acercarse antes de atacar o bajar `AggroRange` |
 | Animaciones solo funcionan en Studio (generadas por código) | PENDIENTE antes de publicar |
 | Sonidos provisionales | PENDIENTE antes de publicar |
