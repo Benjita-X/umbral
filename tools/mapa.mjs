@@ -275,5 +275,7 @@ function testEnemies() {
     marker('PuntoSparring_Gemelo', [196, 3.2, -60]),
     marker('PuntoSparring_Gemelo', [204, 3.2, -60]),
     marker('PuntoSparring_Acechador', [200, 3.2, -120]),
+    // Agarre de borde: 10,5 de alto (un salto llega a 8,5; con el agarre se sube)
+    part({ name: 'BloqueBorde', size: [8, 10.5, 8], pos: [150, 5.25, 0], color: [120, 110, 90] }),
   ]);
 }

@@ -294,7 +294,12 @@ local function resolve(s, info, player)
 	end
 	-- 3. Salió del área o saltó por encima del barrido
 	if not result then
-		local jumped = attack.shape == "ring" and insideNow and airborne(p, atImpact.Position)
+		-- Saltar el barrido: dentro del círculo en horizontal y en el aire (aunque el salto lleve por encima de
+		-- la altura del área, eso es "lo saltó", no "no estaba")
+		local overRing = attack.shape == "ring"
+			and Hurtbox.InRadius(info.originCFrame.Position, attack.radius, atImpact.Position, math.huge)
+			and airborne(p, atImpact.Position)
+		local jumped = overRing or (attack.shape == "ring" and insideNow and airborne(p, atImpact.Position))
 		if not insideNow or jumped then
 			local dodgePaso = DefenseService.FindPaso(player, perceived - defense.PreciseDodgeWindow, perceived + 0.03)
 			if threat and (dodgePaso or jumped) then

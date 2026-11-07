@@ -199,7 +199,7 @@ export function buildDungeon() {
   items.push(sign('CartelAcechador', 'ACECHADOR · si fallas un golpe pesado cerca de él, te embiste', P(0, 6, 92.2), P(0, 6, 0), [10, 1.6, 0.3]));
   items.push(enemy('Centinela', 0, 0, 113)); // más espacio entre él y la puerta: su golpe (alcance ~10) ya no llega dentro de la sala de ascenso
   items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
-  items.push(sign('CartelAbismo', 'salta (8) · después salta y da un Paso en el aire (16)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
+  items.push(sign('CartelAbismo', 'salta (8) · luego salto + Paso en el aire (16) · o cruza corriendo por la pared', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
 
   // ---------- D. Ascenso ----------
   const D0 = 121, D1 = 153;

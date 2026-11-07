@@ -237,18 +237,23 @@ end
 
 -- Ritmo (sin repetidos ni ráfagas imposibles) y aplicación del golpe
 -- `geometry`: { attacker, target } = CFrames en el INSTANTE del golpe (las mismas que juzgaron el alcance)
-local function applyHit(player, attackName, def, seq, target, charge, b, geometry)
+-- `hitTime`: hora del golpe (del cliente, ya validada). El ritmo entre golpes se mide con ESA hora, no con
+-- la de llegada: con la espera de confirmación y la latencia variable, dos golpes legítimos pueden
+-- terminar de validarse en el mismo cuadro del servidor.
+local function applyHit(player, attackName, def, seq, target, charge, b, geometry, hitTime)
 	local record = recordFor(player)
 	local now = os.clock()
 	if seq < record.lastSeq - 8 then
 		return reject(player, "secuencia vieja")
 	end
 	if seq > record.lastSeq then
-		if now - record.lastSeqTime < validation.MinSequenceInterval then
+		local previousHit = record.lastSeqHitTime
+		if previousHit and hitTime - previousHit < validation.MinSequenceInterval - validation.StartTimeSlack then
 			return reject(player, "golpes demasiado seguidos")
 		end
 		record.lastSeq = seq
 		record.lastSeqTime = now
+		record.lastSeqHitTime = hitTime
 	end
 	local targets = record.seqTargets[seq]
 	if not targets then
@@ -412,7 +417,7 @@ local function handleHit(player, payload)
 				t - start.t
 			))
 		end
-		applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame })
+		applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame }, t)
 	end)
 end
 

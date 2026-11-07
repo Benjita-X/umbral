@@ -43,6 +43,10 @@ Por usar las mismas convenciones de Rojo, se puede pasar a Rojo más adelante si
 | Defender (mantener: guardia) | F | Botón DEFENDER | R1 / RB |
 | Paso (dash) | Shift | Botón PASO | B |
 | Saltar / doble salto | Espacio | Botón saltar | A |
+| Salto de pared (en el aire, junto a un muro) | Espacio | Botón saltar | A |
+| Correr por la pared (en sprint, saltar junto a un muro avanzando a lo largo de él) | — automático | — | — |
+
+Más ayudas automáticas: si te faltan unos pocos studs para llegar a un borde, el personaje sube solo; empujando contra un muro mientras caes, te deslizas despacio. (Rama `experimental/movilidad`.)
 
 El clic derecho queda libre porque en Roblox gira la cámara.
 

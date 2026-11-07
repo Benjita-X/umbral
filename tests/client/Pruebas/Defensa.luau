@@ -356,7 +356,9 @@ return function(ctx)
 	reset()
 	stand(3.5)
 	impact, id = nextAttack("Barrido")
-	at(impact - 0.15)
+	-- Para salir de un área de ~8,5 studs de radio desde 3,5 studs, el Paso lateral debe salir ~0,2 s antes
+	-- (el Paso tarda 0,18 s en recorrer sus 14 studs); con 0,15 s el jugador quedaba a 8,4 studs, dentro.
+	at(impact - 0.22)
 	ctx.humanoid:Move(Vector3.new(1, 0, 0))
 	task.wait()
 	task.wait()

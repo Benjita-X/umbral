@@ -101,10 +101,13 @@ return function(ctx)
 		if front then string.format("%.1f de daño · nota: %s", front.damage, tostring(front.note)) else "el golpe no se confirmó"
 	)
 
-	-- Por la espalda: aparecer detrás y golpear antes de que termine de girarse (gira a 7 rad/s)
-	task.wait(1.2)
+	-- Por la espalda, en la ventana real del juego: durante su RECUPERACIÓN tras atacar (ahí no se gira)
+	task.wait(0.5)
 	reset()
 	local cRoot = centinela:WaitForChild("HumanoidRootPart")
+	waitUntil(function()
+		return centinela:GetAttribute("Estado") == "Recuperando" and Combat.State.mode ~= "Aturdido"
+	end, 8)
 	local back = cRoot.Position - cRoot.CFrame.LookVector * 3.2
 	ctx.remote:FireServer("teletransporte")
 	task.wait(0.06)

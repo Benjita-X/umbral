@@ -31,6 +31,18 @@ local MovementConfig = {
 	FallGravityMultiplier = 1.35, -- gravedad extra al caer (menos sensación de flotar)
 	MaxFallSpeed = 140, -- velocidad máxima de caída
 
+	-- Paredes (EXPERIMENTAL, rama experimental/movilidad)
+	WallDetectDistance = 2.3, -- studs desde el centro del cuerpo hasta la pared para "tocarla"
+	WallJumpHeight = 7.5, -- altura del salto de pared
+	WallJumpPush = 30, -- studs/s de empuje lejos de la pared
+	WallJumpPushTime = 0.18, -- s que dura ese empuje antes de devolver el control
+	WallSlideSpeed = 12, -- velocidad máxima de caída empujando hacia una pared
+	WallRunTime = 0.9, -- s máximos corriendo por una pared
+	WallRunMinSpeed = 26, -- hace falta ir casi en sprint para correr por la pared
+	WallRunSink = 3, -- studs/s que baja mientras corre por la pared (no flota para siempre)
+	MantleReach = 2.8, -- studs que puede faltar para llegar a un borde: el personaje sube solo
+	MantleCheckDistance = 2.2, -- studs delante del cuerpo donde busca el borde
+
 	-- Cámara
 	BaseFOV = 70,
 	SprintFOV = 76,

@@ -31,6 +31,18 @@ function CameraController.Start(movement)
 	movement.Dashed:Connect(function()
 		kick = Config.DashFOVKick
 	end)
+	-- Paredes: el salto de pared y el agarre dan un golpe de FOV más chico; correr por la pared, uno largo
+	if movement.WallJumped then
+		movement.WallJumped:Connect(function()
+			kick = math.max(kick, Config.DashFOVKick * 0.7)
+		end)
+		movement.Mantled:Connect(function()
+			kick = math.max(kick, Config.DashFOVKick * 0.4)
+		end)
+		movement.WallRunStarted:Connect(function()
+			kick = math.max(kick, Config.DashFOVKick)
+		end)
+	end
 
 	local shakeHumanoid = nil
 	RunService.RenderStepped:Connect(function(dt)
@@ -39,7 +51,8 @@ function CameraController.Start(movement)
 			return
 		end
 		kick *= math.exp(-10 * dt)
-		local target = (if movement.State.sprinting then Config.SprintFOV else Config.BaseFOV) + kick
+		local fast = movement.State.sprinting or movement.State.wallRunning
+		local target = (if fast then Config.SprintFOV else Config.BaseFOV) + kick
 		local alpha = 1 - math.exp(-Config.FOVResponsiveness * dt)
 		camera.FieldOfView += (target - camera.FieldOfView) * alpha
 
