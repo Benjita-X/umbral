@@ -114,16 +114,20 @@ return function(api)
 			return api.refuse(player, "Resonancia insuficiente")
 		end
 		local untilTime = api.now() + spec.duration
+		local caster = player.Character -- la forma pertenece a ESTE personaje (si muere y reaparece, se anula)
 		player:SetAttribute("EclipseHasta", untilTime)
 		api.broadcast(player, "Eclipse", { duration = spec.duration })
 		player:SetAttribute("UltimoEco", "Eclipse:0")
 		task.delay(spec.duration, function()
-			if player:GetAttribute("EclipseHasta") == untilTime then
+			local stillMine = player:GetAttribute("EclipseHasta") == untilTime
+			if stillMine then
 				player:SetAttribute("EclipseHasta", nil)
 			end
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if not root then
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			-- Sin estallido si reapareció (otro personaje), murió o la forma se anuló o se renovó entretanto
+			if not root or character ~= caster or not stillMine or not humanoid or humanoid.Health <= 0 then
 				return
 			end
 			-- Estallido de sombra al terminar

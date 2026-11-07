@@ -636,7 +636,13 @@ end
 -- caída) no se pierde: sale sola en cuanto se pueda, dentro de BUFFER segundos.
 local BUFFER = 0.3
 local buffered = nil -- { slot, untilTime, reason }
-local BUFFERABLE = { aturdido = true, ocupado = true, enfriamiento = true }
+
+-- Tecla guardada en la cola (la barra la marca) o nil
+function EcoController.BufferedSlot()
+	return buffered and buffered.slot or nil
+end
+local BUFFERABLE = { aturdido = true, ocupado = true, enfriamiento = true, golpeando = true, recuperando = true }
+local WAITS_FOR_ATTACK = { golpeando = true, recuperando = true } -- la cola dura lo que falte del golpe
 
 -- Intenta lanzar la habilidad de la tecla. Devuelve true, o false y el motivo (sin avisar todavía).
 local function attempt(slot)
@@ -666,8 +672,9 @@ local function attempt(slot)
 	if (spec.cost or 0) > 0 and (player:GetAttribute("Resonancia") or 0) < spec.cost then
 		return false, "resonancia"
 	end
-	if not combat.CancelForSkill() then
-		return false, "aturdido"
+	local canceled, why, wait = combat.CancelForSkill()
+	if not canceled then
+		return false, why or "aturdido", wait
 	end
 	cast[skillName](spec, slot)
 	EcoEfectos.Estela(character(), color(), if (spec.cost or 0) > 0 then 0.9 else 0.45)
@@ -699,7 +706,8 @@ local function tryCast(slot)
 		return
 	end
 	if BUFFERABLE[reason] and (reason ~= "enfriamiento" or (remaining or 0) <= BUFFER) then
-		buffered = { slot = slot, untilTime = os.clock() + BUFFER, reason = reason }
+		local ttl = if WAITS_FOR_ATTACK[reason] then math.min(0.7, (remaining or 0) + 0.15) else BUFFER
+		buffered = { slot = slot, untilTime = os.clock() + math.max(ttl, BUFFER), reason = reason, created = os.clock() }
 		return
 	end
 	buffered = nil
@@ -717,11 +725,15 @@ local function pollBuffer()
 		deny(b.slot, b.reason)
 		return
 	end
-	local ok, reason = attempt(b.slot)
+	local ok, reason, remaining = attempt(b.slot)
 	if ok then
 		buffered = nil
 	elseif BUFFERABLE[reason] then
 		b.reason = reason
+		-- Si ahora espera a que termine un golpe fallado, la cola dura hasta entonces (con tope)
+		if WAITS_FOR_ATTACK[reason] and remaining then
+			b.untilTime = math.max(b.untilTime, math.min((b.created or os.clock()) + 0.8, os.clock() + remaining + 0.1))
+		end
 	else
 		buffered = nil
 		deny(b.slot, reason)
@@ -754,6 +766,13 @@ local function equip(name)
 	buffered = nil
 	local scheduled = pendingEquip ~= nil
 	pendingEquip = name
+	local root = rootPart()
+	if root then
+		local kitColor = eco.Kits[name].color
+		EcoEfectos.Burst(root.Position, kitColor, 18, 0.7, 18)
+		EcoEfectos.Espiral(root.Position - Vector3.new(0, 2.5, 0), 5, 2.2, kitColor, 0.35, 3)
+		EcoEfectos.Estela(character(), kitColor, 0.3)
+	end
 	if wait <= 0 then
 		sendEquip()
 	elseif not scheduled then
@@ -771,8 +790,9 @@ local function onConfirmed(data)
 		return
 	end
 	local attacker = data.attacker
-	local kit = eco.Kits[(typeof(attacker) == "Instance" and attacker:GetAttribute("Eco")) or ""] or eco.Kits[eco.Default]
-	local element = (typeof(attacker) == "Instance" and attacker:GetAttribute("Eco")) or eco.Default
+	-- El elemento del LANZAMIENTO (lo manda el servidor); el Eco actual solo si no vino (golpes antiguos)
+	local element = (eco.Kits[data.element or ""] and data.element) or (typeof(attacker) == "Instance" and attacker:GetAttribute("Eco")) or eco.Default
+	local kit = eco.Kits[element] or eco.Kits[eco.Default]
 	if typeof(data.position) == "Vector3" and data.attack ~= "EcoQuemadura" and data.attack ~= "EcoInfierno" then
 		local damage = data.damage or 0
 		if damage > 0 and damage < 4 and type(data.synergy) ~= "string" then
@@ -840,7 +860,7 @@ local function onRemoteEffect(data)
 	if own and not data.serverDriven then
 		return
 	end
-	local kit = eco.Kits[(typeof(data.player) == "Instance" and data.player:GetAttribute("Eco")) or ""] or eco.Kits[eco.Default]
+	local kit = eco.Kits[data.element or ""] or eco.Kits[(typeof(data.player) == "Instance" and data.player:GetAttribute("Eco")) or ""] or eco.Kits[eco.Default]
 	local handler = remoteEffects[data.skill]
 	if handler then
 		local ok, err = pcall(handler, data, kit.color, own)

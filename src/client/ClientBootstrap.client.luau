@@ -23,6 +23,7 @@ local MenuController = require(controllers:WaitForChild("MenuController"))
 local MovementAnimator = require(controllers:WaitForChild("MovementAnimator"))
 local TutorialController = require(controllers:WaitForChild("TutorialController"))
 local AmbienteController = require(controllers:WaitForChild("AmbienteController"))
+local AvisosHUD = require(controllers:WaitForChild("AvisosHUD"))
 
 MovementController.Start(InputController)
 CombatController.Start(InputController, MovementController)
@@ -43,6 +44,7 @@ MenuController.Start(MovementController, CombatController, DebugHUD, TutorialCon
 MovementAnimator.Start(MovementController)
 task.spawn(TutorialController.Start, MovementController, CombatController, EcoController)
 task.spawn(AmbienteController.Start)
+task.spawn(AvisosHUD.Start, CombatController)
 InputController.Start()
 
 print("[UMBRAL] Cliente listo")

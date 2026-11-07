@@ -967,9 +967,24 @@ function CombatController.EndStun()
 	end
 end
 
+-- ¿Puede una habilidad cortar lo que hace ahora? Devuelve true, o false + motivo + segundos que faltan.
+-- Castigo al fallar (auditoría externa): la preparación se puede cortar (amago) y tras un golpe ACERTADO
+-- también (ruta de combo); pero ni la fase activa ni la recuperación de un golpe FALLADO: la tecla espera en la
+-- cola y sale justo al terminar (no se pierde y el rival tiene su ventana para castigar).
 function CombatController.CancelForSkill()
 	if not alive() or state.mode == "Aturdido" then
-		return false
+		return false, "aturdido"
+	end
+	local a = state.attack
+	-- Solo en el suelo: en el aire las posiciones cambian tanto que esperar arruinaría los combos aéreos
+	-- (el Descenso tras un golpe aéreo debe salir al instante)
+	if state.mode == "Ataque" and a and movement.State.grounded then
+		if a.phase == "active" then
+			return false, "golpeando", math.max(0, a.startup + a.def.active - a.t) + 0.05
+		end
+		if a.phase == "recovery" and not a.hit then
+			return false, "recuperando", math.max(0, a.startup + a.def.active + a.recovery - a.t)
+		end
 	end
 	if state.mode == "Ataque" or state.mode == "Carga" or state.mode == "Guardia" then
 		local keepIndex = state.comboIndex

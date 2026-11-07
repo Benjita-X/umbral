@@ -353,6 +353,14 @@ return function(ctx)
 	end, 7)
 	record("[Combos] Tope de malabar: tras 4,5 s en el aire, el enemigo se suelta (¡RESISTE!)", resisted, "resiste " .. tostring(resisted))
 
+	-- ---------- Concurrencia: 100 golpes simultáneos de 4 tipos sobre el mismo muñeco no lo dejan trabado ----------
+	ctx.remote:FireServer("concurrencia", "Muneco3")
+	local concurrency = waitUntil(function()
+		return player:GetAttribute("PruebaConcurrencia") ~= nil
+	end, 8)
+	local verdict = tostring(player:GetAttribute("PruebaConcurrencia"))
+	record("[Combos] Concurrencia: muchos golpes a la vez (arrastre, lanzamiento, suspensión, empujón) no traban al enemigo", concurrency and verdict == "ok", verdict)
+
 	-- ---------- 8. Liberación: Paso estando aturdido sale del aturdimiento y cuesta Resonancia ----------
 	resetAll(100)
 	ctx.teleport(Vector3.new(0, 4, 30), Vector3.new(0, 0, 1))

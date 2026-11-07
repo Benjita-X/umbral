@@ -404,8 +404,11 @@ local function startDash()
 		root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
 	end
 
-	-- El cuerpo gira al instante hacia el Paso
-	root.CFrame = CFrame.lookAt(root.Position, root.Position + dir)
+	-- El cuerpo gira al instante hacia el Paso; con enemigo fijado o cámara fija sigue mirando al frente: el Paso
+	-- lateral es una esquiva de lado (y el de atrás, un paso atrás) sin dar la espalda ni zigzaguear
+	if not (lockedTarget and lockedTarget.Parent) and not cameraFacing then
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + dir)
+	end
 	dashedEvent:Fire(dir)
 end
 

@@ -53,6 +53,9 @@ function DefenseService.OneWay(player)
 end
 
 local MAX_EVENTS_PER_SECOND = 30 -- defensas por segundo y jugador (machacar a mano no llega a 15)
+-- Avisos de Paso: cubo de cargas como el del cliente (2 cargas + 1 Paso extra con Resonancia; una carga cada
+-- 0,75 s). Mandar "paso" sin parar ya no da una ventana de Contrapaso permanente (auditoría externa).
+local PASO_CAPACITY, PASO_REFILL = 3, 0.75
 
 -- La hora que manda el cliente solo vale si es coherente: ni futura ni más vieja que el retroceso
 -- acotado (min(ping, MaxRewind)) más un margen. Una hora inválida no se usa: se toma la actual.
@@ -128,6 +131,14 @@ local function onDefense(player, action, t, dir, position, look)
 			end
 		end
 	elseif action == "paso" then
+		local clock = os.clock()
+		r.pasoTokens = math.min(PASO_CAPACITY, (r.pasoTokens or PASO_CAPACITY) + (clock - (r.pasoClock or clock)) / PASO_REFILL)
+		r.pasoClock = clock
+		if r.pasoTokens < 1 then
+			player:SetAttribute("PasosExcedidos", (player:GetAttribute("PasosExcedidos") or 0) + 1)
+			return
+		end
+		r.pasoTokens -= 1
 		local flatDir = if typeof(dir) == "Vector3" then Vector3.new(dir.X, 0, dir.Z) else Vector3.zero
 		if flatDir.Magnitude > 0.1 then
 			table.insert(r.pasos, { t = time, dir = flatDir.Unit })
@@ -152,6 +163,19 @@ function DefenseService.FindDeflect(player, perceived)
 		end
 	end
 	return best, bestPress
+end
+
+-- Entrenador de defensa: cuánto antes del impacto (s; negativo = después) fue la pulsación de Defender más
+-- cercana, si hubo una en ±0,5 s. Sirve para decirle al jugador "70 ms temprano" en vez de solo "te golpearon".
+function DefenseService.NearestPressOffset(player, perceived)
+	local best = nil
+	for _, press in ipairs(recordFor(player).presses) do
+		local before = perceived - press.t
+		if math.abs(before) <= 0.5 and (best == nil or math.abs(before) < math.abs(best)) then
+			best = before
+		end
+	end
+	return best
 end
 
 function DefenseService.Consume(press)
@@ -253,6 +277,20 @@ function DefenseService.ReleaseStun(player, immunity)
 	r.recentStuns = {}
 	r.aguanteUntil = math.max(r.aguanteUntil or 0, t + (immunity or 0))
 	player:SetAttribute("AguanteHasta", r.aguanteUntil)
+end
+
+-- ¿Estaba aturdido cuando pulsó (hora sincronizada `t` de la pulsación)? La cortesía de red solo perdona lo que
+-- se pulsó ANTES de poder enterarse del aturdimiento (latencia de ida, con tope), nunca lo pulsado después: con
+-- ping alto ya no se cuela una acción durante el aturdimiento (hallazgo de la auditoría externa).
+function DefenseService.IsStunnedAt(player, t)
+	local untilTime = player:GetAttribute("AturdidoHasta")
+	if not untilTime then
+		return false
+	end
+	local start = recordFor(player).stunStart or -math.huge
+	local pressed = if type(t) == "number" and t == t then t else now()
+	local notice = math.min(DefenseService.OneWay(player), 0.15) + 0.03
+	return pressed >= start + notice and pressed < untilTime
 end
 
 -- Borra la cadena de aturdimientos y el Aguante (reaparecer, pruebas)

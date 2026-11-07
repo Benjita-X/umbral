@@ -413,6 +413,14 @@ local function resolve(s, info, player)
 	elseif result == "contrapaso" then
 		ResonanceService.Gain(player, "Contrapaso")
 		DefenseService.OpenCounter(player)
+		local character = player.Character
+		local before = character and paso and PositionService.ObservedAt(character, paso.t)
+		task.delay(0.45, function()
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if before and root and Vector3.new(root.Position.X - before.Position.X, 0, root.Position.Z - before.Position.Z).Magnitude < 3 then
+				player:SetAttribute("ContrapasosSinMovimiento", (player:GetAttribute("ContrapasosSinMovimiento") or 0) + 1)
+			end
+		end)
 	elseif result == "esquiva" then
 		ResonanceService.Gain(player, "Esquiva")
 	elseif result == "ruptura" then
@@ -442,6 +450,7 @@ local function resolve(s, info, player)
 		))
 	end
 	resultRemote:FireAllClients({
+		timing = if result ~= "desvio_perfecto" then DefenseService.NearestPressOffset(player, info.impactTime + PositionService.OneWay(player)) else nil,
 		player = player,
 		npc = s.model,
 		attack = info.attackName,
@@ -744,6 +753,10 @@ function SparringService.Start()
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if not root or flat(root.Position - s.root.Position).Magnitude > postureCfg.Execute.range + 4 then
 			player:SetAttribute("UltimoRechazo", "golpe de gracia lejos")
+			return
+		end
+		if DamageService.SolidBetween(player.Character, target, root.Position, s.root.Position) then
+			player:SetAttribute("UltimoRechazo", "golpe de gracia a través de una pared")
 			return
 		end
 		local humanoid = target:FindFirstChildOfClass("Humanoid")

@@ -104,6 +104,53 @@ remote.OnServerEvent:Connect(function(player, action, payload, extra)
 		if result and root then
 			result:FireAllClients({ player = player, result = "golpe", damage = 0, stun = applied, from = root.Position + root.CFrame.LookVector * 4 })
 		end
+	elseif action == "concurrencia" then
+		-- Muchos golpes A LA VEZ y de tipos distintos sobre el mismo muñeco (como varios jugadores lanzando juntos):
+		-- después no debe quedar ninguna fuerza activa ni el muñeco trabado o disparado
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local DamageService = require(services:WaitForChild("DamageService"))
+		local target = nil
+		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Objetivo")) do
+			if model.Name == payload then
+				target = model
+			end
+		end
+		local root = target and target:FindFirstChild("HumanoidRootPart")
+		if not root then
+			player:SetAttribute("PruebaConcurrencia", "sin muñeco")
+			return
+		end
+		player:SetAttribute("PruebaConcurrencia", nil)
+		task.spawn(function()
+			local specs = {
+				{ attackName = "EcoPrueba", damage = 1, dragTo = root.Position + Vector3.new(4, 0, 0), dragTime = 0.18, stun = 0.3 },
+				{ attackName = "EcoPrueba", damage = 1, direction = Vector3.new(0, 0, 1), knockback = 40, knockUp = 30, launch = true, stun = 0.4, juggle = 1 },
+				{ attackName = "EcoPrueba", damage = 1, direction = Vector3.new(1, 0, 0), knockback = 8, suspend = 0.5, stun = 0.3 },
+				{ attackName = "EcoPrueba", damage = 1, direction = Vector3.new(-1, 0, 0), knockback = 75, knockUp = 10, stun = 0.5 },
+			}
+			for _ = 1, 25 do
+				for _, spec in ipairs(specs) do
+					local copy = table.clone(spec)
+					task.spawn(DamageService.ApplyExternalHit, player, target, copy)
+				end
+				task.wait(0.03)
+			end
+			task.wait(2)
+			local problems = {}
+			for _, child in ipairs(root:GetChildren()) do
+				if child:IsA("LinearVelocity") and child.Enabled then
+					table.insert(problems, child.Name .. " activa")
+				end
+			end
+			local p = root.Position
+			if p ~= p or math.abs(p.X) > 1e5 or math.abs(p.Y) > 1e5 then
+				table.insert(problems, "posición inválida")
+			end
+			if root.AssemblyLinearVelocity.Magnitude > 8 then
+				table.insert(problems, string.format("velocidad %.1f", root.AssemblyLinearVelocity.Magnitude))
+			end
+			player:SetAttribute("PruebaConcurrencia", if #problems == 0 then "ok" else table.concat(problems, ", "))
+		end)
 	elseif action == "malabar_largo" then
 		-- Mantiene a un muñeco "en malabar" más de lo permitido (prueba del tope de malabar)
 		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")

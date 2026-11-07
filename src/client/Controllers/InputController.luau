@@ -63,6 +63,14 @@ function InputController.Release(action)
 	release(action)
 end
 
+-- Suelta todas las acciones mantenidas (perder el foco con Alt+Tab, abrir el menú, reaparecer): nada queda
+-- "pegado" (guardia o golpe cargado que seguían activos sin que el jugador lo quisiera)
+function InputController.ReleaseAll()
+	for action in pairs(held) do
+		release(action)
+	end
+end
+
 -- Pulsar y soltar enseguida (un toque)
 function InputController.Trigger(action)
 	InputController.Press(action)
@@ -184,6 +192,8 @@ local function createTouchButtons()
 end
 
 function InputController.Start()
+	UserInputService.WindowFocusReleased:Connect(InputController.ReleaseAll)
+	Players.LocalPlayer.CharacterAdded:Connect(InputController.ReleaseAll)
 	bind("Atacar", Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX)
 	bind("Defender", Enum.KeyCode.F, Enum.KeyCode.ButtonR1)
 	bind("Paso", Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB)

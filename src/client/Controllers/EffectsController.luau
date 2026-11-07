@@ -427,7 +427,7 @@ function EffectsController.OnConfirmed(data, isLocalAttacker)
 		-- EcoController con el color del Eco de quien la usó)
 		if type(data.attack) == "string" and string.sub(data.attack, 1, 3) == "Eco" and typeof(data.position) == "Vector3" and (data.damage or 0) > 0 then
 			-- El número sale con el color del Eco de quien lo hizo (la quemadura, en naranja; un combo, dorado)
-			local kit = typeof(data.attacker) == "Instance" and CombatConfig.Eco.Kits[data.attacker:GetAttribute("Eco") or ""]
+			local kit = CombatConfig.Eco.Kits[data.element or ""] or (typeof(data.attacker) == "Instance" and CombatConfig.Eco.Kits[data.attacker:GetAttribute("Eco") or ""])
 			local color = if data.synergy then Color3.fromRGB(255, 215, 90)
 				elseif data.attack == "EcoQuemadura" then Color3.fromRGB(255, 140, 50)
 				elseif kit then kit.color

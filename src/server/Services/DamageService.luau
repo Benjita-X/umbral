@@ -265,6 +265,35 @@ local function comboScale(target, damage, attacker)
 	return math.max(COMBO_FLOOR, 1 - (chain.count - COMBO_FREE) * COMBO_DECAY)
 end
 
+-- ¿Hay algo sólido (no un personaje) entre el atacante y el objetivo? Un golpe no atraviesa paredes.
+local function solidBetween(attackerCharacter, target, from, to)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.RespectCanCollide = true
+	local ignore = { target }
+	if attackerCharacter then
+		table.insert(ignore, attackerCharacter)
+	end
+	local start = from + Vector3.new(0, 1, 0)
+	local segment = (to + Vector3.new(0, 1, 0)) - start
+	for _ = 1, 4 do
+		params.FilterDescendantsInstances = ignore
+		local hit = Workspace:Raycast(start, segment, params)
+		if not hit then
+			return false
+		end
+		local model = hit.Instance:FindFirstAncestorOfClass("Model")
+		if model and model:FindFirstChildOfClass("Humanoid") then
+			table.insert(ignore, model) -- otro personaje en medio: no es una pared
+		else
+			return true
+		end
+	end
+	return false
+end
+
+DamageService.SolidBetween = solidBetween
+
 -- Daño extra contra un objetivo recién estampado en la pared
 local function wallBonus(target)
 	return if (target:GetAttribute("ParedHasta") or 0) > Workspace:GetServerTimeNow() then WALL_SPLAT_BONUS else 1
@@ -390,6 +419,12 @@ local function specialAllowed(player, def, t)
 		-- Un Paso reciente, o llegar con el gancho (WeaponService registra la hora del gancho)
 		local hook = player:GetAttribute("GanchoHora")
 		local hooked = type(hook) == "number" and t >= hook - 0.05 and t - hook <= window + 1.2
+		if hooked then
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local atHook = character and PositionService.ObservedAt(character, hook)
+			hooked = root ~= nil and atHook ~= nil and (root.Position - atHook.Position).Magnitude >= 4
+		end
 		if not hooked and not DefenseService.FindPaso(player, t - window - 0.12, t + 0.05) then
 			return false, "golpe tras el Paso sin Paso"
 		end
@@ -508,7 +543,7 @@ local function handleStart(player, seq, attackName, t, position, look)
 	if #times >= validation.MaxStartsPerSecond then
 		return reject(player, "demasiados inicios por segundo")
 	end
-	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
+	if DefenseService.IsStunnedAt(player, t) then
 		return reject(player, "inicio aturdido")
 	end
 	-- Cada golpe es de un arma: solo vale con el arma que lleva puesta
@@ -749,6 +784,7 @@ function DamageService.ApplyExternalHit(player, target, spec)
 		counter = false,
 		note = note,
 		synergy = spec.synergy,
+		element = spec.element, -- elemento del lanzamiento (no el Eco que lleve ahora): color y sonido coherentes
 	})
 	return damage
 end
@@ -777,7 +813,7 @@ local function handleHit(player, payload)
 	if not b then
 		return reject(player, problem)
 	end
-	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
+	if DefenseService.IsStunnedAt(player, payload.t) then
 		return reject(player, "aturdido")
 	end
 
@@ -847,6 +883,9 @@ local function handleHit(player, payload)
 				attackerCFrame.Position.Z,
 				t - start.t
 			))
+		end
+		if solidBetween(player.Character, target, attackerCFrame.Position, targetCFrame.Position) then
+			return reject(player, "golpe a través de una pared")
 		end
 		applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame }, t)
 	end)

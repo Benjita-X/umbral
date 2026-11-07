@@ -121,7 +121,7 @@ local function canUse(player, skillName, t)
 	if r.swapUntil and t < r.swapUntil - COOLDOWN_SLACK then
 		return false, "cambiando de Eco"
 	end
-	if DefenseService.IsStunned(player, DefenseService.Ping(player) + 0.1) then
+	if DefenseService.IsStunnedAt(player, t) then
 		return false, "aturdido"
 	end
 	-- Enfriamiento por tecla, medido entre las horas (validadas) de los pedidos: la variación de la red no
@@ -195,14 +195,18 @@ local function targetRoot(model)
 end
 
 -- Quiénes cumplen `test` en el instante `t` (posiciones como las veía el jugador)
-local function targetsIn(player, test, t)
+local wallBetween -- (se define más abajo; la usa la línea de visión de las áreas)
+
+-- Quiénes cumplen `test` en el instante `t` (posiciones como las veía el jugador). Con `losFrom`, además tiene
+-- que haber línea de visión desde ese punto: un área no alcanza a nadie al otro lado de una pared.
+local function targetsIn(player, test, t, losFrom)
 	local list = {}
 	local oneWay = PositionService.OneWay(player)
 	for _, model in ipairs(CollectionService:GetTagged("Objetivo")) do
 		local root = targetRoot(model)
 		if root then
 			local cframe = PositionService.ObservedAt(model, t - oneWay) or root.CFrame
-			if test(cframe) then
+			if test(cframe) and not (losFrom and wallBetween and wallBetween(player.Character, losFrom, cframe.Position - losFrom)) then
 				table.insert(list, model)
 			end
 		end
@@ -277,6 +281,7 @@ local function strike(player, model, skillName, spec, synergy)
 	if reaction and not spec.synergy then
 		spec.synergy = reaction.name -- se muestra igual que un combo con nombre
 	end
+	spec.element = element
 	local dealt = DamageService.ApplyExternalHit(player, model, spec)
 	if dealt > 0 and react and not spec.dot then
 		react(player, model, element, reaction)
@@ -296,6 +301,7 @@ local function broadcast(player, skillName, data)
 	if effectRemote then
 		data.player = player
 		data.skill = skillName
+		data.element = data.element or SKILL_ELEMENT[skillName] -- el color del efecto es el de su Eco, aunque cambie
 		effectRemote:FireAllClients(data)
 	end
 end
@@ -326,7 +332,7 @@ wallParams.FilterType = Enum.RaycastFilterType.Exclude
 wallParams.RespectCanCollide = true
 
 -- Primera pared (no un personaje) entre `from` y `from + segment`
-local function wallBetween(character, from, segment)
+wallBetween = function(character, from, segment)
 	local ignore = { character }
 	for _ = 1, 6 do
 		wallParams.FilterDescendantsInstances = ignore
@@ -436,13 +442,13 @@ local function coneTargets(player, origin, forward, range, angleDegrees, t)
 			return false
 		end
 		return distance < 2.5 or offset.Unit:Dot(forward) >= cosLimit
-	end, t)
+	end, t, origin + Vector3.new(0, 1, 0))
 end
 
 local function radiusTargets(player, center, radius, height, t)
 	return targetsIn(player, function(cframe)
 		return Hurtbox.InRadius(center, radius, cframe.Position, height or 6)
-	end, t)
+	end, t, center + Vector3.new(0, 1, 0))
 end
 
 -- Final de una embestida de `distance` studs: se acorta antes de una pared (nunca la atraviesa)
@@ -715,12 +721,12 @@ local function ciclon(player, t, position, look, aim, wantsAir)
 		targets = targetsIn(player, function(cframe)
 			local offset = cframe.Position - origin.Position
 			return flat(offset).Magnitude <= spec.radius + Hurtbox.Size.X / 2 and math.abs(offset.Y) <= spec.airHeight
-		end, t)
+		end, t, origin.Position)
 	else
 		center = origin.Position + forward * spec.pullTo
 		targets = targetsIn(player, function(cframe)
 			return Hurtbox.InRadius(origin.Position, spec.radius, cframe.Position, 7)
-		end, t)
+		end, t, origin.Position)
 	end
 	broadcast(player, "Ciclon", { center = center, air = inAir })
 	for index, model in ipairs(targets) do
@@ -765,7 +771,7 @@ local function levante(player, t, position, look, aim)
 	local aimCFrame = CFrame.lookAt(origin.Position, origin.Position + forward)
 	local targets = targetsIn(player, function(cframe)
 		return Hurtbox.AttackHits(aimCFrame, spec.range, spec.hitboxSize, cframe, CombatConfig.Validation.Tolerance)
-	end, t)
+	end, t, origin.Position)
 	broadcast(player, "Levante", { center = origin.Position + forward * (spec.range * 0.5 + 0.5) })
 	for _, model in ipairs(targets) do
 		local synergy = synergyFor(player, model, "Levante")
@@ -856,7 +862,7 @@ local function impacto(player, t, position, look)
 	end
 	local targets = targetsIn(player, function(cframe)
 		return Hurtbox.InRadius(landing.Position, spec.radius, cframe.Position, 8)
-	end, t)
+	end, t, landing.Position + Vector3.new(0, 1, 0))
 	broadcast(player, "Impacto", { origin = landing.Position })
 	for _, model in ipairs(targets) do
 		local root = model:FindFirstChild("HumanoidRootPart")
@@ -1187,6 +1193,11 @@ function EcoService.Start()
 		if not eco.Kits[player:GetAttribute("Eco") or ""] then
 			player:SetAttribute("Eco", eco.Default)
 		end
+		-- Las formas de las definitivas (Eclipse, Infierno) pertenecen al personaje: al reaparecer se anulan
+		player.CharacterAdded:Connect(function()
+			player:SetAttribute("EclipseHasta", nil)
+			player:SetAttribute("InfiernoHasta", nil)
+		end)
 	end
 	Players.PlayerAdded:Connect(setup)
 	for _, player in ipairs(Players:GetPlayers()) do

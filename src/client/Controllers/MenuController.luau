@@ -412,8 +412,14 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 	local function toggle(force)
 		local visible = if force ~= nil then force else not panel.Visible
 		panel.Visible = visible
-		-- Con el menú abierto el ratón queda libre (la cámara fija se suspende)
+		-- Con el menú abierto el ratón queda libre (la cámara fija se suspende) y nada queda pulsado detrás
 		CameraController.SetMouseFree("menu", visible)
+		if visible then
+			local ok, input = pcall(require, script.Parent:WaitForChild("InputController"))
+			if ok and input.ReleaseAll then
+				input.ReleaseAll()
+			end
+		end
 	end
 	open.Activated:Connect(function()
 		toggle()

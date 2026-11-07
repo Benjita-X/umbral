@@ -63,6 +63,10 @@ return function(ctx)
 		local dummyHumanoid = dummy:FindFirstChildOfClass("Humanoid")
 		local before = dummyHumanoid.Health
 		local rejected0 = player:GetAttribute("GolpesRechazados") or 0
+		local reasons = {}
+		local reasonConnection = player:GetAttributeChangedSignal("UltimoRechazo"):Connect(function()
+			table.insert(reasons, tostring(player:GetAttribute("UltimoRechazo")))
+		end)
 		Input.Trigger("Atacar")
 		local attackName = Combat.State.attack and Combat.State.attack.name
 		waitUntil(function()
@@ -70,7 +74,8 @@ return function(ctx)
 		end, 1.2)
 		local dealt = before - dummyHumanoid.Health
 		local rejected = (player:GetAttribute("GolpesRechazados") or 0) - rejected0
-		record("[Gancho] Engancharse a un enemigo te deja frente a él y abre la patada voladora", ok and distance <= 4.5 and attackName == "PatadaVoladora" and math.abs(dealt - Config.Attacks.PatadaVoladora.damage) < 0.05 and rejected == 0, string.format("enganchó %s · quedaste a %.1f studs · golpe siguiente %s · %.1f de daño · rechazados %d (%s)", tostring(ok), distance, tostring(attackName), dealt, rejected, tostring(player:GetAttribute("UltimoRechazo"))))
+		reasonConnection:Disconnect()
+		record("[Gancho] Engancharse a un enemigo te deja frente a él y abre la patada voladora", ok and distance <= 4.5 and attackName == "PatadaVoladora" and math.abs(dealt - Config.Attacks.PatadaVoladora.damage) < 0.05 and rejected == 0, string.format("enganchó %s · quedaste a %.1f studs · golpe siguiente %s · %.1f de daño · rechazados %d (%s)", tostring(ok), distance, tostring(attackName), dealt, rejected, if #reasons > 0 then table.concat(reasons, " → ") else tostring(player:GetAttribute("UltimoRechazo"))))
 		ctx.settle()
 	end
 

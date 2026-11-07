@@ -28,6 +28,7 @@ local GAP = 8
 local READY_COLOR = Color3.fromRGB(240, 244, 255)
 local DENIED = Color3.fromRGB(255, 90, 80)
 local RECAST = Color3.fromRGB(255, 220, 110)
+local QUEUED = Color3.fromRGB(240, 248, 255)
 
 local function corner(parent, radius)
 	local c = Instance.new("UICorner")
@@ -195,6 +196,7 @@ function SkillBarHUD.Start(ecoController)
 	end
 
 	local lastAir = nil -- última variante mostrada (suelo/aire) en las casillas con variante aérea
+	local wasReady = nil -- ¿la definitiva estaba lista el cuadro anterior? (nil al empezar: no avisa al entrar)
 	local function refreshNames()
 		local kit = ecoController.Kit()
 		if kitLabel then
@@ -404,6 +406,61 @@ function SkillBarHUD.Start(ecoController)
 		return true
 	end
 	SkillBarHUD.ShowCard = showCard
+
+	-- Registro de pulsaciones (solo en modo práctica): las últimas habilidades pulsadas y qué pasó con cada una
+	-- (salió, esperó en cola o no salió y por qué). Para entender un "pulsé y no salió".
+	local inputLog = Instance.new("Frame")
+	inputLog.Name = "RegistroPulsaciones"
+	inputLog.AnchorPoint = Vector2.new(1, 0.5)
+	inputLog.Position = UDim2.new(1, -12, 0.5, 0)
+	inputLog.Size = UDim2.fromOffset(250, 5 * 18 + 26)
+	inputLog.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
+	inputLog.BackgroundTransparency = 0.3
+	inputLog.Visible = false
+	corner(inputLog)
+	local logTitle = text(inputLog, "Titulo", { Position = UDim2.fromOffset(8, 4), Size = UDim2.new(1, -16, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, Text = "PULSACIONES (modo práctica)", TextColor3 = Color3.fromRGB(170, 180, 205) })
+	local _ = logTitle
+	local logRows = {}
+	for i = 1, 5 do
+		logRows[i] = text(inputLog, "Fila" .. i, { Position = UDim2.fromOffset(8, 6 + i * 18), Size = UDim2.new(1, -16, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, Text = "", RichText = true })
+	end
+	inputLog.Parent = gui
+	local entries = {}
+	local function pushLog(line)
+		table.insert(entries, 1, line)
+		if #entries > 5 then
+			table.remove(entries)
+		end
+		for i, row in ipairs(logRows) do
+			row.Text = entries[i] or ""
+		end
+	end
+	local function practicing()
+		return player:GetAttribute("Practica") == true
+	end
+	inputLog.Visible = practicing()
+	player:GetAttributeChangedSignal("Practica"):Connect(function()
+		inputLog.Visible = practicing()
+	end)
+	ecoController.Used:Connect(function(skillName, slot)
+		if practicing() then
+			local spec = skills[skillName or ""]
+			pushLog(string.format('<font color="#8CFFA0">✓</font> %s · %s', tostring(slot), Texto.Mayusculas(spec and spec.label or tostring(skillName))))
+		end
+	end)
+	ecoController.Denied:Connect(function(slot, reason)
+		if practicing() then
+			pushLog(string.format('<font color="#FF8070">✕</font> %s · no salió: %s', tostring(slot), tostring(reason)))
+		end
+	end)
+	local loggedQueue = nil
+	RunService.Heartbeat:Connect(function()
+		local queuedSlot = ecoController.BufferedSlot and ecoController.BufferedSlot()
+		if practicing() and queuedSlot and queuedSlot ~= loggedQueue then
+			pushLog(string.format('<font color="#F0F8FF">…</font> %s · en cola (sale en cuanto se pueda)', tostring(queuedSlot)))
+		end
+		loggedQueue = queuedSlot
+	end)
 
 	-- Pista de reacción: si el enemigo de enfrente está mojado, cargado o ardiendo, qué Eco reacciona con él
 	local hint = text(gui, "PistaReaccion", {
@@ -649,6 +706,27 @@ function SkillBarHUD.Start(ecoController)
 
 	RunService.Heartbeat:Connect(function()
 		local resonance = player:GetAttribute("Resonancia") or 0
+		local ultimate = skills[ecoController.Kit().slots.V or ""]
+		local ready = ultimate ~= nil and resonance >= (ultimate.cost or 0)
+		if ready and wasReady == false then
+			notice("¡DEFINITIVA LISTA! (V)")
+			local s = slots.V
+			if s then
+				s.scale.Scale = 1.3
+				TweenService:Create(s.scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			end
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local sound = Instance.new("Sound")
+				sound.SoundId = "rbxasset://sounds/volume_slider.ogg"
+				sound.Volume = 0.5
+				sound.Parent = root
+				sound:Play()
+				game:GetService("Debris"):AddItem(sound, 2)
+			end
+		end
+		wasReady = ready
 		local kit = ecoController.Kit()
 		-- Las teclas con variante aérea muestran lo que harán AHORA (Levante en el suelo, Descenso en el aire)
 		local air = ecoController.InAir()
@@ -703,8 +781,10 @@ function SkillBarHUD.Start(ecoController)
 				TweenService:Create(s.scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 			end
 			if not recast and s.stroke.Color ~= DENIED then
-				s.stroke.Color = kit.color
-				s.stroke.Transparency = if ready then 0 else 0.6
+				-- En cola: la tecla se pulsó y saldrá en cuanto se pueda (borde blanco que late)
+				local queued = ecoController.BufferedSlot and ecoController.BufferedSlot() == slot
+				s.stroke.Color = if queued then QUEUED else kit.color
+				s.stroke.Transparency = if queued then 0.2 * (1 + math.sin(os.clock() * 30)) elseif ready then 0 else 0.6
 			end
 			s.wasReady = ready
 		end
