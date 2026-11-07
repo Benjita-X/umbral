@@ -49,13 +49,12 @@ Después de la consolidación: **95 pruebas** (13 nuevas). Resultado de la últi
 3. Red adversa (150 ms, 1 % de pérdida), avatares 0,7 / 1,3 reales y `ExecuteMultiplayerTestAsync`.
 4. Fase 4: PvP 1v1 en la arena con la misma defensa del servidor.
 
-## Última ejecución (2026-11-06, 21:41, Studio sin otras ventanas abiertas)
-**92 superadas · 3 fallidas · 0 omitidas · de 95.** No ejecutadas: red adversa, avatares reales 0,7/1,3, multijugador, rendimiento (ver PRUEBAS-FASE3.md).
+## Última ejecución (2026-11-07, Studio sin otras ventanas abiertas)
+**95 superadas · 0 fallidas · 0 omitidas · de 95.** No ejecutadas todavía: red adversa simulada, avatares reales 0,7/1,3, multijugador, rendimiento (ver PRUEBAS-FASE3.md). La sensación sigue PENDIENTE de una persona.
 
-| Fallida | Causa conocida |
-|---|---|
-| Ningún golpe legítimo rechazado (1) | Un golpe enviado justo antes de un teletransporte de la propia prueba: el teletransporte borra las posiciones informadas antes de que el golpe se confirme. Solo ocurre con teletransportes (pruebas, reaparecer). PENDIENTE: conservar las muestras previas al corte |
-| Contraataque vuelve al rival | Ya fallaba antes de la auditoría. PENDIENTE (ver Defectos conocidos) |
-| Reloj fijo falla con ritmo variable | El bot no llegó a ver 6 ataques (el compañero se detuvo tras un Pesado). Intermitente: en otras ejecuciones pasó. PENDIENTE |
-
-Nota: una ejecución lanzada justo después de cerrar otra ventana de Studio dio 61/73 con fallos en cadena (reaparecer); repetida con Studio cerrado dio 92/95. Cerrar Studio antes de ejecutar las pruebas.
+Cómo se cerraron las últimas fallas (ver DECISIONES #48-#53 y el historial de Git):
+| Falla | Causa real | Corrección |
+|---|---|---|
+| Contraataque vuelve al rival | El avance llegaba al alcance justo al cerrarse la ventana activa | El avance llega a mitad de la ventana; la preparación se alarga si el tramo es largo |
+| El compañero se quedaba quieto tras el Pesado | Chocaba con el jugador a ~75 studs/s y la física lo sacaba disparado | Luchadores sin colisión entre sí; muñecos sin tropiezos |
+| Golpes legítimos rechazados junto a teletransportes | Mezcla de posiciones de antes y después del salto, y pruebas que teletransportaban a mitad de golpe | Corte de muestras en el teletransporte, historial observado como respaldo, y las pruebas esperan a que termine el golpe |

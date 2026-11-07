@@ -109,6 +109,14 @@ function ctx.settle()
 end
 
 function ctx.teleport(position, look)
+	-- Nunca teletransportar en medio de un golpe: el golpe en vuelo se juzgaría con el personaje ya movido
+	-- (un jugador no puede hacer eso; los teletransportes del juego no ocurren a mitad de un golpe)
+	if ctx.Combat.State.mode == "Ataque" or ctx.Combat.State.mode == "Carga" then
+		ctx.waitUntil(function()
+			return ctx.Combat.State.mode ~= "Ataque" and ctx.Combat.State.mode ~= "Carga"
+		end, 1.5)
+		task.wait(0.35) -- que el servidor termine de juzgar el último golpe
+	end
 	ctx.humanoid:Move(Vector3.zero)
 	ctx.root.AssemblyLinearVelocity = Vector3.zero
 	if ctx.remote then
