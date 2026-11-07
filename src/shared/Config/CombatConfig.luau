@@ -207,7 +207,7 @@ local CombatConfig = {
 	-- cada vez menos; y cada rival da como máximo SourceCap cada SourceWindow segundos.
 	Resonance = {
 		Max = 100,
-		Gains = { Golpe = 5, Desvio = 5, DesvioPerfecto = 15, Esquiva = 10, Contrapaso = 20 },
+		Gains = { Golpe = 5, Desvio = 5, DesvioPerfecto = 15, Esquiva = 10, Contrapaso = 20, Contratiempo = 25, VencerComun = 20, VencerGuardian = 40 },
 		MaxGainPerSecond = 40,
 		RepeatDecay = 0.5, -- el mismo golpe seguido al mismo rival: ×0,5 cada repetición
 		RepeatWindow = 3,
@@ -235,10 +235,30 @@ local CombatConfig = {
 		-- Guardián de la Grieta (mazmorra de muestra, solo en el lugar de desarrollo): mismo oponente, más
 		-- exigente; no se cura solo y al vencerlo se levanta tras RiseAfter segundos
 		Guardian = { MaxHealth = 220, Profile = "tecnico", RiseAfter = 8 },
+		-- Enemigos comunes de la Grieta. Cada uno enseña una mecánica y castiga un hábito:
+		--   Latido    · ataca a ritmo fijo (corazón de luz). 3 desvíos perfectos seguidos = CONTRATIEMPO
+		--               (aturdido largo y Resonancia). Con menos vida, el ritmo se acelera.
+		--   Centinela · coraza frontal: de frente no hace daño; por la espalda ×1,5 (el Contrapaso lleva ahí).
+		--               No se gira al recibir un golpe. Aturdido, la coraza no protege.
+		--   Gemelo    · dos que comparten una sola vida.
+		-- Regla de todos: DESVÍO REFLEJADO. Un desvío perfecto lanza una onda que daña (el daño del ataque
+		-- desviado) y aturde a los otros enemigos a menos de ReflectRadius del jugador.
+		Types = {
+			Latido = { label = "Latido", maxHealth = 80, profile = "latido", body = Color3.fromRGB(120, 34, 52), legs = Color3.fromRGB(60, 18, 28), glow = Color3.fromRGB(255, 70, 110), riseAfter = 20, rhythmStreak = 3, rhythmStun = 2.5 },
+			Centinela = { label = "Centinela", maxHealth = 90, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5 },
+			Gemelo = { label = "Gemelo de Eco", maxHealth = 70, profile = "gemelo", body = Color3.fromRGB(34, 86, 78), legs = Color3.fromRGB(18, 46, 42), glow = Color3.fromRGB(90, 255, 200), riseAfter = 20, linked = true },
+		},
+		ReflectRadius = 10, -- alcance de la onda del Desvío Reflejado
+		ReflectStun = 0.6,
+		ReflectMaxTargets = 3, -- tope: un solo desvío no debe vaciar un grupo grande (AUDITORIA-2-AMENAZA.md)
 		Profiles = {
 			basico = { pattern = { "Golpe", "Golpe", "Barrido" }, pause = 1.2, maxDelay = 0 },
 			tecnico = { pattern = { "Golpe", "Rapido", "Fuerte", "Barrido", "Amague", "Golpe" }, pause = 1.0, maxDelay = 0.3 },
 			agresivo = { pattern = { "Rapido", "Rapido", "Golpe", "Fuerte", "Barrido", "Amague" }, pause = 0.6, maxDelay = 0.2 },
+			-- Enemigos comunes de la Grieta (ver Types)
+			latido = { pattern = { "Rapido" }, pause = 0.7, maxDelay = 0, rhythm = true }, -- ritmo fijo: se aprende
+			centinela = { pattern = { "Golpe", "Golpe", "Fuerte" }, pause = 1.1, maxDelay = 0.2 },
+			gemelo = { pattern = { "Golpe", "Rapido", "Barrido" }, pause = 1.4, maxDelay = 0.3 },
 		},
 		-- Mismo esquema que los golpes del jugador (ver MoveSchema): preparación, impacto, recuperación,
 		-- daño, postura, forma y alcance, y qué defensas admite.

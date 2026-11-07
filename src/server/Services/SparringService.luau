@@ -20,6 +20,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local shared = ReplicatedStorage:WaitForChild("Shared")
@@ -66,6 +67,17 @@ end
 local function profile(s)
 	local name = s.model:GetAttribute("Perfil")
 	return sparring.Profiles[name] or sparring.Profiles[sparring.DefaultProfile]
+end
+
+-- Pausa entre ataques. Un perfil con ritmo (Latido) se acelera al perder vida (hasta un 45 % más rápido)
+local function pauseFor(s)
+	local p = profile(s)
+	if p.rhythm then
+		local humanoid = s.model:FindFirstChildOfClass("Humanoid")
+		local ratio = if humanoid and humanoid.MaxHealth > 0 then math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1) else 1
+		return p.pause * (0.55 + 0.45 * ratio)
+	end
+	return p.pause
 end
 
 local function pattern(s)
@@ -309,7 +321,37 @@ local function resolve(s, info, player)
 		ResonanceService.Gain(player, "DesvioPerfecto")
 		DefenseService.OpenCounter(player)
 		stagger(s, sparring.StaggerOnPerfect)
+		-- DESVÍO REFLEJADO: la onda daña y aturde a los otros enemigos cercanos
+		local origin = atImpact.Position
+		local reflected = 0
+		for other, os in pairs(npcs) do
+			if reflected < sparring.ReflectMaxTargets and os ~= s and os.root and other.Parent and flat(os.root.Position - origin).Magnitude <= sparring.ReflectRadius then
+				local otherHumanoid = other:FindFirstChildOfClass("Humanoid")
+				if otherHumanoid and otherHumanoid.Health > 0 then
+					os.lastHitter = player
+					otherHumanoid.Health = math.max(0, otherHumanoid.Health - attack.damage)
+					if otherHumanoid.Health > 0 then
+						stagger(os, sparring.ReflectStun)
+					end
+					reflected += 1
+				end
+			end
+		end
+		if waveRemote then
+			waveRemote:FireAllClients({ position = origin, radius = sparring.ReflectRadius, reflected = reflected, player = player })
+		end
+		-- CONTRATIEMPO (Latido): desvíos perfectos seguidos al ritmo
+		if s.kind and s.kind.rhythmStreak then
+			s.streak = (s.streak or 0) + 1
+			if s.streak >= s.kind.rhythmStreak then
+				s.streak = 0
+				stagger(s, s.kind.rhythmStun)
+				ResonanceService.Gain(player, "Contratiempo")
+				noticeRemote:FireClient(player, { title = "¡CONTRATIEMPO!", subtitle = string.format("%d desvíos perfectos al ritmo", s.kind.rhythmStreak), small = true })
+			end
+		end
 	elseif result == "desvio" then
+		s.streak = 0
 		ResonanceService.Gain(player, "Desvio")
 		DefenseService.AddPosture(player, defense.DeflectPostureChip, false)
 	elseif result == "contrapaso" then
@@ -320,6 +362,7 @@ local function resolve(s, info, player)
 	elseif result == "ruptura" then
 		DefenseService.Stun(player, defense.GuardBreakStun)
 	elseif result == "golpe" then
+		s.streak = 0
 		DefenseService.Stun(player, defense.HitStun * (if exposed then 1.3 else 1))
 	end
 	if damage > 0 then
@@ -397,6 +440,12 @@ local function startWindup(s, attackName, feint)
 	s.feint = feint
 	s.model:SetAttribute("AtaqueId", s.attackId)
 	setPhase(s, "Preparando", attackName, attack.startup + (if feint then 0 else delayFor(s, attack)))
+	if s.heart then
+		-- El latido marca el ritmo: se enciende al empezar y se apaga justo hasta el impacto
+		s.heart.Transparency = 0
+		s.heart.Size = Vector3.new(0.9, 0.9, 0.3)
+		TweenService:Create(s.heart, TweenInfo.new(attack.startup, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 0.75, Size = Vector3.new(0.5, 0.5, 0.2) }):Play()
+	end
 end
 
 local function update(s, dt)
@@ -405,24 +454,29 @@ local function update(s, dt)
 		return
 	end
 	local t = now()
+	if s.root and s.root.Position.Y < s.spawn.Position.Y - 12 then
+		drive(s, nil)
+		s.model:PivotTo(s.spawn) -- se cayó (al abismo): vuelve a su sitio
+		s.root.AssemblyLinearVelocity = Vector3.zero
+	end
 	local target = nearestTarget(s)
 
 	if s.state == "Aturdido" then
 		if t >= s.phaseEnd then
-			setPhase(s, "Quieto", nil, profile(s).pause * 0.5)
+			setPhase(s, "Quieto", nil, pauseFor(s) * 0.5)
 		end
 	elseif s.state == "Quieto" then
 		-- Volver a su sitio tras lanzarse
 		local home = flat(s.spawn.Position - s.root.Position)
 		drive(s, if home.Magnitude > 0.75 then home.Unit * math.min(sparring.ReturnSpeed, home.Magnitude * 8) else nil)
 		if not target then
-			s.phaseEnd = math.max(s.phaseEnd, t + profile(s).pause * 0.5) -- empieza a contar cuando llegas
+			s.phaseEnd = math.max(s.phaseEnd, t + pauseFor(s) * 0.5) -- empieza a contar cuando llegas
 			return
 		end
 		face(s, target.root, dt)
 		-- Si no logra volver a su sitio (p. ej. el jugador le bloquea el camino tras un lanzamiento largo),
 		-- ataca desde donde está en vez de quedarse esperando para siempre
-		local stuck = t - s.phaseStart > profile(s).pause + 1.5
+		local stuck = t - s.phaseStart > pauseFor(s) + 1.5
 		if t >= s.phaseEnd and (home.Magnitude <= 1.5 or stuck) then
 			drive(s, nil)
 			local list = pattern(s)
@@ -457,15 +511,16 @@ local function update(s, dt)
 		end
 	elseif s.state == "Recuperando" then
 		if t >= s.phaseEnd then
-			setPhase(s, "Quieto", nil, profile(s).pause)
+			setPhase(s, "Quieto", nil, pauseFor(s))
 		end
 	end
 end
 
 -- Aspecto del Guardián: ojos que brillan, cristales del Eco en los hombros y un aura violeta.
 -- Piezas sin colisión ni masa, soldadas al cuerpo (no cambian la Hurtbox: esa es estándar).
-local function dressGuardian(model)
-	local color = Color3.fromRGB(190, 110, 255)
+local function dressGuardian(model, glowColor, withHeart)
+	local color = glowColor or Color3.fromRGB(190, 110, 255)
+	local heart = nil
 	local function glow(name, parentPart, size, offset, light)
 		if not parentPart then
 			return
@@ -493,6 +548,7 @@ local function dressGuardian(model)
 			point.Parent = piece
 		end
 		piece.Parent = model
+		return piece
 	end
 	local head = model:FindFirstChild("Head")
 	local torso = model:FindFirstChild("UpperTorso")
@@ -500,31 +556,77 @@ local function dressGuardian(model)
 	glow("OjoDer", head, Vector3.new(0.22, 0.12, 0.08), CFrame.new(0.2, 0.1, -0.58), 8)
 	glow("CristalHombroIzq", torso, Vector3.new(0.35, 1.1, 0.35), CFrame.new(-1.1, 1.1, 0) * CFrame.Angles(0, 0, math.rad(20)), nil)
 	glow("CristalHombroDer", torso, Vector3.new(0.35, 1.1, 0.35), CFrame.new(1.1, 1.1, 0) * CFrame.Angles(0, 0, math.rad(-20)), 14)
-	glow("Nucleo", torso, Vector3.new(0.4, 0.4, 0.1), CFrame.new(0, 0.2, -0.52), nil)
+	if withHeart then
+		heart = glow("Corazon", torso, Vector3.new(0.9, 0.9, 0.3), CFrame.new(0, 0.2, -0.55), 12)
+	else
+		glow("Nucleo", torso, Vector3.new(0.4, 0.4, 0.1), CFrame.new(0, 0.2, -0.52), nil)
+	end
+	return heart
 end
 
 -- Guardián de la Grieta: al llegar a 0 de vida queda vencido (aviso a todos), y se levanta para la revancha
 local guardian = sparring.Guardian
+local waveRemote
 local noticeRemote
-local function watchGuardian(s)
+-- Vencer a un enemigo: queda tendido (aturdido) un rato, da Resonancia a quien lo venció y se levanta.
+-- El Guardián avisa a todos; un enemigo común solo a quien lo venció. Los Gemelos caen y se levantan juntos.
+local function watchDefeat(s, isGuardian)
 	local humanoid = s.model:FindFirstChildOfClass("Humanoid")
+	local riseAfter = if isGuardian then guardian.RiseAfter else s.kind.riseAfter
 	local defeated = false
 	humanoid.HealthChanged:Connect(function(health)
 		if defeated or health > 0 then
 			return
 		end
 		defeated = true
-		drive(s, nil)
-		setPhase(s, "Aturdido", nil, guardian.RiseAfter)
-		noticeRemote:FireAllClients({ title = "¡GRIETA SUPERADA!", subtitle = string.format("El Guardián se levantará en %d s", guardian.RiseAfter) })
-		task.delay(guardian.RiseAfter, function()
-			if s.model.Parent then
-				humanoid.Health = humanoid.MaxHealth
-				defeated = false
+		local group = { s, s.partner }
+		for _, member in ipairs(group) do
+			drive(member, nil)
+			setPhase(member, "Aturdido", nil, riseAfter)
+		end
+		local winner = s.lastHitter or (s.partner and s.partner.lastHitter)
+		if isGuardian then
+			noticeRemote:FireAllClients({ title = "¡GRIETA SUPERADA!", subtitle = string.format("El Guardián se levantará en %d s", riseAfter) })
+		elseif winner then
+			noticeRemote:FireClient(winner, { title = "¡" .. string.upper(s.kind.label) .. " VENCIDO!", subtitle = "+ Resonancia", small = true })
+		end
+		if winner and winner.Parent then
+			ResonanceService.Gain(winner, if isGuardian then "VencerGuardian" else "VencerComun")
+		end
+		task.delay(riseAfter, function()
+			for _, member in ipairs(group) do
+				local h = member.model.Parent and member.model:FindFirstChildOfClass("Humanoid")
+				if h then
+					h.Health = h.MaxHealth
+				end
+			end
+			defeated = false
+			if isGuardian and s.model.Parent then
 				noticeRemote:FireAllClients({ title = "EL GUARDIÁN SE LEVANTA", subtitle = "" })
 			end
 		end)
 	end)
+end
+
+-- Gemelos: una sola vida para los dos (lo que le pasa a uno le pasa al otro)
+local function linkTwins(a, b)
+	a.partner, b.partner = b, a
+	local syncing = false
+	local function mirror(from, to)
+		from.model:FindFirstChildOfClass("Humanoid").HealthChanged:Connect(function(health)
+			if syncing then
+				return
+			end
+			syncing = true
+			local h = to.model:FindFirstChildOfClass("Humanoid")
+			if h and math.abs(h.Health - health) > 0.01 then
+				h.Health = health
+			end
+			syncing = false
+		end)
+	end
+	mirror(a, b)
+	mirror(b, a)
 end
 
 function SparringService.Start()
@@ -534,10 +636,39 @@ function SparringService.Start()
 	resultRemote = Instance.new("RemoteEvent")
 	resultRemote.Name = "ResultadoDefensa"
 	resultRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
+	waveRemote = Instance.new("RemoteEvent")
+	waveRemote.Name = "OndaReflejo"
+	waveRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
+
+	-- Coraza frontal (Centinela): de frente no hace daño, por la espalda más; aturdido no protege
+	DamageService.SetModifier(function(_, target, _, b)
+		local s = npcs[target]
+		if not s or not s.kind or not s.kind.frontArmor then
+			return 1, nil, false
+		end
+		if s.state == "Aturdido" then
+			return 1, nil, true
+		end
+		local toAttacker = flat(b.attackerRoot.Position - b.targetRoot.Position)
+		local look = flat(b.targetRoot.CFrame.LookVector)
+		if toAttacker.Magnitude < 0.01 or look.Magnitude < 0.01 then
+			return 1, nil, true
+		end
+		local dot = look.Unit:Dot(toAttacker.Unit)
+		if dot >= math.cos(math.rad(s.kind.frontAngle)) then
+			return 0, "BLOQUEADO · busca su espalda", true
+		elseif dot <= -0.35 then
+			return s.kind.backMultiplier, "¡POR LA ESPALDA!", true
+		end
+		return 1, nil, true
+	end)
 
 	-- Un golpe fuerte que conecta mientras prepara su ataque lo interrumpe (los golpes rápidos no)
-	DamageService.HitApplied:Connect(function(_, target, attackName)
+	DamageService.HitApplied:Connect(function(attacker, target, attackName)
 		local s = npcs[target]
+		if s then
+			s.lastHitter = attacker
+		end
 		local attack = CombatConfig.Attacks[attackName]
 		if s and s.state == "Preparando" and attack and attack.heavy then
 			stagger(s, sparring.StaggerOnInterrupt)
@@ -548,20 +679,29 @@ function SparringService.Start()
 	-- desarrollo, la sala del Guardián de la Grieta)
 	local maps = Workspace:WaitForChild("Maps")
 	maps:WaitForChild("MovementLab"):WaitForChild("Ring")
+	local pendingTwin = nil
 	for _, marker in ipairs(maps:GetDescendants()) do
-		if marker:IsA("BasePart") and marker.Name == "PuntoSparring" then
-			-- En la Grieta es el Guardián: perfil técnico, no se cura solo y se le puede vencer
+		local kindName = marker:IsA("BasePart") and string.match(marker.Name, "^PuntoSparring_?(%a*)$")
+		if kindName then
+			-- "PuntoSparring" en la Grieta = Guardián; "PuntoSparring_<Tipo>" = enemigo común de ese tipo
+			local kind = sparring.Types[kindName]
 			local grieta = maps:FindFirstChild("Grieta")
-			local isGuardian = grieta ~= nil and marker:IsDescendantOf(grieta)
+			local isGuardian = kindName == "" and grieta ~= nil and marker:IsDescendantOf(grieta)
+			local tags = { "Sparring" }
+			if isGuardian then
+				table.insert(tags, "Guardian")
+			elseif kind then
+				table.insert(tags, kindName)
+			end
 			task.spawn(function()
 				local model = DummyService.Spawn(marker, {
-					maxHealth = if isGuardian then guardian.MaxHealth else sparring.MaxHealth,
-					displayName = if isGuardian then "Guardián de la Grieta" else "Compañero de combate",
-					bodyColor = if isGuardian then Color3.fromRGB(58, 40, 82) else Color3.fromRGB(70, 76, 96),
-					legColor = if isGuardian then Color3.fromRGB(30, 22, 44) else Color3.fromRGB(45, 48, 62),
-					tags = if isGuardian then { "Sparring", "Guardian" } else { "Sparring" },
+					maxHealth = if isGuardian then guardian.MaxHealth elseif kind then kind.maxHealth else sparring.MaxHealth,
+					displayName = if isGuardian then "Guardián de la Grieta" elseif kind then kind.label else "Compañero de combate",
+					bodyColor = if isGuardian then Color3.fromRGB(58, 40, 82) elseif kind then kind.body else Color3.fromRGB(70, 76, 96),
+					legColor = if isGuardian then Color3.fromRGB(30, 22, 44) elseif kind then kind.legs else Color3.fromRGB(45, 48, 62),
+					tags = tags,
 					noReset = true, -- vuelve a su sitio por su cuenta
-					noRegen = isGuardian,
+					noRegen = isGuardian or kind ~= nil,
 				})
 				local s = {
 					model = model,
@@ -571,14 +711,28 @@ function SparringService.Start()
 					patternIndex = 0,
 					attackId = 0,
 					random = Random.new(1234),
+					kind = kind,
 				}
 				model:SetAttribute("AtaqueId", 0)
-				model:SetAttribute("Perfil", if isGuardian then guardian.Profile else sparring.DefaultProfile)
-				setPhase(s, "Quieto", nil, profile(s).pause)
+				model:SetAttribute("Perfil", if isGuardian then guardian.Profile elseif kind then kind.profile else sparring.DefaultProfile)
+				setPhase(s, "Quieto", nil, pauseFor(s))
 				npcs[model] = s
 				if isGuardian then
 					dressGuardian(model)
-					watchGuardian(s)
+					watchDefeat(s, true)
+				elseif kind then
+					s.heart = dressGuardian(model, kind.glow, kind.rhythmStreak ~= nil)
+					if kind.linked then
+						if pendingTwin then
+							linkTwins(pendingTwin, s)
+							watchDefeat(pendingTwin, false) -- uno solo vigila: la vida es compartida
+							pendingTwin = nil
+						else
+							pendingTwin = s
+						end
+					else
+						watchDefeat(s, false)
+					end
 				end
 			end)
 		end

@@ -72,14 +72,11 @@ function CombatHUD.Start(combat)
 
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
-	combat.DefenseResult:Connect(function(data, text)
-		if not text then
-			return
-		end
+	local function showCallout(text, color)
 		calloutToken += 1
 		local token = calloutToken
 		callout.Text = text
-		callout.TextColor3 = if data.result == "ruptura" then Color3.fromRGB(255, 110, 90) else Color3.fromRGB(255, 230, 140)
+		callout.TextColor3 = color or Color3.fromRGB(255, 230, 140)
 		callout.Visible = true
 		calloutScale.Scale = 1.3
 		TweenService:Create(calloutScale, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
@@ -88,6 +85,32 @@ function CombatHUD.Start(combat)
 				callout.Visible = false
 			end
 		end)
+	end
+
+	combat.DefenseResult:Connect(function(data, text)
+		if not text then
+			return
+		end
+		showCallout(text, if data.result == "ruptura" then Color3.fromRGB(255, 110, 90) else nil)
+	end)
+
+	-- Notas del servidor sobre tus golpes (coraza del Centinela: "BLOQUEADO", "¡POR LA ESPALDA!")
+	task.spawn(function()
+		local remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes")
+		remotes:WaitForChild("GolpeConfirmado").OnClientEvent:Connect(function(data)
+			if type(data) == "table" and data.attacker == Players.LocalPlayer and type(data.note) == "string" then
+				local blocked = data.damage == 0
+				showCallout(data.note, if blocked then Color3.fromRGB(150, 190, 255) else Color3.fromRGB(255, 200, 90))
+			end
+		end)
+		local wave = remotes:WaitForChild("OndaReflejo", 30)
+		if wave then
+			wave.OnClientEvent:Connect(function(data)
+				if type(data) == "table" and data.player == Players.LocalPlayer and (data.reflected or 0) > 0 then
+					showCallout("¡DESVÍO REFLEJADO!", Color3.fromRGB(150, 255, 230))
+				end
+			end)
+		end
 	end)
 
 	-- Avisos grandes de la Grieta (Guardián vencido / se levanta)
@@ -127,6 +150,8 @@ function CombatHUD.Start(combat)
 			local token = bannerToken
 			banner.Text = tostring(data.title or "")
 			bannerSub.Text = tostring(data.subtitle or "")
+			-- Aviso chico (enemigo común vencido, Contratiempo) o grande (Guardián)
+			banner.Size = if data.small then UDim2.new(0.45, 0, 0, 44) else UDim2.new(0.7, 0, 0, 70)
 			banner.Visible = true
 			banner.TextTransparency = 1
 			TweenService:Create(banner, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
@@ -136,6 +161,15 @@ function CombatHUD.Start(combat)
 				end
 			end)
 		end)
+	end)
+
+	-- El servidor puede corregir el daño (coraza): se refresca el contador con el valor real
+	combat.Confirmed:Connect(function(data)
+		if type(data) == "table" and data.note and frame.Visible then
+			local s = combat.State
+			count.Text = string.format("x%d COMBO", s.comboHits)
+			damage.Text = string.format("%d de daño", math.floor(s.comboDamage + 0.5))
+		end
 	end)
 
 	combat.Hit:Connect(function()

@@ -166,6 +166,13 @@ export function buildDungeon() {
   items.push(box('PasilloTecho', [-5, 12, 41], [5, 14, 61], STONE_DARK, 'Rock'));
   items.push(...wallX('PasilloParedO', -6, 41, 61, -2, 14), ...wallX('PasilloParedE', 6, 41, 61, -2, 14));
   items.push(...torch('AntorchaPasillo', -5, 6, 51, -1));
+  // Enemigo común (experimental): Latido, a ritmo fijo. Enseña el desvío perfecto.
+  const enemy = (kind, x, y, z) => {
+    const pos = P(x, y + 3.2, z);
+    return part({ name: 'PuntoSparring_' + kind, size: [1, 1, 1], pos, rot: facing(pos, P(x, y + 3.2, z - 20)), transparency: 1, collide: false, color: [255, 255, 255] });
+  };
+  items.push(enemy('Latido', 0, 0, 56));
+  items.push(sign('CartelLatido', 'LATIDO · ataca al ritmo de su corazón · 3 desvíos perfectos seguidos = ¡CONTRATIEMPO!', P(0, 9, 60.6), P(0, 9, 0), [9, 1.6, 0.3]));
 
   // ---------- C. Abismo ----------
   // Tres pisos con huecos de 8 (un salto corriendo: a 22 studs/s un salto recorre ~11,4) y 16 (salto + Paso
@@ -188,6 +195,8 @@ export function buildDungeon() {
   for (const z of [66, 116]) {
     items.push(...torch('AntorchaAbismoO', -20, 6, z, -1), ...torch('AntorchaAbismoE', 20, 6, z, 1));
   }
+  items.push(enemy('Centinela', 0, 0, 117));
+  items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
   items.push(sign('CartelAbismo', 'salta (8) · después salta y da un Paso en el aire (16)', P(0, 16, C0 + 1.2), P(0, 16, 200), [22, 3, 0.4]));
 
   // ---------- D. Ascenso ----------
@@ -207,6 +216,8 @@ export function buildDungeon() {
   for (const [z, y] of [[128, 8], [146, 22]]) {
     items.push(...torch('AntorchaAscensoO', -16, y, z, -1), ...torch('AntorchaAscensoE', 16, y, z, 1));
   }
+  items.push(enemy('Gemelo', -4, 0, 132), enemy('Gemelo', 6, 0, 128));
+  items.push(sign('CartelGemelos', 'GEMELOS · una sola vida · un desvío perfecto refleja el golpe al otro', P(0, 4.5, D0 + 1.2), P(0, 4.5, 300), [16, 1.8, 0.4]));
   items.push(sign('CartelAscenso', 'sube: salto · doble salto', P(0, 8, D0 + 1.2), P(0, 8, 300), [14, 2.5, 0.4]));
 
   // ---------- E. Sala del Guardián ----------

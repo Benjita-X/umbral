@@ -199,7 +199,43 @@ local function watch(model)
 	onState(model, e)
 end
 
+-- Onda del Desvío Reflejado: un anillo que se expande desde el jugador hasta el alcance real
+local function reflectWave(data)
+	if type(data) ~= "table" or typeof(data.position) ~= "Vector3" then
+		return
+	end
+	local radius = tonumber(data.radius) or 10
+	local ring = Instance.new("Part")
+	ring.Name = "UmbralOndaReflejo"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(150, 255, 230)
+	ring.Transparency = 0.2
+	ring.Size = Vector3.new(0.2, 1, 1)
+	ring.CFrame = CFrame.new(data.position - Vector3.new(0, 2.6, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = Workspace.CurrentCamera
+	local tween = TweenService:Create(ring, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.2, radius * 2, radius * 2),
+		Transparency = 1,
+	})
+	tween.Completed:Connect(function()
+		ring:Destroy()
+	end)
+	tween:Play()
+end
+
 function EnemyController.Start()
+	task.spawn(function()
+		local wave = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("OndaReflejo", 30)
+		if wave then
+			wave.OnClientEvent:Connect(reflectWave)
+		end
+	end)
 	for _, model in ipairs(CollectionService:GetTagged("Sparring")) do
 		task.spawn(watch, model)
 	end

@@ -38,6 +38,12 @@ local FORCE = 1e7
 local validation = CombatConfig.Validation
 local records = {} -- [player] = { lastSeq, lastSeqTime, seqTargets = { [seq] = { [model] = true } }, recent = { tiempos }, starts = { [seq] = inicio }, lastStart }
 local confirmedRemote
+local modifier = nil -- función(player, target, attackName, bodies) → multiplicador, nota, conservarOrientación
+
+-- Reglas de daño propias de un enemigo (p. ej. la coraza frontal del Centinela): las registra SparringService
+function DamageService.SetModifier(fn)
+	modifier = fn
+end
 
 local function flat(v)
 	return Vector3.new(v.X, 0, v.Z)
@@ -255,17 +261,27 @@ local function applyHit(player, attackName, def, seq, target, charge, b)
 		damage *= CombatConfig.Defense.CounterDamageMultiplier
 		player:SetAttribute("ContraataqueHasta", nil)
 	end
+	local note, keepFacing = nil, false
+	if modifier then
+		local multiplier
+		multiplier, note, keepFacing = modifier(player, target, attackName, b)
+		damage *= multiplier or 1
+	end
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
 	-- Solo dan Resonancia los rivales que pelean (no los muñecos), con rendimiento decreciente si se
 	-- repite el mismo golpe contra el mismo rival
-	if target:HasTag("Sparring") or Players:GetPlayerFromCharacter(target) then
+	if damage > 0 and (target:HasTag("Sparring") or Players:GetPlayerFromCharacter(target)) then
 		ResonanceService.Gain(player, "Golpe", target, attackName)
 	end
 
 	local direction = flat(b.targetRoot.Position - b.attackerRoot.Position)
 	direction = if direction.Magnitude > 0.01 then direction.Unit else flat(b.attackerRoot.CFrame.LookVector).Unit
-	b.targetRoot.CFrame = CFrame.lookAt(b.targetRoot.Position, b.targetRoot.Position - direction) -- mira al atacante
-	knockback(b.targetRoot, direction, def.knockback * (1 + charge * 0.5), def.knockUp * (1 + charge * 0.5))
+	if damage > 0 then
+		if not keepFacing then
+			b.targetRoot.CFrame = CFrame.lookAt(b.targetRoot.Position, b.targetRoot.Position - direction) -- mira al atacante
+		end
+		knockback(b.targetRoot, direction, def.knockback * (1 + charge * 0.5), def.knockUp * (1 + charge * 0.5))
+	end
 
 	confirmedRemote:FireAllClients({
 		attacker = player,
@@ -275,8 +291,11 @@ local function applyHit(player, attackName, def, seq, target, charge, b)
 		position = b.targetRoot.Position + Vector3.new(0, 1, 0),
 		health = b.targetHumanoid.Health,
 		counter = counter,
+		note = note, -- texto corto para quien golpea ("¡POR LA ESPALDA!", "BLOQUEADO")
 	})
-	hitApplied:Fire(player, target, attackName)
+	if damage > 0 then
+		hitApplied:Fire(player, target, attackName)
+	end
 end
 
 local function handleHit(player, payload)

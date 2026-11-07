@@ -766,6 +766,16 @@ function CombatController.Start(inputController, movementController)
 			Effects.OnConfirmed(data, mine)
 			if mine then
 				state.confirmedDamage += data.damage
+				-- Si el servidor cambió el daño (coraza: bloqueado o por la espalda), el contador del combo se
+				-- corrige con el daño real en vez de quedarse con el previsto
+				local def = data.note and Config.Attacks[data.attack]
+				if def then
+					local predicted = def.damage * (if data.counter then defense.CounterDamageMultiplier else 1)
+					state.comboDamage = math.max(0, state.comboDamage + data.damage - predicted)
+					if data.damage <= 0 then
+						state.comboHits = math.max(0, state.comboHits - 1)
+					end
+				end
 				events.Confirmed:Fire(data)
 			end
 		end)
