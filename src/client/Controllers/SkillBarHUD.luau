@@ -378,6 +378,9 @@ function SkillBarHUD.Start(ecoController)
 		end
 		local accent = hex(kit.color)
 		row(string.format("<b>%s</b>   ·   %s", Texto.Mayusculas(kit.name), kit.role or ""), 18, kit.color)
+		if kit.reacts then
+			row(string.format('<font color="%s"><b>REACCIÓN</b></font>   %s', accent, kit.reacts), 15)
+		end
 		for _, slot in ipairs(eco.SlotOrder) do
 			local key = if gamepad then (eco.Gamepad[slot] or slot) else slot
 			for _, entry in ipairs({ { kit.slots[slot], key }, { kit.air and kit.air[slot], key .. " en el aire" } }) do
@@ -401,6 +404,67 @@ function SkillBarHUD.Start(ecoController)
 		return true
 	end
 	SkillBarHUD.ShowCard = showCard
+
+	-- Pista de reacción: si el enemigo de enfrente está mojado, cargado o ardiendo, qué Eco reacciona con él
+	local hint = text(gui, "PistaReaccion", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, if touch then -190 else -98 - SLOT - 40),
+		Size = UDim2.fromOffset(460, 16),
+		RichText = true,
+		Visible = false,
+		TextStrokeTransparency = 0.3,
+	})
+	local STATES = {
+		{ attribute = "MojadoHasta", label = "MOJADO", color = "#6EBEFF", options = { { 5, "Trueno", "ELECTROCUCIÓN" }, { 4, "Fuego", "VAPOR" } } },
+		{ attribute = "CargadoHasta", label = "CARGADO", color = "#FFF06E", options = { { 3, "Oscuridad", "PULSO UMBRÍO" }, { 2, "Agua", "CONDUCCIÓN" } } },
+		{ attribute = "ArdeHasta", label = "ARDIENDO", color = "#FF8A3C", options = { { 1, "Viento", "TORMENTA ÍGNEA" } } },
+	}
+	local CollectionService = game:GetService("CollectionService")
+	local hintClock = 0
+	RunService.Heartbeat:Connect(function(dt)
+		hintClock += dt
+		if hintClock < 0.2 then
+			return
+		end
+		hintClock = 0
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root then
+			hint.Visible = false
+			return
+		end
+		local look = root.CFrame.LookVector
+		local best, bestScore = nil, math.huge
+		for _, model in ipairs(CollectionService:GetTagged("Objetivo")) do
+			local enemyRoot = model ~= character and model:FindFirstChild("HumanoidRootPart")
+			if enemyRoot then
+				local offset = enemyRoot.Position - root.Position
+				local distance = offset.Magnitude
+				if distance < 28 and (distance < 6 or offset.Unit:Dot(look) > 0.5) and distance < bestScore then
+					best, bestScore = model, distance
+				end
+			end
+		end
+		local now = workspace:GetServerTimeNow()
+		local textValue = nil
+		if best then
+			for _, state in ipairs(STATES) do
+				if (best:GetAttribute(state.attribute) or 0) > now then
+					local parts = {}
+					for _, option in ipairs(state.options) do
+						local kit = eco.Kits[option[2]]
+						table.insert(parts, string.format('<font color="%s"><b>%d %s</b></font>: %s', hex(kit.color), option[1], Texto.Mayusculas(option[2]), option[3]))
+					end
+					textValue = string.format('<font color="%s"><b>%s</b></font>   ·   %s', state.color, state.label, table.concat(parts, "   ·   "))
+					break
+				end
+			end
+		end
+		hint.Visible = textValue ~= nil
+		if textValue then
+			hint.Text = textValue
+		end
+	end)
 
 	-- Nombre de la técnica al lanzar una definitiva: franja del color del Eco que entra deslizándose (estilo anime)
 	local cutIn = Instance.new("Frame")

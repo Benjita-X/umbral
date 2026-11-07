@@ -587,9 +587,15 @@ ultimateFlash = function(c)
 	frame.BackgroundColor3 = c
 	frame.BackgroundTransparency = 0.55
 	game:GetService("TweenService"):Create(frame, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
-	if camera and camera.Kick then
-		camera.Kick(9)
+	-- Cámara de definitiva: se cierra sobre el personaje un instante (mientras sale el nombre) y se abre de golpe
+	if camera and camera.PunchIn then
+		camera.PunchIn(14, 0.3)
 	end
+	task.delay(0.3, function()
+		if camera and camera.Kick then
+			camera.Kick(10)
+		end
+	end)
 	EcoEfectos.ImpactFrame(c, 0.9)
 end
 

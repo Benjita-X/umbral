@@ -113,6 +113,13 @@ function CameraController.Kick(amount)
 	externalKick = math.max(externalKick, amount)
 end
 
+-- Acercamiento breve (definitivas): la cámara se cierra sobre el personaje `hold` s y vuelve sola
+local zoomAmount, zoomUntil = 0, 0
+function CameraController.PunchIn(amount, hold)
+	zoomAmount = amount
+	zoomUntil = os.clock() + (hold or 0.3)
+end
+
 -- Vibración actual como desplazamiento (la cámara fijada a un enemigo la suma a su posición)
 local currentShake = Vector3.zero
 function CameraController.ShakeOffset()
@@ -187,7 +194,8 @@ function CameraController.Start(movement, input)
 		kick *= math.exp(-10 * dt)
 		externalKick *= math.exp(-6 * dt)
 		local fast = movement.State.sprinting or movement.State.wallRunning or movement.State.grappling
-		local target = (if fast then Config.SprintFOV else Config.BaseFOV) + math.max(kick, externalKick)
+		local zoom = if os.clock() < zoomUntil then -zoomAmount else 0
+		local target = (if fast then Config.SprintFOV else Config.BaseFOV) + math.max(kick, externalKick) + zoom
 		local alpha = 1 - math.exp(-Config.FOVResponsiveness * dt)
 		camera.FieldOfView += (target - camera.FieldOfView) * alpha
 

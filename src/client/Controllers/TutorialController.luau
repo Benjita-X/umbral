@@ -56,6 +56,11 @@ local STEPS = {
 	end, hint = function()
 		return "La ficha te dice qué hace cada tecla; pulsa el número de tu Eco para volver a verla. Puedes cambiar a mitad de un combo"
 	end },
+	{ text = "REACCIONES: moja al Instructor con el AGUA (2, tecla Z) y cambia a TRUENO (5, tecla C): ¡ELECTROCUCIÓN!", done = function(c)
+		return c.reactions >= 1
+	end, hint = function()
+		return "Agua moja · Trueno carga · Fuego quema. Golpear con otro Eco provoca una reacción; abajo se ve qué Eco aprovecha al enemigo de enfrente"
+	end },
 	{ text = "ARMAS: pulsa Q para sacar la ESPADA y golpea 2 veces al Instructor con ella", done = function(c)
 		return c.swordHits >= 2
 	end, hint = function()
@@ -69,7 +74,7 @@ local gui, title, body, hintLabel = nil, nil, nil, nil
 local active = false
 
 local function newContext()
-	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, skillsUsed = {}, skillCount = 0, synergies = 0, kitChanges = 0, swordHits = 0, start = nil }
+	return { moved = 0, dashes = 0, doubleJumps = 0, instructorHits = 0, deflects = 0, contrapasos = 0, skillsUsed = {}, skillCount = 0, synergies = 0, kitChanges = 0, reactions = 0, swordHits = 0, start = nil }
 end
 
 local function show()
@@ -307,6 +312,10 @@ function TutorialController.Start(movement, combat, eco)
 			advance()
 		end)
 	end
+	player:GetAttributeChangedSignal("Reacciones"):Connect(function()
+		context.reactions += 1
+		advance()
+	end)
 	player:GetAttributeChangedSignal("Resonancia"):Connect(advance)
 
 	-- Movimiento y doble salto: se miden cada cuadro (baratos)

@@ -178,6 +178,12 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 						end
 					end
 				end
+				if kit.reacts then
+					rows += 1
+					local row = label(details, "Reacción · " .. kit.reacts, UDim2.new(1, 0, 0, 18), kit.color)
+					row.Name = "Detalle" .. rows
+					row.LayoutOrder = rows
+				end
 				details.Size = UDim2.new(1, 0, 0, rows * 20)
 			end
 		end

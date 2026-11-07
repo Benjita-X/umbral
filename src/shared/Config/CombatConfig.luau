@@ -641,6 +641,7 @@ local CombatConfig = {
 			Viento = {
 				name = "Eco del Viento",
 				role = "Control y combos aéreos",
+				reacts = "Sobre un enemigo ardiendo: TORMENTA ÍGNEA",
 				color = Color3.fromRGB(150, 255, 230),
 				slots = { Z = "Cuchilla", X = "Ciclon", C = "Levante", V = "Tempestad" },
 				air = { C = "Descenso" },
@@ -649,6 +650,7 @@ local CombatConfig = {
 			Agua = {
 				name = "Eco del Agua",
 				role = "Atrapar, arrastrar y curarse",
+				reacts = "Moja 4 s · sobre uno cargado: CONDUCCIÓN",
 				color = Color3.fromRGB(80, 175, 255),
 				slots = { Z = "Burbuja", X = "Oleaje", C = "Geiser", V = "Diluvio" },
 			},
@@ -656,6 +658,7 @@ local CombatConfig = {
 			Oscuridad = {
 				name = "Eco de la Oscuridad",
 				role = "Saltos de sombra y marcas",
+				reacts = "Sobre un enemigo cargado: PULSO UMBRÍO",
 				color = Color3.fromRGB(175, 95, 255),
 				slots = { Z = "PasoSombrio", X = "Daga", C = "Fauces", V = "Eclipse" },
 			},
@@ -663,6 +666,7 @@ local CombatConfig = {
 			Fuego = {
 				name = "Eco del Fuego Infernal",
 				role = "Explosiones y quemaduras",
+				reacts = "Quema · sobre uno mojado: VAPOR",
 				color = Color3.fromRGB(255, 110, 40),
 				slots = { Z = "BolaInfernal", X = "EstelaArdiente", C = "PunoVolcanico", V = "Infierno" },
 				air = { C = "Meteoro" },
@@ -671,6 +675,7 @@ local CombatConfig = {
 			Trueno = {
 				name = "Eco del Trueno",
 				role = "Rayos en cadena y aturdir",
+				reacts = "Carga 3 s · sobre uno mojado: ELECTROCUCIÓN",
 				color = Color3.fromRGB(255, 235, 90),
 				slots = { Z = "Rayo", X = "Relampago", C = "Pararrayos", V = "Juicio" },
 			},
