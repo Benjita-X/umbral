@@ -3,6 +3,7 @@
 -- pueda "farmear", y se apaga sola fuera de combate. Fase 3: se gasta en un Paso extra sin cargas.
 
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -42,6 +43,12 @@ end
 function ResonanceService.Gain(player, reason, source, repeatKey)
 	local amount = settings.Gains[reason]
 	if not amount then
+		return 0
+	end
+	-- La definitiva NO se carga mientras está en enfriamiento (EcoService pone "DefinitivaHasta" al lanzarla): la
+	-- Resonancia no sube hasta que vuelve a estar disponible
+	local ultimateUntil = player:GetAttribute("DefinitivaHasta")
+	if type(ultimateUntil) == "number" and Workspace:GetServerTimeNow() < ultimateUntil then
 		return 0
 	end
 	local i = info(player)

@@ -122,5 +122,29 @@ return function(ctx)
 		finPanel.Visible = false
 	end
 	ctx.Input.SetBlocked("expedicion", false)
+
+	-- ---------- 4. La definitiva no se carga mientras está en enfriamiento ----------
+	local ecoRemote = remotes:FindFirstChild("Eco")
+	if ecoRemote and player:GetAttribute("Eco") == "Viento" then
+		ctx.remote:FireServer("reiniciar_eco")
+		ctx.remote:FireServer("resonancia", 100)
+		waitUntil(function()
+			return (player:GetAttribute("Resonancia") or 0) >= 99
+		end, 1)
+		local look = ctx.root.CFrame.LookVector
+		ecoRemote:FireServer("tempestad", Workspace:GetServerTimeNow(), ctx.root.Position, look, look)
+		waitUntil(function()
+			return player:GetAttribute("DefinitivaHasta") ~= nil
+		end, 1.5)
+		local untilTime = player:GetAttribute("DefinitivaHasta")
+		local left = if type(untilTime) == "number" then untilTime - Workspace:GetServerTimeNow() else -1
+		local cooldown = Config.Eco.Skills.Tempestad.cooldown
+		record("[Expedición] Tras lanzar la definitiva, la Resonancia no se carga hasta que termine su enfriamiento",
+			left > cooldown - 1.5 and left <= cooldown + 0.1,
+			string.format("Resonancia en pausa %.1f s (enfriamiento de la V: %d s)", left, cooldown))
+		task.wait(Config.Eco.Skills.Tempestad.duration)
+		ctx.remote:FireServer("reiniciar_eco")
+		ctx.remote:FireServer("resonancia", 0)
+	end
 	ctx.settle()
 end

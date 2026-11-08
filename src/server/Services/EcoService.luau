@@ -316,6 +316,18 @@ local function begin(player, skillName, t, position, look)
 		return nil
 	end
 	local release = reserve(player, cooldownKey(spec), t)
+	-- Definitiva: mientras se enfría, la Resonancia no se carga (ResonanceService lee "DefinitivaHasta")
+	if spec.slot == "V" and not player:GetAttribute("Practica") then
+		local previous = player:GetAttribute("DefinitivaHasta")
+		player:SetAttribute("DefinitivaHasta", t + spec.cooldown)
+		local releaseCooldown = release
+		release = function()
+			releaseCooldown()
+			if player:GetAttribute("DefinitivaHasta") == t + spec.cooldown then
+				player:SetAttribute("DefinitivaHasta", previous)
+			end
+		end
+	end
 	PositionService.Report(player, t, position, look)
 	local origin = attackerAt(player, t)
 	local character = player.Character
@@ -1153,6 +1165,7 @@ function EcoService.ResetCooldowns(player)
 		r.descent = nil
 		r.swapUntil = nil
 	end
+	player:SetAttribute("DefinitivaHasta", nil)
 end
 
 -- Cambia el Eco del jugador. Las 4 teclas quedan en espera SwapCooldown, contada desde `t` (la hora

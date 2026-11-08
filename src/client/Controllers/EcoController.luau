@@ -669,7 +669,15 @@ local WAITS_FOR_ATTACK = { golpeando = true, recuperando = true } -- la cola dur
 
 local function recastOpen(slot)
 	local r = state.recast[slot]
-	return r ~= nil and os.clock() <= r.untilTime and recastActions[r.action] ~= nil
+	if not r or os.clock() > r.untilTime or recastActions[r.action] == nil then
+		return false
+	end
+	-- SUBIR (tras el Levante) es desde el suelo: ya en el aire, esa tecla es su variante aérea (el Descenso). Antes,
+	-- un SUBIR que seguía abierto se comía el Descenso del final del combo.
+	if r.action == "Ascenso" and inAir() then
+		return false
+	end
+	return true
 end
 
 -- Intenta lanzar la habilidad de la tecla. Devuelve true, o false y el motivo (sin avisar todavía).
@@ -692,6 +700,9 @@ local function attempt(slot, recastOnly)
 		end
 		state.recast[slot] = nil
 		recastEvent:Fire(slot, nil)
+		if r.action == "Ascenso" then
+			state.ascensoUsed = true -- un SUBIR por Levante (otra confirmación del mismo no lo reabre)
+		end
 		recastActions[r.action](r)
 		usedEvent:Fire(r.action, slot)
 		return true
@@ -717,6 +728,9 @@ local function attempt(slot, recastOnly)
 		return false, why or "aturdido", wait
 	end
 	cast[skillName](spec, slot)
+	if skillName == "Levante" then
+		state.ascensoUsed = false
+	end
 	EcoEfectos.Estela(character(), color(), if (spec.cost or 0) > 0 then 0.9 else 0.45)
 	-- Variante en retirada: una habilidad a distancia lanzada mientras retrocedes (S) añade un paso atrás
 	-- (atacar y alejarse a la vez). Solo en el suelo; el lanzamiento ya salió desde donde estabas.
@@ -895,7 +909,7 @@ local function onConfirmed(data)
 	if data.attack == "EcoBurbuja" and typeof(data.target) == "Instance" and (data.damage or 0) > 0 then
 		EcoEfectos.Atrapado(data.target, kit.color, skills.Burbuja.trap + 0.25)
 	end
-	if data.attack == "EcoLevante" and (data.damage or 0) > 0 and EcoController.Kit().slots.C == "Levante" then
+	if data.attack == "EcoLevante" and (data.damage or 0) > 0 and EcoController.Kit().slots.C == "Levante" and not state.ascensoUsed then
 		state.recast.C = { action = "Ascenso", untilTime = os.clock() + skills.Levante.recastWindow, label = "SUBIR", target = data.target }
 		recastEvent:Fire("C", "SUBIR")
 	end

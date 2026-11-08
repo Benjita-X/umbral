@@ -280,6 +280,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		},
 		{
 			name = "Modo práctica: sin enfriamientos y Resonancia llena (solo Studio)",
+			studioOnly = true,
 			get = function()
 				return Players.LocalPlayer:GetAttribute("Practica") == true
 			end,
@@ -388,6 +389,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		},
 		{
 			name = "Panel de depuración",
+			studioOnly = true,
 			get = function()
 				local hud = player.PlayerGui:FindFirstChild("UmbralDepuracion")
 				return hud ~= nil and hud.Enabled
@@ -406,6 +408,10 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		},
 	}
 	for _, setting in ipairs(settings) do
+		-- Lo de desarrollo (modo práctica, panel de depuración) solo aparece en Studio: el jugador no lo ve
+		if setting.studioOnly and not game:GetService("RunService"):IsStudio() then
+			continue
+		end
 		local button = Instance.new("TextButton")
 		button.Size = UDim2.new(1, 0, 0, 30)
 		button.BackgroundColor3 = Color3.fromRGB(28, 32, 48)
