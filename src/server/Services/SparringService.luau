@@ -33,6 +33,7 @@ local DefenseService = require(services:WaitForChild("DefenseService"))
 local ResonanceService = require(services:WaitForChild("ResonanceService"))
 local DamageService = require(services:WaitForChild("DamageService"))
 local PositionService = require(services:WaitForChild("PositionService"))
+local BalanceService = require(services:WaitForChild("BalanceService"))
 
 local SparringService = {}
 
@@ -40,6 +41,9 @@ local sparring = CombatConfig.Sparring
 local defense = CombatConfig.Defense
 local FORCE = 4e5 -- suficiente para mover al enemigo; con 1e7 atravesaba paredes al lanzarse
 local npcs = {} -- [model] = estado
+-- Un enemigo de expedición vencido: (modelo, ganador, participantes { [jugador] = true }, compañero o nil)
+local defeatedEvent = Instance.new("BindableEvent")
+SparringService.Defeated = defeatedEvent.Event
 local resultRemote
 local noticeRemote -- avisos grandes y chicos (Guardián, enemigo vencido, Contratiempo)
 local waveRemote -- onda del Desvío Reflejado
@@ -75,8 +79,8 @@ end
 -- Pausa entre ataques. Un perfil con ritmo (Latido) se acelera al perder vida (hasta un 45 % más rápido)
 local function pauseFor(s)
 	local p = profile(s)
-	if s.enraged then
-		return p.pause * 0.6 -- furia (Guardián bajo la mitad de vida): casi sin respiro entre ataques
+	if s.enraged and not p.phase2 then
+		return p.pause * 0.6 -- furia sin perfil propio: casi sin respiro entre ataques
 	end
 	if p.rhythm then
 		local humanoid = s.model:FindFirstChildOfClass("Humanoid")
@@ -232,6 +236,30 @@ end
 
 local stagger -- (definida abajo)
 
+-- Resistencia al control (CombatConfig.Eco.ControlResistance): devuelve la duración que de verdad aplica un
+-- aturdimiento de golpe o habilidad. Sin ella, un combo largo dejaba al enemigo atrapado sin poder responder aunque
+-- el daño ya bajara (DamageService.comboScale): ahora también el control mengua, nunca hasta cero.
+local function controlScale(s, stun)
+	local cfg = CombatConfig.Eco.ControlResistance
+	local t = os.clock()
+	local c = s.control
+	if not c then
+		c = { meter = 0, last = t }
+		s.control = c
+	end
+	local idle = t - c.last
+	if idle > cfg.DecayDelay then
+		c.meter = math.max(0, c.meter - (idle - cfg.DecayDelay) * cfg.DecayPerSecond)
+	end
+	c.last = t
+	local capacity = if s.model:HasTag("Guardian") then cfg.Boss elseif s.elite then cfg.Elite else cfg.Common
+	local factor = math.clamp(1 - c.meter / capacity, cfg.Floor, 1)
+	local applied = stun * factor
+	c.meter = math.min(capacity * 1.5, c.meter + applied)
+	s.model:SetAttribute("AguanteControl", math.floor(math.clamp(c.meter / capacity, 0, 1) * 100 + 0.5))
+	return applied
+end
+
 -- Suma postura; si se llena, el enemigo queda QUEBRADO (abierto al Golpe de Gracia)
 local function addPosture(s, amount)
 	if not s.model.Parent or not s.postureMax or amount <= 0 or broken(s) then
@@ -324,6 +352,9 @@ local function realPaso(player, paso)
 end
 
 local function resolve(s, info, player)
+	if s.defeated then
+		return -- lo vencieron antes del impacto: su ataque no llega
+	end
 	local attack = info.attack
 	local oneWay = DefenseService.OneWay(player)
 	local perceived = info.impactTime + oneWay -- cuándo vio el impacto en su pantalla
@@ -426,13 +457,13 @@ local function resolve(s, info, player)
 	-- 4. Guardia (de frente). Un desvío fallido deja EXPUESTO: sin guardia y con más daño.
 	exposed = DefenseService.IsExposed(player, perceived)
 	if not result and not exposed and attack.guardable and DefenseService.IsGuarding(player, perceived) and facingAttacker(atImpact, info.originCFrame.Position) then
-		damage = attack.damage * defense.GuardDamageMultiplier
+		damage = attack.damage * (s.damageScale or 1) * defense.GuardDamageMultiplier
 		result = if DefenseService.AddPosture(player, attack.posture) then "ruptura" else "guardia"
 	end
 	-- 5. Golpe
 	if not result then
 		result = "golpe"
-		damage = attack.damage * (if exposed then defense.ExposedDamageMultiplier else 1)
+		damage = attack.damage * (s.damageScale or 1) * (if exposed then defense.ExposedDamageMultiplier else 1)
 	end
 
 	-- Consecuencias (la Resonancia de defensa ya está limitada por el ritmo de ataques del rival)
@@ -441,6 +472,9 @@ local function resolve(s, info, player)
 	end
 	if result == "desvio_perfecto" then
 		ResonanceService.Gain(player, "DesvioPerfecto")
+		if BalanceService.HasUpgrade(player, "Impulso") then
+			DefenseService.RefundPaso(player) -- (el cliente suma la misma carga al ver el desvío)
+		end
 		DefenseService.OpenCounter(player)
 		stagger(s, sparring.StaggerOnPerfect)
 		-- DESVÍO REFLEJADO: la onda daña y aturde a los otros enemigos cercanos
@@ -488,6 +522,7 @@ local function resolve(s, info, player)
 		stunApplied = DefenseService.Stun(player, defense.HitStun * (if exposed then 1.3 else 1))
 	end
 	if damage > 0 then
+		damage *= BalanceService.Incoming(player) -- nivel y mejoras defensivas del jugador
 		p.humanoid:TakeDamage(damage)
 		ResonanceService.Touch(player)
 	end
@@ -598,6 +633,9 @@ local function update(s, dt)
 	if not s.model.Parent then
 		npcs[s.model] = nil
 		return
+	end
+	if s.defeated then
+		return -- vencido: ni se mueve ni ataca
 	end
 	local t = now()
 	-- La postura se recupera si se le deja respirar
@@ -732,11 +770,44 @@ local function watchDefeat(s, isGuardian)
 		defeated = true
 		task.wait() -- el golpe que lo venció registra a su autor justo después del cambio de vida
 		local group = { s, s.partner }
+		local winner = s.lastHitter or (s.partner and s.partner.lastHitter)
+		if s.mortal then
+			-- Enemigo de expedición: VENCIDO de verdad. Al instante deja de ser objetivo (sin la etiqueta "Objetivo" ni
+			-- golpes, ni habilidades, ni fijado, ni gancho lo eligen) y de atacar; cae y desaparece poco después.
+			local participants = {}
+			for _, member in ipairs(group) do
+				member.defeated = true
+				drive(member, nil)
+				setPhase(member, "Vencido", nil, 3600)
+				member.model:RemoveTag("Objetivo")
+				member.model:SetAttribute("QuebradoHasta", nil)
+				for hitter in pairs(member.hitters) do
+					participants[hitter] = true
+				end
+			end
+			if isGuardian then
+				noticeRemote:FireAllClients({ title = "¡GUARDIÁN DERROTADO!", subtitle = "" })
+			elseif winner then
+				noticeRemote:FireClient(winner, { title = "¡" .. Texto.Mayusculas(s.kind.label) .. " VENCIDO!", subtitle = "", small = true })
+			end
+			if winner and winner.Parent then
+				ResonanceService.Gain(winner, if isGuardian then "VencerGuardian" else "VencerComun")
+			end
+			defeatedEvent:Fire(s.model, winner, participants, s.partner and s.partner.model)
+			task.delay(2.6, function()
+				for _, member in ipairs(group) do
+					npcs[member.model] = nil
+					if member.model.Parent then
+						member.model:Destroy()
+					end
+				end
+			end)
+			return
+		end
 		for _, member in ipairs(group) do
 			drive(member, nil)
 			setPhase(member, "Aturdido", nil, riseAfter)
 		end
-		local winner = s.lastHitter or (s.partner and s.partner.lastHitter)
 		if isGuardian then
 			noticeRemote:FireAllClients({ title = "¡GRIETA SUPERADA!", subtitle = string.format("El Guardián se levantará en %d s", riseAfter) })
 		elseif winner then
@@ -779,6 +850,129 @@ local function linkTwins(a, b)
 	end
 	mirror(a, b)
 	mirror(b, a)
+end
+
+-- ---------- Crear y retirar enemigos ----------
+-- Dos clases de enemigos: los de PRÁCTICA (el compañero del Ring, el Instructor, los de las marcas fijas) se levantan
+-- tras caer; los de una EXPEDICIÓN (`mortal`) mueren de verdad: al llegar a 0 quedan VENCIDOS al instante (nadie puede
+-- volver a apuntarles, dejan de atacar, el servidor avisa quién participó) y desaparecen tras caer.
+
+-- `marker`: una pieza del mapa o { Name, CFrame }. opts: guardian, mortal, elite, healthScale, damageScale, tags
+local function spawnNpc(marker, kindName, opts)
+	opts = opts or {}
+	local kind = sparring.Types[kindName or ""]
+	local isGuardian = opts.guardian == true
+	local tags = { "Sparring" }
+	if isGuardian then
+		table.insert(tags, "Guardian")
+	elseif kind then
+		table.insert(tags, kindName)
+	else
+		table.insert(tags, "Companero") -- el compañero de combate del Ring (lo usan las pruebas)
+	end
+	for _, tag in ipairs(opts.tags or {}) do
+		table.insert(tags, tag)
+	end
+	local baseHealth = if isGuardian then guardian.MaxHealth elseif kind then kind.maxHealth else sparring.MaxHealth
+	local baseName = if isGuardian then "Guardián de la Grieta" elseif kind then kind.label else "Compañero de combate"
+	local model = DummyService.Spawn(marker, {
+		maxHealth = math.max(1, math.floor(baseHealth * (opts.healthScale or 1) + 0.5)),
+		displayName = if opts.elite then "Élite · " .. baseName else baseName,
+		bodyColor = if isGuardian then Color3.fromRGB(58, 40, 82) elseif kind then kind.body else Color3.fromRGB(70, 76, 96),
+		legColor = if isGuardian then Color3.fromRGB(30, 22, 44) elseif kind then kind.legs else Color3.fromRGB(45, 48, 62),
+		tags = tags,
+		noReset = true, -- vuelve a su sitio por su cuenta
+		noRegen = isGuardian or opts.mortal == true or (kind ~= nil and not kind.regen),
+	})
+	local s = {
+		model = model,
+		root = model:FindFirstChild("HumanoidRootPart"),
+		spawn = marker.CFrame,
+		state = "Quieto",
+		patternIndex = 0,
+		attackId = 0,
+		random = Random.new(1234),
+		kind = kind,
+		mortal = opts.mortal == true,
+		elite = opts.elite == true,
+		damageScale = opts.damageScale or 1,
+		hitters = {}, -- [jugador] = true: quién lo golpeó (recompensas compartidas)
+	}
+	s.postureMax = (if isGuardian then postureCfg.GuardianMax else postureCfg.Max) * (if s.elite then 1.5 else 1)
+	s.posture = 0
+	model:SetAttribute("PosturaMax", s.postureMax)
+	model:SetAttribute("Postura", 0)
+	model:SetAttribute("AtaqueId", 0)
+	model:SetAttribute("Perfil", if isGuardian then guardian.Profile elseif kind then kind.profile else sparring.DefaultProfile)
+	if s.elite then
+		model:SetAttribute("Elite", true)
+	end
+	if s.mortal then
+		model:SetAttribute("Mortal", true)
+	end
+	setPhase(s, "Quieto", nil, pauseFor(s))
+	npcs[model] = s
+	if isGuardian then
+		dressGuardian(model)
+		watchDefeat(s, true)
+		-- Segunda fase: bajo la mitad de vida se enfurece (ataca con menos pausa); al reaparecer entero, se calma
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.HealthChanged:Connect(function(health)
+				if not s.enraged and health > 0 and health <= humanoid.MaxHealth * 0.5 then
+					-- Segunda fase: otro repertorio (perfil "furia"), no solo más prisa
+					s.enraged = true
+					s.patternIndex = 0
+					model:SetAttribute("Furia", true)
+					model:SetAttribute("Perfil", "furia")
+					noticeRemote:FireAllClients({ title = "EL GUARDIÁN SE ENFURECE", subtitle = "barridos dobles · golpes en pareja · amagues", small = true })
+				elseif s.enraged and health >= humanoid.MaxHealth * 0.99 then
+					s.enraged = false
+					model:SetAttribute("Furia", nil)
+					model:SetAttribute("Perfil", guardian.Profile)
+				end
+			end)
+		end
+	elseif kind then
+		s.heart = dressGuardian(model, kind.glow, kind.rhythmStreak ~= nil)
+		if not kind.linked then
+			watchDefeat(s, false) -- los Gemelos se vigilan juntos (LinkTwins)
+		end
+	end
+	return s
+end
+
+-- Para otros servicios (expediciones): crea un enemigo y devuelve su modelo
+function SparringService.Spawn(kindName, cframe, opts)
+	local name = "Sparring_" .. (if opts and opts.guardian then "Guardian" else tostring(kindName))
+	return spawnNpc({ Name = name, CFrame = cframe }, kindName, opts).model
+end
+
+-- Une dos Gemelos (una sola vida) y vigila su derrota juntos
+function SparringService.LinkTwins(modelA, modelB)
+	local a, b = npcs[modelA], npcs[modelB]
+	if a and b then
+		linkTwins(a, b)
+		watchDefeat(a, false) -- uno solo vigila: la vida es compartida
+	end
+end
+
+-- Retira un enemigo al instante (fin o reinicio de una expedición)
+function SparringService.Remove(model)
+	local s = npcs[model]
+	if s then
+		s.defeated = true
+		npcs[model] = nil
+	end
+	if model and model.Parent then
+		model:Destroy()
+	end
+end
+
+-- ¿Sigue en pie? (para el director de una expedición)
+function SparringService.IsAlive(model)
+	local s = npcs[model]
+	return s ~= nil and not s.defeated and model.Parent ~= nil
 end
 
 function SparringService.Start()
@@ -908,10 +1102,13 @@ function SparringService.Start()
 	-- indican, esté haciendo lo que esté haciendo: son la herramienta para abrir y sostener combos.
 	DamageService.HitApplied:Connect(function(attacker, target, attackName, extra)
 		local s = npcs[target]
-		if not s then
+		if not s or s.defeated then
 			return
 		end
 		s.lastHitter = attacker
+		if typeof(attacker) == "Instance" and attacker:IsA("Player") then
+			s.hitters[attacker] = true
+		end
 		local attack = CombatConfig.Attacks[attackName]
 		local isEco = type(attackName) == "string" and string.sub(attackName, 1, 3) == "Eco"
 		local stun = type(extra) == "table" and tonumber(extra.stun) or 0
@@ -919,16 +1116,19 @@ function SparringService.Start()
 			return -- daño de estado (quemadura, cortes extra): no interrumpe ni aturde
 		end
 		if attackName ~= "GolpeDeGracia" then
+			-- Mejora "Templanza": tus golpes rompen la postura un 50 % más rápido
+			local temper = if BalanceService.HasUpgrade(attacker, "Templanza") then 1.5 else 1
 			if attack then
-				addPosture(s, (attack.posture or 10) * postureCfg.Gains.ComboScale)
+				addPosture(s, (attack.posture or 10) * postureCfg.Gains.ComboScale * temper)
 			elseif isEco then
-				addPosture(s, postureCfg.Gains.Eco)
+				addPosture(s, postureCfg.Gains.Eco * temper)
 			end
 		end
 		if stun > 0 then
 			if target:HasTag("Guardian") then
 				stun *= CombatConfig.Eco.GuardianStunScale
 			end
+			stun = controlScale(s, stun)
 			-- No acorta un aturdimiento más largo que ya tenga
 			local remaining = if s.state == "Aturdido" then (s.phaseEnd or 0) - now() else 0
 			if stun > remaining then
@@ -951,70 +1151,14 @@ function SparringService.Start()
 			local kind = sparring.Types[kindName]
 			local grieta = maps:FindFirstChild("Grieta")
 			local isGuardian = kindName == "" and grieta ~= nil and marker:IsDescendantOf(grieta)
-			local tags = { "Sparring" }
-			if isGuardian then
-				table.insert(tags, "Guardian")
-			elseif kind then
-				table.insert(tags, kindName)
-			else
-				table.insert(tags, "Companero") -- el compañero de combate del Ring (lo usan las pruebas)
-			end
 			task.spawn(function()
-				local model = DummyService.Spawn(marker, {
-					maxHealth = if isGuardian then guardian.MaxHealth elseif kind then kind.maxHealth else sparring.MaxHealth,
-					displayName = if isGuardian then "Guardián de la Grieta" elseif kind then kind.label else "Compañero de combate",
-					bodyColor = if isGuardian then Color3.fromRGB(58, 40, 82) elseif kind then kind.body else Color3.fromRGB(70, 76, 96),
-					legColor = if isGuardian then Color3.fromRGB(30, 22, 44) elseif kind then kind.legs else Color3.fromRGB(45, 48, 62),
-					tags = tags,
-					noReset = true, -- vuelve a su sitio por su cuenta
-					noRegen = isGuardian or (kind ~= nil and not kind.regen),
-				})
-				local s = {
-					model = model,
-					root = model:FindFirstChild("HumanoidRootPart"),
-					spawn = marker.CFrame,
-					state = "Quieto",
-					patternIndex = 0,
-					attackId = 0,
-					random = Random.new(1234),
-					kind = kind,
-				}
-				s.postureMax = if isGuardian then postureCfg.GuardianMax else postureCfg.Max
-				s.posture = 0
-				model:SetAttribute("PosturaMax", s.postureMax)
-				model:SetAttribute("Postura", 0)
-				model:SetAttribute("AtaqueId", 0)
-				model:SetAttribute("Perfil", if isGuardian then guardian.Profile elseif kind then kind.profile else sparring.DefaultProfile)
-				setPhase(s, "Quieto", nil, pauseFor(s))
-				npcs[model] = s
-				if isGuardian then
-					dressGuardian(model)
-					watchDefeat(s, true)
-					-- Segunda fase: bajo la mitad de vida se enfurece (ataca con menos pausa); al reaparecer entero, se calma
-					local humanoid = model:FindFirstChildOfClass("Humanoid")
-					if humanoid then
-						humanoid.HealthChanged:Connect(function(health)
-							if not s.enraged and health > 0 and health <= humanoid.MaxHealth * 0.5 then
-								s.enraged = true
-								model:SetAttribute("Furia", true)
-							elseif s.enraged and health >= humanoid.MaxHealth * 0.99 then
-								s.enraged = false
-								model:SetAttribute("Furia", nil)
-							end
-						end)
-					end
-				elseif kind then
-					s.heart = dressGuardian(model, kind.glow, kind.rhythmStreak ~= nil)
-					if kind.linked then
-						if pendingTwin then
-							linkTwins(pendingTwin, s)
-							watchDefeat(pendingTwin, false) -- uno solo vigila: la vida es compartida
-							pendingTwin = nil
-						else
-							pendingTwin = s
-						end
+				local s = spawnNpc(marker, kindName, { guardian = isGuardian })
+				if kind and kind.linked then
+					if pendingTwin then
+						SparringService.LinkTwins(pendingTwin.model, s.model)
+						pendingTwin = nil
 					else
-						watchDefeat(s, false)
+						pendingTwin = s
 					end
 				end
 			end)

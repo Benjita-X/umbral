@@ -27,6 +27,7 @@ local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local DefenseService = require(script.Parent:WaitForChild("DefenseService"))
 local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
 local PositionService = require(script.Parent:WaitForChild("PositionService"))
+local BalanceService = require(script.Parent:WaitForChild("BalanceService"))
 
 local DamageService = {}
 
@@ -393,6 +394,9 @@ local function bodies(player, target)
 	if not targetHumanoid or not targetRoot then
 		return nil, "objetivo sin cuerpo"
 	end
+	if targetHumanoid.Health <= 0 and target:HasTag("Sparring") then
+		return nil, "objetivo vencido"
+	end
 	return { attackerRoot = attackerRoot, targetHumanoid = targetHumanoid, targetRoot = targetRoot }
 end
 
@@ -665,9 +669,24 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		multiplier, note, keepFacing = modifier(player, target, attackName, b, geometry)
 		damage *= multiplier or 1
 	end
+	damage *= BalanceService.Outgoing(player, target) -- poder del jugador × resistencia del objetivo
 	damage *= wallBonus(target)
 	damage *= comboScale(target, damage, player)
 	b.targetHumanoid.Health = math.max(0, b.targetHumanoid.Health - damage)
+	-- Mejora "Resonancia viva": el remate del combo deja el estado del Eco que llevas (abre reacciones con los puños)
+	if def.finisher and damage > 0 and BalanceService.HasUpgrade(player, "ResonanciaViva") then
+		local element = player:GetAttribute("Eco")
+		local t = Workspace:GetServerTimeNow()
+		if element == "Agua" then
+			target:SetAttribute("MojadoHasta", t + 4)
+		elseif element == "Trueno" then
+			target:SetAttribute("CargadoHasta", t + 3)
+		elseif element == "Fuego" then
+			target:SetAttribute("ArdeHasta", t + 2.5)
+		else
+			ResonanceService.Gain(player, "Golpe", target, "ResonanciaViva")
+		end
+	end
 	-- Solo dan Resonancia los rivales que pelean (no los muñecos), con rendimiento decreciente si se
 	-- repite el mismo golpe contra el mismo rival
 	if damage > 0 and (target:HasTag("Sparring") or Players:GetPlayerFromCharacter(target)) then
@@ -723,6 +742,9 @@ function DamageService.ApplyExternalHit(player, target, spec)
 	if not humanoid or not root then
 		return 0
 	end
+	if humanoid.Health <= 0 and target:HasTag("Sparring") then
+		return 0 -- vencido: ya no recibe nada
+	end
 	-- Seguro PvP: las habilidades no pasan por desvío, guardia ni Contrapaso de un JUGADOR; hasta que lo hagan,
 	-- no lo dañan (hoy solo apuntan a muñecos y enemigos, marcados "Objetivo")
 	if Players:GetPlayerFromCharacter(target) and not CombatConfig.Eco.PvP then
@@ -735,6 +757,7 @@ function DamageService.ApplyExternalHit(player, target, spec)
 		multiplier, note = modifier(player, target, spec.attackName, { attackerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or root, targetRoot = root, targetHumanoid = humanoid })
 		damage *= multiplier or 1
 	end
+	damage *= BalanceService.Outgoing(player, target)
 	if not spec.dot then
 		damage *= wallBonus(target)
 		damage *= comboScale(target, damage, player)

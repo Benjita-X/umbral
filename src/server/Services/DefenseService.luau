@@ -16,6 +16,7 @@ local Workspace = game:GetService("Workspace")
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
 local MovementConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
 local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
+local BalanceService = require(script.Parent:WaitForChild("BalanceService"))
 
 local DefenseService = {}
 
@@ -142,7 +143,8 @@ local function onDefense(player, action, t, dir, position, look)
 			player:SetAttribute("PasosExcedidos", (player:GetAttribute("PasosExcedidos") or 0) + 1)
 			return
 		end
-		r.pasoTokens = math.min(PASO_CHARGES, (r.pasoTokens or PASO_CHARGES) + (at - (r.pasoClock or at)) / PASO_REFILL)
+		local refill = PASO_REFILL * (if BalanceService.HasUpgrade(player, "Celeridad") then 0.75 else 1)
+		r.pasoTokens = math.min(PASO_CHARGES, (r.pasoTokens or PASO_CHARGES) + (at - (r.pasoClock or at)) / refill)
 		r.pasoClock = at
 		if r.pasoTokens >= 1 then
 			r.pasoTokens -= 1
@@ -334,6 +336,12 @@ function DefenseService.FindGrapple(player, from, to)
 		end
 	end
 	return nil
+end
+
+-- Devuelve una carga de Paso (mejora "Impulso": un desvío perfecto te la devuelve)
+function DefenseService.RefundPaso(player)
+	local r = recordFor(player)
+	r.pasoTokens = math.min(PASO_CHARGES, (r.pasoTokens or PASO_CHARGES) + 1)
 end
 
 -- ¿Empezó un aturdimiento en la hora `t` o después? (corta lo que el jugador estuviera haciendo)

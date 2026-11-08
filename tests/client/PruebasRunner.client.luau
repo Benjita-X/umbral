@@ -20,6 +20,7 @@ local SUITES = {
 	{ "RevisionCodex", "RevisionCodex" },
 	{ "AuditoriaMaxima", "AuditoriaMaxima" },
 	{ "PulidoFinal", "PulidoFinal" },
+	{ "Expedicion", "Expedicion" },
 	{ "Combos", "Combos" },
 	{ "Estres", "Estres" },
 	{ "Vitrina", "Vitrina", manual = true }, -- solo si se pide: -Suites Vitrina (revisión a ojo)

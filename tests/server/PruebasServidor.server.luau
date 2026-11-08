@@ -44,6 +44,22 @@ remote.OnServerEvent:Connect(function(player, action, payload, extra)
 		for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Companero")) do
 			model:SetAttribute("Retraso", payload)
 		end
+	elseif action == "encuentro_prueba" then
+		-- Encuentro de expedición de prueba: enemigos MORTALES alrededor del jugador, con la escala de la dificultad
+		-- y la ronda pedidas (payload: { difficulty, round, spawns = { { kind, distance, angle, elite } } })
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local expedicion = services and require(services:FindFirstChild("ExpedicionService"))
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if expedicion and root and type(payload) == "table" then
+			local spawns = {}
+			for _, spec in ipairs(payload.spawns or {}) do
+				local angle = math.rad(spec.angle or 0)
+				local offset = Vector3.new(math.sin(angle), 0, -math.cos(angle)) * (spec.distance or 12)
+				local position = root.Position + offset
+				table.insert(spawns, { kind = spec.kind, elite = spec.elite, cframe = CFrame.lookAt(position, Vector3.new(root.Position.X, position.Y, root.Position.Z)) })
+			end
+			expedicion.StartTestEncounter({ player }, spawns, payload.difficulty, payload.round)
+		end
 	elseif action == "vida_enemigo" then
 		-- Fija la vida de los enemigos con una etiqueta (p. ej. dejar uno a punto de caer)
 		for _, model in ipairs(game:GetService("CollectionService"):GetTagged(payload.tag)) do

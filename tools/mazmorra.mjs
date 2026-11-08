@@ -7,6 +7,9 @@
 //   A. Umbral (aparición) → B. pasillo → C. Abismo: salto de 8 y salto + Paso de 16; caer al foso te
 //   devuelve al borde de inicio (GrietaService) → D. Ascenso: repisas de 6, 13, 20 y 28 (salto y doble salto) →
 //   E. Sala del Guardián: el compañero de combate espera en el centro.
+// EXPEDICIÓN (ExpedicionService): el portal de la entrada elige la dificultad; cada encuentro (zonas ZonaEncuentroN)
+// hace aparecer sus enemigos en las marcas PuntoExpedicion_*, que mueren de verdad; al superarlo se abre la puerta
+// siguiente (PuertaExpedicionN) y queda un punto de control (ControlEncuentroN). Al final, el Guardián.
 
 import { part, sign, folder, rotY, rotYXZ, facing } from './mapa.mjs';
 
@@ -259,6 +262,57 @@ function torch(name, x, y, z, side) {
 }
 
 // Cristal del Eco: brilla en color frío (la "resonancia" de la Grieta)
+// ---------- Expedición ----------
+// Marca de aparición de un enemigo de un encuentro (mira hacia -Z: hacia quien llega)
+function expMarker(id, x, y, z) {
+  const pos = P(x, y + 3.2, z);
+  return part({ name: 'PuntoExpedicion_' + id, size: [1, 1, 1], pos, rot: facing(pos, P(x, y + 3.2, z - 20)), transparency: 1, collide: false, color: [255, 255, 255] });
+}
+// Puerta de luz que cierra el paso hasta superar el encuentro (ExpedicionService la abre)
+function expDoor(name, [x0, y0, z0], [x1, y1, z1]) {
+  return part({
+    name,
+    size: [Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0)],
+    pos: P((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2),
+    color: [150, 110, 255],
+    material: 'Neon',
+    transparency: 0.55,
+    children: [
+      {
+        className: 'PointLight',
+        name: 'Luz',
+        props: [
+          ['float', 'Brightness', 1.6],
+          ['float', 'Range', 14],
+          ['color3', 'Color', [0.6, 0.45, 1]],
+          ['bool', 'Shadows', false],
+        ],
+        children: [],
+      },
+    ],
+  });
+}
+// Zona invisible que arranca un encuentro al entrar (no choca ni la detectan los rayos)
+function expZone(name, [x0, y0, z0], [x1, y1, z1]) {
+  return part({
+    name,
+    size: [Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0)],
+    pos: P((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2),
+    transparency: 1,
+    collide: false,
+    color: [255, 255, 255],
+    extra: [
+      ['bool', 'CanQuery', false],
+      ['bool', 'CanTouch', false],
+    ],
+  });
+}
+// Punto de control: donde reapareces tras superar el encuentro
+function expCheckpoint(name, x, y, z) {
+  const pos = P(x, y + 3.2, z);
+  return part({ name, size: [1, 1, 1], pos, rot: facing(pos, P(x, y + 3.2, z + 20)), transparency: 1, collide: false, color: [255, 255, 255], extra: [['bool', 'CanQuery', false]] });
+}
+
 // Punto de enganche (Gancho, tecla E): orbe brillante sin colisión. El cliente los busca por su nombre.
 function hook(x, y, z) {
   return part({ name: 'PuntoGancho', size: [1.6, 1.6, 1.6], pos: P(x, y, z), color: [120, 255, 230], material: 'Neon', collide: false, extra: [['token', 'shape', 0]] });
@@ -336,6 +390,10 @@ export function buildDungeon() {
     items.push(part({ name, size: [1, 1, 1], pos, rot: facing(pos, P(0, 3.2, 19)), transparency: 1, collide: false, color: [255, 255, 255] }));
   }
   items.push(sign('CartelMunecos', 'MUÑECOS · prueba Z X C V · 1-5 cambia de Eco · Q espada', P(0, 10, 39.6), P(0, 10, 0), [18, 2.4, 0.4]));
+  // Portal de la expedición: acercarse abre la elección de dificultad
+  items.push(part({ name: 'PortalExpedicion', size: [0.4, 6, 6], pos: P(-6.5, 0.2, 33), rot: rotYXZ(0, 0, 90), color: [150, 110, 255], material: 'Neon', collide: false, transparency: 0.2, extra: [['token', 'shape', 2]] }));
+  items.push(sign('CartelPortal', 'EXPEDICIÓN · acércate al círculo para elegir la dificultad', P(-6.5, 7, 37.6), P(-6.5, 7, 0), [10, 1.6, 0.3]));
+  items.push(expDoor('PuertaExpedicion0', [-5, 0, 40.4], [5, 12, 41.6]));
   for (const z of [12, 24]) {
     items.push(...banner('EstandarteO', -12, 10, z, -1, [92, 48, 140]), ...banner('EstandarteE', 12, 10, z, 1, [36, 110, 120]));
   }
@@ -359,7 +417,10 @@ export function buildDungeon() {
     const pos = P(x, y + 3.2, z);
     return part({ name: 'PuntoSparring_' + kind, size: [1, 1, 1], pos, rot: facing(pos, P(x, y + 3.2, z - 20)), transparency: 1, collide: false, color: [255, 255, 255] });
   };
-  items.push(enemy('Latido', 0, 0, 56));
+  items.push(expMarker('E1_A', 0, 0, 56), expMarker('E1_B', -2.5, 0, 59.5));
+  items.push(expZone('ZonaEncuentro1', [-5, 0, 43], [5, 12, 60]));
+  items.push(expCheckpoint('ControlEncuentro1', 0, 0, 58));
+  items.push(expDoor('PuertaExpedicion1', [-5, 0, 60.4], [5, 12, 61.6]));
   items.push(sign('CartelLatido', 'LATIDO · ataca al ritmo de su corazón · 3 desvíos perfectos seguidos = ¡CONTRATIEMPO!', P(0, 9, 60.6), P(0, 9, 0), [9, 1.6, 0.3]));
 
   // ---------- C. Abismo ----------
@@ -388,9 +449,12 @@ export function buildDungeon() {
   items.push(ambience('Niebla', [-19, -14, 75], [19, -7, 107], [80, 170, 255]));
   items.push(ambience('Motas', [-19, 0, 62], [19, 24, 120], [120, 210, 255]));
   items.push(...rubble('EscombroAbismo', -19.5, -15, 62, 73, 0, 6), ...rubble('EscombroAbismoE', 15, 19.5, 109, 120, 0, 6));
-  items.push(enemy('Acechador', 0, 0, 89));
+  items.push(expMarker('E2_Isla', 0, 0, 89));
+  items.push(expZone('ZonaEncuentro2', [-20, 0, 62], [20, 14, 74]));
   items.push(sign('CartelAcechador', 'ACECHADOR · si fallas un golpe pesado cerca de él, te embiste', P(0, 6, 92.2), P(0, 6, 0), [10, 1.6, 0.3]));
-  items.push(enemy('Centinela', 0, 0, 113)); // más espacio entre él y la puerta: su golpe (alcance ~10) ya no llega dentro de la sala de ascenso
+  items.push(expMarker('E2_Borde', 0, 0, 113), expMarker('E2_Extra', -9, 0, 114)); // más espacio entre él y la puerta: su golpe (alcance ~10) ya no llega dentro de la sala de ascenso
+  items.push(expCheckpoint('ControlEncuentro2', 0, 0, 116));
+  items.push(expDoor('PuertaExpedicion2', [-6, 0, 120.4], [6, 12, 121.6]));
   items.push(sign('CartelCentinela', 'CENTINELA · coraza al frente · Contrapaso y golpea su espalda', P(0, 14, C1 - 1.2), P(0, 14, 0), [16, 2.4, 0.4]));
   // Gancho (E): puntos de enganche sobre los dos saltos del abismo
   items.push(hook(0, 13, 78), hook(0, 15, 100));
@@ -418,7 +482,10 @@ export function buildDungeon() {
   items.push(ambience('Motas', [-15, 1, 122], [15, 42, 152], [190, 150, 255]));
   // Gancho (E): atajos hacia las repisas altas
   items.push(hook(-10, 22, 136), hook(10, 36, 140));
-  items.push(enemy('Gemelo', -4, 0, 132), enemy('Gemelo', 6, 0, 128));
+  items.push(expMarker('E3_GemeloA', -4, 0, 132), expMarker('E3_GemeloB', 6, 0, 128), expMarker('E3_Extra', 2, 0, 140));
+  items.push(expZone('ZonaEncuentro3', [-16, 0, 122], [16, 14, 152]));
+  items.push(expCheckpoint('ControlEncuentro3', 10, 28, 148));
+  items.push(expDoor('PuertaExpedicion3', [6, 28, 152.4], [14, 40, 153.6]));
   // Carteles en la pared, a los lados de la puerta (dentro del marco tapaban la vista al entrar)
   items.push(sign('CartelGemelos', 'GEMELOS · una sola vida · un desvío perfecto refleja el golpe al otro', P(-12, 6, D0 + 1.2), P(-12, 6, 300), [10, 2.4, 0.4]));
   items.push(sign('CartelAscenso', 'sube: salto · doble salto', P(12, 6, D0 + 1.2), P(12, 6, 300), [9, 2.4, 0.4]));
@@ -459,9 +526,12 @@ export function buildDungeon() {
     items.push(...torch('AntorchaGuardianO', -8, EY + 7, z, -1), ...torch('AntorchaGuardianE', 28, EY + 7, z, 1));
   }
   items.push(sign('CartelGuardian', 'GUARDIÁN DE LA GRIETA', P(10, EY + 15, E1 - 1.2), P(10, EY + 15, 0), [16, 3, 0.4]));
-  // El compañero de combate aparece aquí (SparringService busca todas las marcas PuntoSparring)
+  // Encuentro 4 (la vanguardia: un élite y apoyo) y, al caer, el Guardián en el centro (encuentro 5)
+  items.push(expMarker('E4_Elite', 4, EY, 172), expMarker('E4_Apoyo', 17, EY, 169), expMarker('E4_Extra', 10, EY, 183));
   const guardianPos = P(10, EY + 3.2, 176);
-  items.push(part({ name: 'PuntoSparring', size: [1, 1, 1], pos: guardianPos, rot: facing(guardianPos, P(10, EY + 3.2, E0)), transparency: 1, collide: false, color: [255, 255, 255] }));
+  items.push(part({ name: 'PuntoExpedicion_E5_Guardian', size: [1, 1, 1], pos: guardianPos, rot: facing(guardianPos, P(10, EY + 3.2, E0)), transparency: 1, collide: false, color: [255, 255, 255] }));
+  items.push(expZone('ZonaEncuentro4', [-8, EY, 155], [28, EY + 14, 188]));
+  items.push(expCheckpoint('ControlEncuentro4', 10, EY, 157));
 
   return folder('Grieta', items);
 }

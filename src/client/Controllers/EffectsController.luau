@@ -432,6 +432,35 @@ function EffectsController.WindupCue(model, heavy)
 	end
 end
 
+-- Un enemigo vencido: se apaga, se hunde un poco y se desvanece, con una nube de polvo de luz
+function EffectsController.Defeat(model)
+	local root = model and model:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	local part = anchorPart("DerrotaUmbral", root.Position, 1.5)
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = part
+	burst(attachment, TEXTURES.Sparks, {
+		Color = ColorSequence.new(Color3.fromRGB(230, 220, 255), Color3.fromRGB(140, 110, 220)),
+		LightEmission = 0.8,
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(1, 0) }),
+		Lifetime = NumberRange.new(0.5, 1.1),
+		Speed = NumberRange.new(4, 12),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, 6, 0),
+		Drag = 2,
+	}, math.max(8, math.floor(28 * EcoEfectos.Escala())))
+	playSound("Break", part)
+	task.delay(0.6, function()
+		for _, descendant in ipairs(model:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				game:GetService("TweenService"):Create(descendant, TweenInfo.new(1.4), { LocalTransparencyModifier = 1 }):Play()
+			end
+		end
+	end)
+end
+
 -- Golpes confirmados por el servidor (de cualquier jugador)
 function EffectsController.OnConfirmed(data, isLocalAttacker)
 	local attack = CombatConfig.Attacks[data.attack]

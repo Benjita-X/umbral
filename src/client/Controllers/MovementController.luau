@@ -70,6 +70,7 @@ local dash = nil -- { dir, speed, elapsed, startPos, holdHeight, budget, before,
 -- Búfer del Paso: pulsado un instante antes de poder (fase activa de un golpe, justo tras otro Paso) no se pierde;
 -- sale en cuanto se pueda, con la dirección del INSTANTE de la pulsación (girar la cámara mientras espera no la cambia)
 local DASH_BUFFER = 0.15
+local rechargeScale = 1 -- mejora "Celeridad" de la expedición (0,75)
 local bufferedDash = nil -- { time, dir }
 local exitBlend = nil -- { from, elapsed }
 local lunge = nil -- { velocity, remaining, hold }: avance corto de un golpe
@@ -683,8 +684,9 @@ local function update(dt)
 	-- de 0,8 s por carga; ver DECISIONES.md)
 	if state.charges < Config.DashCharges then
 		chargeTimer += dt
-		if chargeTimer >= Config.DashRechargeTime then
-			chargeTimer -= Config.DashRechargeTime
+		local recharge = Config.DashRechargeTime * rechargeScale -- (mejora "Celeridad": más rápido)
+		if chargeTimer >= recharge then
+			chargeTimer -= recharge
 			state.charges += 1
 		end
 	else
@@ -1057,6 +1059,15 @@ function MovementController.Debug()
 end
 
 -- Quién paga un Paso extra cuando no quedan cargas (nil = nadie)
+-- Mejoras de la expedición: recarga de Pasos más rápida (Celeridad) y una carga devuelta (Impulso)
+function MovementController.SetRechargeScale(scale)
+	rechargeScale = math.clamp(scale or 1, 0.3, 1)
+end
+
+function MovementController.AddCharge()
+	state.charges = math.min(Config.DashCharges, state.charges + 1)
+end
+
 function MovementController.SetExtraDashProvider(provider)
 	extraDashProvider = provider
 end

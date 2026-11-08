@@ -135,7 +135,7 @@ return function(ctx)
 		else
 			ctx.skip("[Máxima] Gancho fuera de alcance", string.format("el muñeco está a %.0f studs (cerca)", distance))
 		end
-		task.wait(grapple.Cooldown + 0.1)
+		task.wait(0.2) -- (el gancho rechazado no gasta la espera)
 		-- Gancho "avisado" a un enemigo a 20 studs, sin llegar: el golpe tras el Paso no se abre
 		if (player:GetAttribute("Arma") or "Punos") == "Punos" then
 			local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit

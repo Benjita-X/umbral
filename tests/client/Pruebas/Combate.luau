@@ -302,14 +302,46 @@ return function(ctx)
 		string.format("sale sin soltar: %s · daño %s (objetivo %d)", tostring(releasedAlone), if heavyConfirm then string.format("%.1f", heavyConfirm.damage) else "—", heavyMax)
 	)
 
-	-- ---------- 6. Orientación asistida y alcance ----------
+	-- ---------- 6. Orientación asistida (Completa, Ligera, Manual) y alcance ----------
+	local defaultLevel = Combat.AimAssist()
+	Combat.SetAimAssist("Completa")
 	local m3 = prepare("Muneco3", 4, 50)
 	c0 = #confirms
 	Input.Trigger("Atacar")
 	local turned = waitUntil(function()
 		return #confirms > c0
 	end, 1)
-	record("Orientación asistida", turned and confirms[#confirms].target == m3, "mirando 50° hacia otro lado, el golpe se orienta y conecta")
+	record("Orientación asistida (Completa)", turned and confirms[#confirms].target == m3, "mirando 50° hacia otro lado, el golpe se orienta y conecta")
+	task.wait(0.5)
+	-- Ligera: a 50° NO se gira (decides tú); casi delante (20°), sí
+	local function facingDot(model)
+		local look = Vector3.new(ctx.root.CFrame.LookVector.X, 0, ctx.root.CFrame.LookVector.Z).Unit
+		local offset = model:FindFirstChild("HumanoidRootPart").Position - ctx.root.Position
+		return look:Dot(Vector3.new(offset.X, 0, offset.Z).Unit)
+	end
+	Combat.SetAimAssist("Ligera")
+	prepare("Muneco3", 4, 50)
+	Input.Trigger("Atacar")
+	task.wait(0.12)
+	local ligeraWide = facingDot(m3)
+	task.wait(0.5)
+	prepare("Muneco3", 4, 20)
+	Input.Trigger("Atacar")
+	task.wait(0.12)
+	local ligeraNear = facingDot(m3)
+	task.wait(0.5)
+	record("Asistencia Ligera: corrige lo casi delante, no lo que está a un lado",
+		ligeraWide < 0.8 and ligeraNear > 0.97,
+		string.format("a 50°: mira %.2f (no se gira) · a 20°: mira %.2f (se gira)", ligeraWide, ligeraNear))
+	-- Manual: nunca se gira solo
+	Combat.SetAimAssist("Manual")
+	prepare("Muneco3", 4, 20)
+	Input.Trigger("Atacar")
+	task.wait(0.12)
+	local manual = facingDot(m3)
+	task.wait(0.5)
+	record("Asistencia Manual: el golpe sale hacia donde miras", manual < 0.96, string.format("a 20°: mira %.2f (no se giró)", manual))
+	Combat.SetAimAssist("Completa")
 
 	prepare("Muneco1", 6.5)
 	c0 = #confirms
@@ -324,6 +356,7 @@ return function(ctx)
 	Input.Trigger("Atacar")
 	task.wait(0.8)
 	record("Fuera de alcance no conecta", #confirms == c0, "a 13 studs el golpe sale al aire")
+	Combat.SetAimAssist(defaultLevel)
 
 	-- ---------- 7. Cancelaciones con Paso ----------
 	prepare("Muneco1", 3.2)

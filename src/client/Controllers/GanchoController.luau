@@ -21,15 +21,24 @@ local PositionReporter = require(script.Parent:WaitForChild("PositionReporter"))
 local POINT_RANGE = grappleConfig.PointRange
 local ENEMY_RANGE = grappleConfig.EnemyRange
 local CONE = 38 -- grados alrededor del centro de la cámara
-local COOLDOWN = grappleConfig.Cooldown
+local POINT_COOLDOWN = grappleConfig.PointCooldown
+local ENEMY_COOLDOWN = grappleConfig.EnemyCooldown
 local SPEED = grappleConfig.Speed
+local GREY = Color3.fromRGB(150, 155, 170)
+-- Perfiles que resisten el gancho mientras conserven la postura (además de élites y Guardián)
+local resistProfiles = {}
+for _, kind in pairs(require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig")).Sparring.Types) do
+	if kind.grappleResist then
+		resistProfiles[kind.profile] = true
+	end
+end
 local COLOR = Color3.fromRGB(120, 255, 230)
 
 local player = Players.LocalPlayer
 local anchors = {}
 local movement, combat = nil, nil
 local current = nil -- { target, enemy }
-local lastUse = -math.huge
+local lastPointUse, lastEnemyUse = -math.huge, -math.huge
 local marker, rope, ropeA0, ropeA1 = nil, nil, nil, nil
 
 local function rootPart()
@@ -204,10 +213,35 @@ local function playSound(position)
 	local _ = position
 end
 
--- Engancharse a un objetivo concreto (lo usan la tecla y las pruebas)
+-- ¿Este enemigo resiste el gancho ahora? (pesado con la postura entera)
+local function resists(model)
+	if model:GetAttribute("Elite") or model:HasTag("Guardian") or resistProfiles[model:GetAttribute("Perfil") or ""] then
+		local broken = model:GetAttribute("QuebradoHasta")
+		return not (type(broken) == "number" and broken > Workspace:GetServerTimeNow())
+	end
+	return false
+end
+GanchoController.Resists = resists
+
+-- Espera que le queda al gancho de combate (a enemigos)
+function GanchoController.EnemyCooldownRemaining()
+	return math.max(0, ENEMY_COOLDOWN - (os.clock() - lastEnemyUse))
+end
+
+-- Engancharse a un objetivo concreto (lo usan la tecla y las pruebas). Devuelve true, o false + motivo
 function GanchoController.GrappleTo(target)
-	if not movement or os.clock() - lastUse < COOLDOWN or not positionOf(target) then
-		return false
+	if not movement or not positionOf(target) then
+		return false, "sin objetivo"
+	end
+	local isEnemy = not target:IsA("BasePart")
+	local clock = os.clock()
+	if isEnemy and clock - lastEnemyUse < ENEMY_COOLDOWN then
+		return false, "enfriamiento"
+	elseif not isEnemy and clock - lastPointUse < POINT_COOLDOWN then
+		return false, "enfriamiento"
+	end
+	if isEnemy and resists(target) then
+		return false, "resiste"
 	end
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 or (combat and combat.State.mode == "Aturdido") then
@@ -218,11 +252,35 @@ function GanchoController.GrappleTo(target)
 	if combat and combat.CancelForMovement and not combat.CancelForMovement() then
 		return false
 	end
-	local ok = movement.Grapple(function()
-		return positionOf(target)
-	end, enemy, SPEED)
+	-- A un enemigo: apunta adonde estaba al lanzarlo y solo corrige EnemyTrackSpeed studs/s (si da un Paso a tiempo,
+	-- llegas adonde estaba, no encima de él). A un punto del mapa, directo.
+	local getPoint
+	if enemy then
+		local aimPoint = positionOf(target)
+		local lastClock = os.clock()
+		getPoint = function()
+			local live = positionOf(target)
+			local t = os.clock()
+			local step = grappleConfig.EnemyTrackSpeed * (t - lastClock)
+			lastClock = t
+			if live then
+				local offset = live - aimPoint
+				aimPoint += if offset.Magnitude > step then offset.Unit * step else offset
+			end
+			return aimPoint
+		end
+	else
+		getPoint = function()
+			return positionOf(target)
+		end
+	end
+	local ok = movement.Grapple(getPoint, enemy, SPEED)
 	if ok then
-		lastUse = os.clock()
+		if enemy then
+			lastEnemyUse = clock -- la espera corre aunque falle (si esquiva, la perdiste)
+		else
+			lastPointUse = clock
+		end
 		showRope(target)
 		playSound(positionOf(target))
 		-- El servidor anota la hora del gancho (al llegar a un enemigo, el siguiente golpe sale como golpe tras el Paso)
@@ -271,11 +329,26 @@ function GanchoController.Start(input, movementController, combatController)
 		elapsed = 0
 		local target, enemy = bestTarget()
 		current = if target then { target = target, enemy = enemy } else nil
-		local ready = os.clock() - lastUse >= COOLDOWN and not movement.State.grappling
-		if target and ready then
+		local clock = os.clock()
+		local pointReady = clock - lastPointUse >= POINT_COOLDOWN
+		if target and not movement.State.grappling and (enemy or pointReady) then
 			local adornee = if target:IsA("BasePart") then target else target:FindFirstChild("HumanoidRootPart")
 			marker.Adornee = adornee
 			marker.Enabled = true
+			-- A un enemigo, el marco dice si se puede: E (listo), segundos que faltan o RESISTE (rompe su postura)
+			local key = marker:FindFirstChild("Tecla")
+			local stroke = marker:FindFirstChildWhichIsA("Frame") and marker:FindFirstChildWhichIsA("Frame"):FindFirstChildOfClass("UIStroke")
+			local wait = if enemy then ENEMY_COOLDOWN - (clock - lastEnemyUse) else 0
+			local blocked = enemy and resists(target)
+			local label = if blocked then "RESISTE" elseif wait > 0 then string.format("%d", math.ceil(wait)) else (if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "" else "E")
+			if key then
+				key.Text = label
+				key.TextColor3 = if blocked or wait > 0 then GREY else COLOR
+				key.Size = if blocked then UDim2.fromScale(1.4, 0.4) else UDim2.fromScale(0.55, 0.55)
+			end
+			if stroke then
+				stroke.Color = if blocked or wait > 0 then GREY else COLOR
+			end
 		else
 			marker.Enabled = false
 		end

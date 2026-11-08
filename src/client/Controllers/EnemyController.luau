@@ -174,6 +174,15 @@ local function onState(model, e)
 		if e.ring then
 			e.ring.Transparency = 0.25
 		end
+	elseif state == "Vencido" then
+		-- Derrota: deja de amenazar, cae y se desvanece (el servidor lo retira poco después)
+		cleanup(e)
+		e.holdToken = (e.holdToken or 0) + 1
+		play(e, model, "Aturdido", 0)
+		local root = model:FindFirstChild("HumanoidRootPart")
+		if root then
+			Effects.Defeat(model)
+		end
 	elseif state == "Recuperando" then
 		cleanup(e)
 	elseif state == "Aturdido" then

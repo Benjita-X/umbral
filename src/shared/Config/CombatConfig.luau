@@ -24,6 +24,16 @@ local CombatConfig = {
 	-- Orientación y acercamiento (iguales en PC, mando y celular: solo orientan, no aciertan por ti)
 	SoftTargetRange = 12, -- distancia a la que busca rival al golpear
 	SoftTargetAngle = 75, -- grados a cada lado de hacia donde apuntas
+	-- Asistencia de apuntado (Ajustes): cuánto corrige el juego hacia dónde salen golpes y habilidades.
+	--   Completa · cono amplio (celular y mando: no hay ratón con que apuntar)
+	--   Ligera   · solo corrige lo que ya tienes casi delante (en PC viene así: decides tú a quién golpeas)
+	--   Manual   · nada: el golpe sale hacia donde miras o apuntas, con su avance propio (el fijado con R sigue: es
+	--              tu elección). El Contraataque conserva un giro corto: es la recompensa de haber defendido bien.
+	AimAssist = {
+		Completa = { attackAngle = 75, attackRange = 12, counterAngle = 180, counterRange = 18, guardTracking = true, ecoAngle = 35, ecoMouseAngle = 14 },
+		Ligera = { attackAngle = 32, attackRange = 8, counterAngle = 125, counterRange = 17, guardTracking = true, ecoAngle = 16, ecoMouseAngle = 7 },
+		Manual = { attackAngle = 0, attackRange = 0, counterAngle = 100, counterRange = 15, guardTracking = false, ecoAngle = 0, ecoMouseAngle = 0 },
+	},
 	IdealDistance = 3.2, -- distancia a la que el golpe conecta mejor
 	MaxLunge = 3.5, -- lo máximo que un golpe te acerca al rival
 	LungeWithoutTarget = 1, -- avance de cada golpe al aire
@@ -74,6 +84,37 @@ local CombatConfig = {
 		HitIndicator = true, -- marca en el borde de la pantalla hacia quien te golpeó
 	},
 
+	-- ---------- Balance y expedición (BalanceService, ExpedicionService) ----------
+	-- daño final = base × poder (nivel y mejoras: moderado, con tope) × ejecución (contraataque, espalda, pared,
+	-- combo: lo decide el combate) × resistencia del objetivo × situación (dificultad y ronda del encuentro).
+	-- El nivel se nota, pero nunca vuelve irrelevante la técnica; en PvP el poder se iguala.
+	Balance = {
+		Difficulties = {
+			Iniciacion = { label = "Iniciación", desc = "ataques fáciles de leer · daño moderado · sin élites", health = 0.8, damage = 0.7, elites = false, extra = false },
+			Expedicion = { label = "Expedición", desc = "combinaciones variadas · aparecen élites", health = 1, damage = 1, elites = true, extra = false },
+			Desafio = { label = "Desafío", desc = "para quien domina el combate · más enemigos y más daño", health = 1.3, damage = 1.4, elites = true, extra = true },
+		},
+		DefaultDifficulty = "Expedicion",
+		RoundGrowth = { health = 0.06, damage = 0.05 }, -- por encuentro: lo principal es la composición, no la vida
+		PartyHealth = 0.5, -- vida extra de cada enemigo por jugador adicional (no se multiplica entera)
+		Elite = { health = 1.7, damage = 1.25 },
+		Levels = { XpPerLevel = 100, Max = 10, DamagePerLevel = 0.03, DefensePerLevel = 0.025, HealthPerLevel = 5 },
+		Rewards = { Comun = 25, Elite = 60, Jefe = 200, Encuentro = 15 },
+		PowerCap = 1.6, -- nivel + mejoras nunca multiplican el daño más que esto
+	},
+	Expedition = {
+		-- Mejoras temporales (una de tres, tras los encuentros de ChoicesAfter): cambian CÓMO juegas, no solo números
+		Upgrades = {
+			Filo = { label = "Filo", desc = "+12 % de daño" },
+			Coraza = { label = "Coraza", desc = "-15 % de daño recibido y +20 de vida" },
+			Templanza = { label = "Templanza", desc = "tus golpes rompen la postura enemiga un 50 % más rápido" },
+			Impulso = { label = "Impulso", desc = "cada desvío perfecto te devuelve un Paso" },
+			ResonanciaViva = { label = "Resonancia viva", desc = "el remate de tu combo deja el estado de tu Eco (mojado, cargado, ardiendo): abre reacciones con los puños" },
+			Celeridad = { label = "Celeridad", desc = "los Pasos se recargan un 25 % más rápido" },
+		},
+		ChoicesAfter = { 2, 4 },
+	},
+
 	-- Combo básico: pulsar Atacar encadena estos golpes en orden (Puños; cada arma tiene el suyo en Weapons)
 	LightChain = { "Jab", "Cross", "Patada" },
 
@@ -86,7 +127,11 @@ local CombatConfig = {
 		Espada = { label = "Espada", chain = { "Tajo", "Reves", "Estocada" }, heavy = "TajoFuerte", dash = "EstocadaCarrera", plunge = "Clavada" },
 		DashWindow = 0.4, -- s tras un Paso en los que atacar sale como golpe tras el Paso
 		-- Gancho: lo comparten el cliente (marco, movimiento) y el servidor (validación del enganche)
-		Grapple = { PointRange = 50, EnemyRange = 32, Cooldown = 0.8, Speed = 95, ArriveDistance = 10 },
+		-- Dos ganchos con la misma tecla: a los PUNTOS del mapa es movilidad (casi sin espera: explorar, rutas, saltos);
+		-- a un ENEMIGO es persecución: espera larga (también si falla), apunta adonde estaba al lanzarlo y apenas
+		-- corrige (un Paso a tiempo lo esquiva), y los pesados (Centinela, élites, Guardián) lo resisten mientras
+		-- conserven su postura: rómpela y se abre.
+		Grapple = { PointRange = 50, EnemyRange = 32, PointCooldown = 0.9, EnemyCooldown = 6, Speed = 95, ArriveDistance = 6, EnemyTrackSpeed = 6 },
 		PlungeMinHeight = 5, -- altura mínima de los pies para el golpe en picada
 		SwitchTime = 0.25, -- s sin poder atacar al cambiar de arma
 	},
@@ -490,7 +535,7 @@ local CombatConfig = {
 		-- desviado) y aturde a los otros enemigos a menos de ReflectRadius del jugador.
 		Types = {
 			Latido = { label = "Latido", maxHealth = 110, profile = "latido", body = Color3.fromRGB(120, 34, 52), legs = Color3.fromRGB(60, 18, 28), glow = Color3.fromRGB(255, 70, 110), riseAfter = 20, rhythmStreak = 3, rhythmStun = 2.5 },
-			Centinela = { label = "Centinela", maxHealth = 125, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5 },
+			Centinela = { label = "Centinela", maxHealth = 125, profile = "centinela", body = Color3.fromRGB(58, 68, 92), legs = Color3.fromRGB(34, 40, 56), glow = Color3.fromRGB(120, 200, 255), riseAfter = 20, frontArmor = true, frontAngle = 70, backMultiplier = 1.5, grappleResist = true },
 			-- Acechador: GOLPE DE OPORTUNIDAD. Si fallas un remate o un golpe fuerte a menos de opportunityRange,
 			-- te castiga con una Embestida durante tu recuperación (como mucho una cada opportunityCooldown s).
 			Acechador = { label = "Acechador", maxHealth = 85, profile = "acechador", body = Color3.fromRGB(70, 60, 30), legs = Color3.fromRGB(40, 34, 16), glow = Color3.fromRGB(255, 230, 120), riseAfter = 20, opportunityRange = 16, opportunityCooldown = 6 },
@@ -513,6 +558,9 @@ local CombatConfig = {
 			gemelo = { pattern = { "Golpe", "Rapido", "Barrido" }, pause = 1.4, maxDelay = 0.3 },
 			acechador = { pattern = { "Rapido", "Golpe" }, pause = 1.6, maxDelay = 0.2 }, -- tranquilo... hasta que fallas
 			instructor = { pattern = { "Golpe" }, pause = 1.8, maxDelay = 0 }, -- tutorial: lento y siempre igual
+			-- Segunda fase del Guardián (bajo la mitad de vida): no solo más rápido, cambia QUÉ hay que leer: barridos
+			-- dos veces por ciclo (saltar o salir), golpes rápidos en pareja (el segundo desvío) y amagues
+			furia = { pattern = { "Barrido", "Rapido", "Rapido", "Fuerte", "Amague", "Barrido", "Golpe" }, pause = 0.8, maxDelay = 0.35, phase2 = true },
 		},
 		-- Mismo esquema que los golpes del jugador (ver MoveSchema): preparación, impacto, recuperación,
 		-- daño, postura, forma y alcance, y qué defensas admite.
@@ -778,6 +826,11 @@ local CombatConfig = {
 		-- flotando un instante. Quien golpea en el aire también flota un instante (AirStall) para seguir el combo.
 		Juggle = { HitSuspend = 0.4, HitStun = 0.5, HitKnockbackScale = 0.3, HitKnockUp = 3, AirStall = 0.3, MinHeight = 2 },
 		GuardianStunScale = 0.5, -- el Guardián resiste: aturdimientos a la mitad...
+		-- Resistencia al control de los enemigos: cada aturdimiento que reciben de golpes y habilidades carga su
+		-- aguante; los siguientes duran menos (nunca menos del Floor) y se recupera al dejar de recibir control.
+		-- Capacidad = segundos de control antes de quedar al mínimo. Las aperturas ganadas (desvío perfecto, postura
+		-- rota, Contratiempo) no cuentan: son la recompensa de defender bien.
+		ControlResistance = { Common = 3.5, Elite = 2.2, Boss = 1.4, Floor = 0.25, DecayDelay = 1, DecayPerSecond = 1.2 },
 		GuardianLaunchScale = 0.6, -- ...y lo lanzan más bajo
 	},
 

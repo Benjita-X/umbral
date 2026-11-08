@@ -106,16 +106,29 @@ function WeaponService.Start()
 	local DefenseService = require(script.Parent:WaitForChild("DefenseService"))
 	local DamageService = require(script.Parent:WaitForChild("DamageService"))
 	local grapple = CombatConfig.Weapons.Grapple
-	local lastHook = {}
+	local lastHook = {} -- [jugador] = { punto = reloj, enemigo = reloj }
+	local resistProfiles = {}
+	for _, kind in pairs(CombatConfig.Sparring.Types) do
+		if kind.grappleResist then
+			resistProfiles[kind.profile] = true
+		end
+	end
+	-- Pesados (Centinela, élites, Guardián): resisten mientras conserven la postura (quebrados, se abren)
+	local function resistsHook(model)
+		if model:GetAttribute("Elite") or model:HasTag("Guardian") or resistProfiles[model:GetAttribute("Perfil") or ""] then
+			local broken = model:GetAttribute("QuebradoHasta")
+			return not (type(broken) == "number" and broken > workspace:GetServerTimeNow())
+		end
+		return false
+	end
 	local function refuseHook(player, reason)
 		player:SetAttribute("GanchoRechazado", reason)
 		player:SetAttribute("GanchosRechazados", (player:GetAttribute("GanchosRechazados") or 0) + 1)
 	end
 	hookRemote.OnServerEvent:Connect(function(player, t, target, position, look)
 		local clock = os.clock()
-		if clock - (lastHook[player] or -math.huge) < grapple.Cooldown * 0.8 then
-			return refuseHook(player, "gancho en enfriamiento")
-		end
+		local times = lastHook[player] or {}
+		lastHook[player] = times
 		if not PositionService.ValidTime(player, t) then
 			return refuseHook(player, "hora inválida")
 		end
@@ -128,6 +141,15 @@ function WeaponService.Start()
 		local anchor = target:IsA("BasePart") and target.Name == "PuntoGancho"
 		if not enemy and not anchor then
 			return refuseHook(player, "enganche inválido")
+		end
+		-- Cada gancho con su espera (con un margen por la red): el de combate es largo y corre aunque falle
+		local key = if enemy then "enemigo" else "punto"
+		local cooldown = if enemy then grapple.EnemyCooldown else grapple.PointCooldown
+		if clock - (times[key] or -math.huge) < cooldown * 0.85 then
+			return refuseHook(player, "gancho en enfriamiento")
+		end
+		if enemy and resistsHook(target) then
+			return refuseHook(player, "resiste el gancho")
 		end
 		local targetPosition
 		if enemy then
@@ -155,7 +177,7 @@ function WeaponService.Start()
 		if DamageService.SolidBetween(character, target, from + Vector3.new(0, 0.5, 0), targetPosition) then
 			return refuseHook(player, "gancho a través de una pared")
 		end
-		lastHook[player] = clock
+		times[key] = clock
 		DefenseService.RecordGrapple(player, t, target, enemy, from)
 		player:SetAttribute("GanchoHora", t)
 	end)

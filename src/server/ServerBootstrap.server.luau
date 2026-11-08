@@ -17,6 +17,8 @@ local EcoService = require(services:WaitForChild("EcoService"))
 local WeaponService = require(services:WaitForChild("WeaponService"))
 local RecoveryService = require(services:WaitForChild("RecoveryService"))
 local PersonajeService = require(services:WaitForChild("PersonajeService"))
+local BalanceService = require(services:WaitForChild("BalanceService"))
+local ExpedicionService = require(services:WaitForChild("ExpedicionService"))
 
 Workspace.Gravity = MovementConfig.Gravity
 
@@ -32,5 +34,7 @@ PersonajeService.Start() -- red de seguridad (nadie muere por caer al vacío) y 
 DummyService.Start()
 SparringService.Start()
 GrietaService.Start() -- solo actúa si el mapa tiene la Grieta (lugar de desarrollo)
+BalanceService.Start() -- poder, defensa, experiencia y niveles (una sola fórmula con límites)
+ExpedicionService.Start() -- la Grieta como partida completa: encuentros, mejoras, Guardián (y el encuentro de prueba)
 
 print("[UMBRAL] Servidor listo · Fase 3: defensa y Contrapaso")

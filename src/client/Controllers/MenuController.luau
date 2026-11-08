@@ -291,6 +291,18 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 		},
 		{
+			name = "Asistencia de apuntado",
+			options = { "Completa", "Ligera", "Manual" },
+			get = function()
+				return if combat and combat.AimAssist then (combat.AimAssist()) else "Ligera"
+			end,
+			set = function(value)
+				if combat and combat.SetAimAssist then
+					combat.SetAimAssist(value)
+				end
+			end,
+		},
+		{
 			name = "Calidad de efectos",
 			options = { "Alta", "Equilibrada", "Rendimiento" },
 			get = function()

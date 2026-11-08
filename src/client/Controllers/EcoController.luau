@@ -210,9 +210,11 @@ local function aim(range, allowVertical, maxPitch)
 	local chest = root.Position + Vector3.new(0, 0.3, 0)
 	local forward = movement.DesiredDirection()
 	local dir = forward
-	local assistAngle = 35
+	-- Ayuda de la asistencia de apuntado elegida (Ajustes): Completa, Ligera o Manual (sin ayuda)
+	local _, aimAssist = combat.AimAssist()
+	local assistAngle = aimAssist.ecoAngle
 	if state.aimMode == "raton" and usingMouse() then
-		assistAngle = 14
+		assistAngle = aimAssist.ecoMouseAngle
 		local cam = Workspace.CurrentCamera
 		local m = UserInputService:GetMouseLocation()
 		local ray = cam:ViewportPointToRay(m.X, m.Y)

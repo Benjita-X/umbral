@@ -141,7 +141,8 @@ end
 local function targetRootOf(model)
 	local targetHumanoid = model:FindFirstChildOfClass("Humanoid")
 	local targetRoot = model:FindFirstChild("HumanoidRootPart")
-	if targetHumanoid and targetRoot and (targetHumanoid.Health > 0 or model:HasTag("Objetivo")) then
+	-- Vivo, o un muñeco de práctica (se queda en 0 y se recupera); un enemigo vencido ya no es objetivo
+	if targetHumanoid and targetRoot and (targetHumanoid.Health > 0 or (model:HasTag("Objetivo") and not model:HasTag("Sparring"))) then
 		return targetRoot
 	end
 	return nil
@@ -178,8 +179,26 @@ local function findSoftTarget(desired, range, cosLimit)
 	return best, bestDistance
 end
 
+-- Asistencia de apuntado elegida en Ajustes (CombatConfig.AimAssist). En PC, Ligera; con pantalla táctil o mando, Completa
+local aimLevel = if game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled then "Completa" else "Ligera"
+local function assist()
+	return Config.AimAssist[aimLevel] or Config.AimAssist.Ligera
+end
+function CombatController.SetAimAssist(level)
+	if Config.AimAssist[level] then
+		aimLevel = level
+	end
+end
+function CombatController.AimAssist()
+	return aimLevel, assist()
+end
+
 local function defaultSoftTarget(desired)
-	return findSoftTarget(desired, Config.SoftTargetRange, math.cos(math.rad(Config.SoftTargetAngle)))
+	local a = assist()
+	if a.attackAngle <= 0 then
+		return nil -- Manual: el golpe sale hacia donde miras
+	end
+	return findSoftTarget(desired, a.attackRange, math.cos(math.rad(a.attackAngle)))
 end
 
 -- ---------- Bloqueos del movimiento ----------
@@ -350,7 +369,8 @@ local function startAttack(name, charge)
 	local desired = movement.DesiredDirection()
 	local target, distance
 	if counter then
-		target, distance = findSoftTarget(desired, defense.CounterTargetRange, -1)
+		local a = assist()
+		target, distance = findSoftTarget(desired, a.counterRange, if a.counterAngle >= 180 then -1 else math.cos(math.rad(a.counterAngle)))
 	else
 		target, distance = defaultSoftTarget(desired)
 	end
@@ -766,6 +786,10 @@ local function onDefenseResult(data)
 	if result == "desvio_perfecto" or result == "contrapaso" then
 		state.counterUntil = os.clock() + defense.CounterWindow
 	end
+	-- Mejora "Impulso" (expedición): un desvío perfecto devuelve un Paso (el servidor suma la misma carga)
+	if result == "desvio_perfecto" and string.find("," .. tostring(player:GetAttribute("Mejoras") or "") .. ",", ",Impulso,", 1, true) then
+		movement.AddCharge()
+	end
 	-- La duración del aturdimiento la decide el servidor (anticadena, expuesto); 0 = Aguante
 	local serverStun = if type(data.stun) == "number" then data.stun else nil
 	if result == "golpe" then
@@ -811,9 +835,9 @@ local function update(dt)
 		end
 	end
 
-	-- Guardia: mira al rival más cercano (la guardia solo cubre el frente)
+	-- Guardia: mira al rival más cercano (la guardia solo cubre el frente); en Manual, giras tú
 	if state.mode == "Guardia" then
-		local target = findSoftTarget(movement.DesiredDirection(), Config.SoftTargetRange, -1)
+		local target = assist().guardTracking and findSoftTarget(movement.DesiredDirection(), Config.SoftTargetRange, -1) or nil
 		if target then
 			movement.SetAutoRotateBlocked(KEY, true)
 			movement.Face(flat(targetRootOf(target).Position - root.Position))
