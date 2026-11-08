@@ -29,6 +29,7 @@ local Rig = require(shared:WaitForChild("Combat"):WaitForChild("Rig"))
 local Hurtbox = require(shared:WaitForChild("Combat"):WaitForChild("Hurtbox"))
 local Effects = require(script.Parent:WaitForChild("EffectsController"))
 local PositionReporter = require(script.Parent:WaitForChild("PositionReporter"))
+local Intenciones = require(script.Parent:WaitForChild("Intenciones"))
 
 local defense = Config.Defense
 local player = Players.LocalPlayer
@@ -81,6 +82,18 @@ local tracks = {}
 local currentTrack = nil
 local hitstop = 0
 local queued = nil -- "Atacar" o "Defender" pulsado antes de poder salir
+-- La cola del combate entra en el coordinador de intenciones: lo último que pulsas manda (si luego pulsas una
+-- habilidad o el Paso, este golpe guardado ya no sale)
+local function setQueued(action)
+	queued = action
+	if action then
+		Intenciones.Hold("combate", action, function()
+			queued = nil
+		end)
+	else
+		Intenciones.Clear("combate")
+	end
+end
 local attackPressTime = -math.huge
 local heavyConsumed = true
 local heavyRequested = false
@@ -191,6 +204,30 @@ local function dropAttackVisuals()
 end
 
 -- ---------- Golpes ----------
+-- ¿El golpe da en una coraza frontal (Centinela)? La MISMA regla que el servidor: de frente (dentro de su ángulo) y
+-- sin estar aturdido. Así el golpe suena y se ve BLOQUEADO al instante, no como un acierto que luego dice "BLOQUEADO".
+local armoredProfiles = {}
+for _, kind in pairs(Config.Sparring.Types or {}) do
+	if kind.frontArmor then
+		armoredProfiles[kind.profile] = math.cos(math.rad(kind.frontAngle or 70))
+	end
+end
+local function predictBlocked(model)
+	local limit = armoredProfiles[model:GetAttribute("Perfil") or ""]
+	if not limit or model:GetAttribute("Estado") == "Aturdido" or not root then
+		return false
+	end
+	local targetRoot = targetRootOf(model)
+	if not targetRoot then
+		return false
+	end
+	local toAttacker = flat(root.Position - targetRoot.Position)
+	local look = flat(targetRoot.CFrame.LookVector)
+	return toAttacker.Magnitude > 0.01 and look.Magnitude > 0.01 and look.Unit:Dot(toAttacker.Unit) >= limit
+end
+
+CombatController.PredictBlocked = predictBlocked
+
 -- El servidor rechazó un contacto (fuera de alcance, pared...): si ese ataque ya no tiene ningún contacto en pie,
 -- fue un golpe FALLADO aunque aquí pareciera conectar. Su recuperación deja de poder cortarse con una habilidad,
 -- la guardia o el siguiente golpe (lo mismo que exige el servidor); no se alarga a mitad de camino.
@@ -259,7 +296,7 @@ local function onHit(a, model, targetRoot)
 	if toAttacker.Magnitude > 0.01 then
 		hitPosition += toAttacker.Unit * 0.9
 	end
-	Effects.Impact(hitPosition, def, model)
+	Effects.Impact(hitPosition, def, model, predictBlocked(model))
 
 	if remotes.request then
 		-- El golpe va con su instante y la posición en ese instante (el servidor juzga ese momento)
@@ -491,7 +528,7 @@ end
 -- ---------- Aturdimiento ----------
 local function stun(duration, broken)
 	cancelToFree()
-	queued = nil
+	setQueued(nil)
 	heavyRequested = false
 	state.mode = "Aturdido"
 	state.stunnedUntil = os.clock() + duration
@@ -563,7 +600,7 @@ local function execute(model, distance)
 	movement.StopLunge()
 	state.attack = nil
 	state.mode = "Gracia"
-	queued = nil
+	setQueued(nil)
 	local dir = flat(targetRoot.Position - root.Position)
 	dir = if dir.Magnitude > 0.01 then dir.Unit else flat(root.CFrame.LookVector)
 	movement.Face(dir)
@@ -621,6 +658,7 @@ local function onAttackPressed()
 	if not alive() or state.mode == "Aturdido" or os.clock() < state.switchUntil then
 		return
 	end
+	Intenciones.Pressed("combate", "Atacar")
 	attackPressTime = os.clock()
 	heavyConsumed = false
 	heavyRequested = false
@@ -646,7 +684,7 @@ local function onAttackPressed()
 		if a.phase == "recovery" and a.cancelable then
 			startAttack(nextAttackName())
 		else
-			queued = "Atacar"
+			setQueued("Atacar")
 		end
 	end
 end
@@ -669,6 +707,7 @@ local function onDefendPressed()
 	if state.mode == "Aturdido" then
 		return
 	end
+	Intenciones.Pressed("combate", "Defender")
 	if state.mode == "Libre" or state.mode == "Carga" then
 		startGuard(deflect)
 	elseif state.mode == "Guardia" then
@@ -678,7 +717,7 @@ local function onDefendPressed()
 		if a.phase == "recovery" and a.cancelable then
 			startGuard(deflect)
 		else
-			queued = "Defender"
+			setQueued("Defender")
 		end
 	end
 end
@@ -686,7 +725,7 @@ end
 local function onDefendReleased()
 	report("defender_fin")
 	if queued == "Defender" then
-		queued = nil
+		setQueued(nil)
 	end
 	if state.mode == "Guardia" then
 		endGuard()
@@ -695,7 +734,7 @@ end
 
 local function runQueued()
 	local action = queued
-	queued = nil
+	setQueued(nil)
 	if action == "Atacar" then
 		startAttack(nextLightName())
 	elseif action == "Defender" and input.IsHeld("Defender") then
@@ -787,7 +826,7 @@ local function update(dt)
 	if not heavyConsumed and input.IsHeld("Atacar") and os.clock() - attackPressTime >= Config.HoldThreshold then
 		heavyConsumed = true
 		heavyRequested = true
-		queued = nil
+		setQueued(nil)
 	end
 
 	-- Hitstop: el tiempo del golpe se congela un instante
@@ -864,7 +903,7 @@ local function bindCharacter(newCharacter)
 	state.comboIndex = 0
 	state.deflecting = false
 	state.counterUntil = -math.huge
-	queued = nil
+	setQueued(nil)
 	hitstop = 0
 	heavyRequested = false
 	heavyConsumed = true
@@ -1053,7 +1092,7 @@ function CombatController.CancelForSkill()
 		cancelToFree()
 		state.comboIndex = keepIndex
 	end
-	queued = nil
+	setQueued(nil)
 	heavyRequested = false
 	heavyConsumed = true
 	return true

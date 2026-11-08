@@ -186,6 +186,22 @@ function CameraController.Start(movement, input)
 	end
 
 	local shakeHumanoid = nil
+	-- Cámara fija sobre el hombro: con una pared a la derecha el hombro se aparta lo justo (si no, la cámara quedaba
+	-- dentro del muro y se veía a través de él). Vuelve suave al despejarse.
+	local shoulderX = SHOULDER.X
+	local shoulderParams = RaycastParams.new()
+	shoulderParams.FilterType = Enum.RaycastFilterType.Exclude
+	shoulderParams.RespectCanCollide = true
+	local function shoulderRoom(character, root)
+		shoulderParams.FilterDescendantsInstances = { character, Workspace.CurrentCamera }
+		local head = root.Position + Vector3.new(0, 1.5, 0)
+		local rightDir = Vector3.new(root.CFrame.RightVector.X, 0, root.CFrame.RightVector.Z)
+		if rightDir.Magnitude < 0.01 then
+			return SHOULDER.X
+		end
+		local hit = Workspace:Raycast(head, rightDir.Unit * (SHOULDER.X + 0.8), shoulderParams)
+		return if hit then math.max(0, hit.Distance - 0.8) else SHOULDER.X
+	end
 	RunService.RenderStepped:Connect(function(dt)
 		local camera = Workspace.CurrentCamera
 		if not camera then
@@ -202,7 +218,12 @@ function CameraController.Start(movement, input)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		-- Con la cámara fija, la cámara va sobre el hombro (la vibración se suma encima)
-		local base = if lockActive then SHOULDER else Vector3.zero
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if lockActive and root then
+			local room = shoulderRoom(character, root)
+			shoulderX = if room < shoulderX then room else shoulderX + (room - shoulderX) * (1 - math.exp(-6 * dt))
+		end
+		local base = if lockActive then Vector3.new(shoulderX, SHOULDER.Y, SHOULDER.Z) else Vector3.zero
 		if trauma > 0 and humanoid then
 			local t = os.clock() * 30
 			local strength = trauma * trauma * CombatConfig.Feedback.MaxShakeOffset

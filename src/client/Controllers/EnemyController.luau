@@ -44,6 +44,10 @@ local function cleanup(e)
 		e.ring:Destroy()
 		e.ring = nil
 	end
+	if e.fill then
+		e.fill:Destroy()
+		e.fill = nil
+	end
 end
 
 local function trackFor(e, model, clip)
@@ -151,6 +155,14 @@ local function onState(model, e)
 				ring.Parent = Workspace.CurrentCamera
 				e.ring = ring
 				TweenService:Create(ring, TweenInfo.new(remaining, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 0.45 }):Play()
+				-- Relleno que crece desde el centro y toca el borde JUSTO en el impacto: se lee cuándo saltar o salir
+				local fill = ring:Clone()
+				fill.Name = "UmbralTiempoBarrido"
+				fill.Transparency = 0.6
+				fill.Size = Vector3.new(0.12, 0.6, 0.6)
+				fill.Parent = Workspace.CurrentCamera
+				e.fill = fill
+				TweenService:Create(fill, TweenInfo.new(remaining, Enum.EasingStyle.Linear), { Size = Vector3.new(0.12, attack.radius * 2, attack.radius * 2) }):Play()
 			end
 		end
 	elseif state == "Atacando" then

@@ -475,6 +475,14 @@ function SkillBarHUD.Start(ecoController)
 			pushLog(string.format('<font color="#FF8070">✕</font> %s · no salió: %s', tostring(slot), tostring(reason)))
 		end
 	end)
+	local okIntents, Intenciones = pcall(require, script.Parent:WaitForChild("Intenciones"))
+	if okIntents then
+		Intenciones.Replaced:Connect(function(old, new)
+			if practicing() then
+				pushLog(string.format('<font color="#C8C8D2">↺</font> %s guardado · lo reemplazó %s', tostring(old), tostring(new)))
+			end
+		end)
+	end
 	if ecoController.Replaced then
 		ecoController.Replaced:Connect(function(old, new)
 			if practicing() then

@@ -291,15 +291,17 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 		},
 		{
-			name = "Efectos reducidos (PC modesto o celular)",
+			name = "Calidad de efectos",
+			options = { "Alta", "Equilibrada", "Rendimiento" },
 			get = function()
 				local ok, efectos = pcall(require, script.Parent:WaitForChild("EcoEfectos"))
-				return ok and efectos.Reducidos == true
+				return if ok then efectos.Calidad else "Alta"
 			end,
-			set = function(on)
+			set = function(value)
 				local ok, efectos = pcall(require, script.Parent:WaitForChild("EcoEfectos"))
 				if ok then
-					efectos.Reducidos = on
+					efectos.Calidad = value
+					efectos.Reducidos = false
 				end
 			end,
 		},
@@ -319,6 +321,19 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 			set = function(on)
 				feedback.DamageNumbers = on
+			end,
+		},
+		{
+			name = "Al caer el enemigo fijado, pasar al siguiente",
+			get = function()
+				local ok, fijar = pcall(require, script.Parent:WaitForChild("FijarObjetivoController"))
+				return ok and fijar.AutoSwitch == true
+			end,
+			set = function(on)
+				local ok, fijar = pcall(require, script.Parent:WaitForChild("FijarObjetivoController"))
+				if ok then
+					fijar.AutoSwitch = on
+				end
 			end,
 		},
 		{
@@ -387,11 +402,22 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		button.TextColor3 = TEXT
 		corner(button, 8)
 		local function refresh()
+			if setting.options then
+				button.Text = string.format("%s:  %s", setting.name, string.upper(tostring(setting.get())))
+				button.TextColor3 = ACCENT
+				return
+			end
 			button.Text = string.format("%s:  %s", setting.name, if setting.get() then "SÍ" else "NO")
 			button.TextColor3 = if setting.get() then ACCENT else Color3.fromRGB(150, 155, 170)
 		end
 		button.Activated:Connect(function()
-			setting.set(not setting.get())
+			if setting.options then
+				-- Opciones: cada toque pasa a la siguiente
+				local index = table.find(setting.options, setting.get()) or 0
+				setting.set(setting.options[index % #setting.options + 1])
+			else
+				setting.set(not setting.get())
+			end
 			task.defer(refresh)
 		end)
 		refresh()

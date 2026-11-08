@@ -19,6 +19,7 @@ local SUITES = {
 	{ "GanchoYGracia", "GanchoYGracia" },
 	{ "RevisionCodex", "RevisionCodex" },
 	{ "AuditoriaMaxima", "AuditoriaMaxima" },
+	{ "PulidoFinal", "PulidoFinal" },
 	{ "Combos", "Combos" },
 	{ "Estres", "Estres" },
 	{ "Vitrina", "Vitrina", manual = true }, -- solo si se pide: -Suites Vitrina (revisión a ojo)

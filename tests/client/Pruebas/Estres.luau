@@ -28,6 +28,11 @@ return function(ctx)
 	local random = Random.new(20261107)
 	local stop = os.clock() + 12
 	local defending = false
+	-- Tiempos de cuadro durante el machaque (con habilidades, efectos y enemigos): para ver tirones, no solo la media
+	local frames = {}
+	local frameConnection = game:GetService("RunService").Heartbeat:Connect(function(dt)
+		table.insert(frames, dt)
+	end)
 	while os.clock() < stop do
 		local action = ACTIONS[random:NextInteger(1, #ACTIONS)]
 		Input.Trigger(action)
@@ -49,6 +54,7 @@ return function(ctx)
 		ctx.humanoid:Move(Vector3.new(math.cos(angle), 0, math.sin(angle)))
 		task.wait(random:NextNumber(0.04, 0.12))
 	end
+	frameConnection:Disconnect()
 	if defending then
 		Input.Release("Defender")
 	end
@@ -116,5 +122,13 @@ return function(ctx)
 			if #errors > 0 then " (" .. string.sub(errors[1], 1, 120) .. ")" else ""
 		)
 	)
+	-- Tiempos de cuadro: mediana, percentil 95 y el peor (en este equipo de pruebas; en Studio, cliente y servidor
+	-- comparten la máquina). Falla solo ante un tirón grave y sostenido (p95 por encima de 66 ms = menos de 15 FPS)
+	table.sort(frames)
+	local function percentile(p)
+		return (frames[math.max(1, math.ceil(#frames * p))] or 0) * 1000
+	end
+	record("[Estrés] Tiempos de cuadro con todo a la vez", #frames > 0 and percentile(0.95) < 66,
+		string.format("%d cuadros · mediana %.1f ms · p95 %.1f ms · p99 %.1f ms · peor %.1f ms", #frames, percentile(0.5), percentile(0.95), percentile(0.99), (frames[#frames] or 0) * 1000))
 	ctx.settle()
 end

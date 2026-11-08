@@ -3,12 +3,14 @@
 -- doble salto con cambio de dirección y caída más rápida que la subida.
 -- En Roblox el cliente simula su propio personaje; la validación en el servidor llega en la Fase 4.
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
+local Intenciones = require(script.Parent:WaitForChild("Intenciones"))
 
 -- Fuerza de las restricciones de velocidad (Paso, avances, paredes). Alcanza de sobra para acelerar al
 -- personaje en un cuadro, pero NO aplasta la geometría: con 1e7 un Paso contra una pared metía al personaje
@@ -64,7 +66,11 @@ local lastDashTime = -math.huge
 local lastGroundedTime = -math.huge
 local jumpedSinceGrounded = false
 local bufferedJumpTime = -math.huge
-local dash = nil -- { dir, speed, elapsed, startPos, holdHeight }
+local dash = nil -- { dir, speed, elapsed, startPos, holdHeight, budget, before, deflected, keepFacing }
+-- Búfer del Paso: pulsado un instante antes de poder (fase activa de un golpe, justo tras otro Paso) no se pierde;
+-- sale en cuanto se pueda, con la dirección del INSTANTE de la pulsación (girar la cámara mientras espera no la cambia)
+local DASH_BUFFER = 0.15
+local bufferedDash = nil -- { time, dir }
 local exitBlend = nil -- { from, elapsed }
 local lunge = nil -- { velocity, remaining, hold }: avance corto de un golpe
 local wallPush = nil -- { velocity, remaining }: empuje de un salto de pared
@@ -296,7 +302,56 @@ local function applyBlockers()
 	humanoid.AutoRotate = next(rotateBlockers) == nil and not cameraFacing and lockedTarget == nil
 end
 
+-- Postura de combate: con un enemigo vivo cerca que tenías DELANTE hace un instante, el Paso que se aleja de él o va
+-- de lado no te gira: te deja encarándolo (esquivas sin darle la espalda ni perderlo de vista). "Hace un instante":
+-- al pulsar atrás, el cuerpo empieza a girarse uno o dos cuadros antes del Paso, y eso no debe contar. Hacia el
+-- enemigo, o sin nadie cerca, el cuerpo gira hacia el Paso como siempre. Devuelve la raíz de ese enemigo o nil.
+local STANCE_RANGE = 14
+local STANCE_MEMORY = 0.3
+local STANCE_HOLD = 0.25 -- tras el Paso sigues encarándolo un instante (para contraatacar de frente)
+local stanceHoldUntil = nil
+local recentLooks = {} -- { { t, look } } de los últimos STANCE_MEMORY s
+local function combatStance(dir)
+	local best, bestDistance = nil, STANCE_RANGE
+	for _, model in ipairs(CollectionService:GetTagged("Objetivo")) do
+		if model ~= root.Parent then
+			local enemyRoot = model:FindFirstChild("HumanoidRootPart")
+			local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
+			if enemyRoot and enemyHumanoid and enemyHumanoid.Health > 0 then
+				local offset = flat(enemyRoot.Position - root.Position)
+				local distance = offset.Magnitude
+				if distance > 0.1 and distance < bestDistance and dir:Dot(offset.Unit) <= 0.5 then
+					local toEnemy = offset.Unit
+					local inFront = flat(root.CFrame.LookVector):Dot(toEnemy) >= 0.2
+					for _, sample in ipairs(recentLooks) do
+						if inFront then
+							break
+						end
+						inFront = sample.look:Dot(toEnemy) >= 0.2
+					end
+					if inFront then
+						best, bestDistance = enemyRoot, distance
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function setDashFacing(on)
+	if not on then
+		stanceHoldUntil = nil
+	end
+	rotateBlockers.paso = if on then true else nil
+	applyBlockers()
+end
+
+
 local function stopDashForces()
+	if (dash and dash.keepFacing) or stanceHoldUntil then
+		setDashFacing(false)
+	end
 	sliding = false
 	mantle = nil
 	grapple = nil
@@ -322,9 +377,14 @@ local function endDash()
 	if not dash then
 		return
 	end
-	local distance = flat(root.Position - dash.startPos).Magnitude
+	local distance = dash.before + flat(root.Position - dash.startPos).Magnitude
 	state.lastDashDistance = distance
 	log(string.format("Paso: %.1f studs en %.2f s (objetivo %.1f)", distance, dash.elapsed, Config.DashDistance))
+	if dash.stance then
+		stanceHoldUntil = os.clock() + STANCE_HOLD -- la postura dura un instante más (ver update)
+	elseif dash.keepFacing then
+		setDashFacing(false)
+	end
 	dash = nil
 	state.dashing = false
 
@@ -343,8 +403,37 @@ local function endDash()
 	end
 end
 
-local function startDash()
+-- `fromBuffer`: el Paso que esperaba en el búfer ({ time, dir })
+local function startDash(fromBuffer)
 	if not humanoid or not root or humanoid.Health <= 0 or dash then
+		return
+	end
+	-- Dirección: la de la pulsación (si esperó en el búfer, la de aquel instante); sin dirección, hacia donde mira
+	local dir = fromBuffer and fromBuffer.dir
+	if not dir then
+		dir = flat(humanoid.MoveDirection)
+		if dir.Magnitude < 0.1 then
+			dir = flat(root.CFrame.LookVector)
+		end
+		if dir.Magnitude < 0.01 then
+			return
+		end
+		dir = dir.Unit
+	end
+	local now = os.clock()
+	if now - lastDashTime < Config.DashMinInterval or next(dashBlockers) then
+		-- Bloqueado un instante (fase activa de un golpe, otro Paso recién dado): se guarda. Aturdido no (ahí el
+		-- Paso es la Liberación, y no debe salir además un Paso al terminar)
+		if not fromBuffer and not dashBlockers.aturdido then
+			bufferedDash = { time = now, dir = dir }
+			Intenciones.Hold("movimiento", "Paso", function()
+				bufferedDash = nil
+			end)
+		end
+		return
+	end
+	local airborne = not state.grounded
+	if airborne and state.airDashesLeft <= 0 then
 		return
 	end
 	if grapple then
@@ -354,24 +443,6 @@ local function startDash()
 		hover = nil
 		hoverVelocity.Enabled = false
 	end
-	local now = os.clock()
-	if now - lastDashTime < Config.DashMinInterval or next(dashBlockers) then
-		return
-	end
-	local airborne = not state.grounded
-	if airborne and state.airDashesLeft <= 0 then
-		return
-	end
-
-	-- Dirección: la que pide el jugador; si no pide ninguna, hacia donde mira
-	local dir = flat(humanoid.MoveDirection)
-	if dir.Magnitude < 0.1 then
-		dir = flat(root.CFrame.LookVector)
-	end
-	if dir.Magnitude < 0.01 then
-		return
-	end
-	dir = dir.Unit
 
 	-- Sin cargas: un Paso extra si otro sistema lo paga (la Resonancia)
 	if state.charges <= 0 then
@@ -393,8 +464,16 @@ local function startDash()
 
 	local holdHeight = airborne and Config.AirDashHoldsHeight
 	local speed = Config.DashDistance / Config.DashDuration
-	dash = { dir = dir, speed = speed, elapsed = 0, startPos = root.Position, holdHeight = holdHeight }
+	local locked = (lockedTarget ~= nil and lockedTarget.Parent ~= nil) or cameraFacing
+	local stanceTarget = if locked then nil else combatStance(dir)
+	local keepFacing = locked or stanceTarget ~= nil
+	dash = { dir = dir, speed = speed, elapsed = 0, startPos = root.Position, holdHeight = holdHeight, budget = Config.DashDistance, before = 0, keepFacing = keepFacing, stance = stanceTarget ~= nil }
 	state.dashing = true
+	if fromBuffer then
+		Intenciones.Clear("movimiento")
+	else
+		Intenciones.Pressed("movimiento", "Paso")
+	end
 
 	dashVelocity.MaxAxesForce = Vector3.new(FORCE, holdHeight and FORCE or 0, FORCE)
 	dashVelocity.VectorVelocity = dir * speed
@@ -404,9 +483,18 @@ local function startDash()
 		root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
 	end
 
-	-- El cuerpo gira al instante hacia el Paso; con enemigo fijado o cámara fija sigue mirando al frente: el Paso
-	-- lateral es una esquiva de lado (y el de atrás, un paso atrás) sin dar la espalda ni zigzaguear
-	if not (lockedTarget and lockedTarget.Parent) and not cameraFacing then
+	-- El cuerpo gira al instante hacia el Paso; con enemigo fijado, cámara fija o un enemigo cerca delante sigue
+	-- mirando al frente: el Paso lateral es una esquiva de lado (y el de atrás, un paso atrás) sin dar la espalda
+	if keepFacing then
+		if stanceTarget then
+			root.CFrame = CFrame.lookAt(root.Position, Vector3.new(stanceTarget.Position.X, root.Position.Y, stanceTarget.Position.Z))
+		end
+		stanceHoldUntil = nil
+		setDashFacing(true)
+	else
+		if rotateBlockers.paso then
+			setDashFacing(false) -- (quedaba la postura del Paso anterior)
+		end
 		root.CFrame = CFrame.lookAt(root.Position, root.Position + dir)
 	end
 	dashedEvent:Fire(dir)
@@ -482,6 +570,9 @@ local function onStateChanged(_, newState)
 end
 
 local function setupCharacter(character)
+	bufferedDash = nil
+	table.clear(recentLooks)
+	Intenciones.Clear("movimiento")
 	disconnectAll()
 	stopDashForces()
 	humanoid, root, dashVelocity = nil, nil, nil
@@ -547,6 +638,30 @@ local function update(dt)
 		return
 	end
 	local now = os.clock()
+	-- La postura de combate del Paso termina un instante después del Paso
+	if stanceHoldUntil and now >= stanceHoldUntil and not dash then
+		setDashFacing(false)
+	end
+	-- Hacia dónde miraba hace un instante (la postura de combate del Paso)
+	local currentLook = flat(root.CFrame.LookVector)
+	if currentLook.Magnitude > 0.01 then
+		table.insert(recentLooks, { t = now, look = currentLook.Unit })
+	end
+	while recentLooks[1] and now - recentLooks[1].t > STANCE_MEMORY do
+		table.remove(recentLooks, 1)
+	end
+	-- Paso guardado: sale en cuanto se pueda, o vence
+	if bufferedDash then
+		if now - bufferedDash.time > DASH_BUFFER or dashBlockers.aturdido then
+			bufferedDash = nil
+			Intenciones.Clear("movimiento")
+		elseif not dash and not next(dashBlockers) and now - lastDashTime >= Config.DashMinInterval then
+			local pending = bufferedDash
+			bufferedDash = nil
+			Intenciones.Clear("movimiento") -- (si al final no puede salir, sin cargas, no queda nada guardado)
+			startDash(pending)
+		end
+	end
 	local velocity = root.AssemblyLinearVelocity
 
 	-- Suelo
@@ -622,10 +737,23 @@ local function update(dt)
 	-- El tope de tiempo corta el Paso si choca con algo.
 	if dash then
 		dash.elapsed += dt
-		local remaining = Config.DashDistance - flat(root.Position - dash.startPos).Magnitude
+		local remaining = dash.budget - flat(root.Position - dash.startPos).Magnitude
 		local wall = obstacleAhead(dash.dir, dash.speed * dt * 1.5 + 0.4)
-		if wall then
-			-- Choque: el Paso termina en la pared, sin seguir empujando (así no se atraviesa nada)
+		local normal = wall and flat(wall.Normal)
+		local along = if normal and normal.Magnitude > 0.01 then dash.dir - normal.Unit * dash.dir:Dot(normal.Unit) else Vector3.zero
+		if wall and not dash.deflected and along.Magnitude >= 0.5 and remaining > 1.5 then
+			-- Choque de refilón (30° o más respecto a la pared): el Paso sigue A LO LARGO de la pared con lo que le
+			-- queda, en vez de frenarse en seco (pasillos, esquinas). Una sola vez por Paso.
+			dash.before += flat(root.Position - dash.startPos).Magnitude
+			dash.budget = remaining
+			dash.startPos = root.Position
+			dash.dir = along.Unit
+			dash.deflected = true
+			stopAgainst(wall.Normal)
+			dashVelocity.VectorVelocity = dash.dir * dash.speed
+		elseif wall then
+			-- Choque de frente: el Paso termina en la pared, sin seguir empujando (así no se atraviesa nada) y el
+			-- control vuelve en el acto (sin quedarse congelado ni salir rebotado)
 			endDash()
 			exitBlend = nil
 			dashVelocity.Enabled = false

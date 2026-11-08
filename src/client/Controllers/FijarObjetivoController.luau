@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local FijarObjetivoController = {}
+local Intenciones = require(script.Parent:WaitForChild("Intenciones"))
 
 local RANGE = 45
 local KEEP_RANGE = 55
@@ -21,6 +22,11 @@ local HEIGHT = 4.5
 local SHOULDER = 2.2
 local LOST_SIGHT_TIME = 1.2
 local FLICK = 140 -- píxeles de tirón del ratón para cambiar de enemigo
+local CROWD_RANGE = 25 -- otros enemigos a esta distancia abren el plano (para ver venir sus ataques)
+local CAMERA_RADIUS = 0.45 -- la cámara choca como una esfera (no se asoma por el borde de una pared)
+
+-- Al caer el enemigo fijado, pasar solo al siguiente (Ajustes; apagado: se suelta limpio)
+FijarObjetivoController.AutoSwitch = false
 
 local player = Players.LocalPlayer
 local target = nil
@@ -158,6 +164,7 @@ local function release()
 	target = nil
 	lostSince = nil
 	marker.Enabled = false
+	Intenciones.Cancel("soltar objetivo")
 	if movement and movement.SetLockedTarget then
 		movement.SetLockedTarget(nil)
 	end
@@ -174,6 +181,9 @@ end
 local function lockOn(model)
 	if not model then
 		return false
+	end
+	if model ~= target then
+		Intenciones.Cancel("cambio de objetivo") -- lo guardado para el anterior no sale contra el nuevo
 	end
 	target = model
 	lostSince = nil
@@ -236,18 +246,50 @@ function FijarObjetivoController.Start(input, movementController, camera)
 		end
 	end)
 	player.CharacterAdded:Connect(release)
-
-	local cameraCFrame = nil
+	local camDistance, camDir, camLook = nil, nil, nil
+	local crowd = 0 -- 0..2, suavizado: cuántos otros enemigos cerca (abre el plano)
+	local occlusionParams = RaycastParams.new()
+	occlusionParams.FilterType = Enum.RaycastFilterType.Exclude
+	occlusionParams.RespectCanCollide = true
+	-- Distancia libre desde el pivote hacia la cámara: la primera pared (los personajes no tapan la cámara)
+	local function freeDistance(pivot, toCamera)
+		local ignore = { player.Character, target, Workspace.CurrentCamera }
+		for _ = 1, 4 do
+			occlusionParams.FilterDescendantsInstances = ignore
+			local ok, hit = pcall(Workspace.Spherecast, Workspace, pivot, CAMERA_RADIUS, toCamera, occlusionParams)
+			if not ok or not hit then
+				return toCamera.Magnitude
+			end
+			local model = hit.Instance:FindFirstAncestorOfClass("Model")
+			if model and model:FindFirstChildOfClass("Humanoid") then
+				table.insert(ignore, model)
+			else
+				return math.max(1.2, hit.Distance - 0.2)
+			end
+		end
+		return toCamera.Magnitude
+	end
 	RunService:BindToRenderStep("UmbralFijarObjetivo", Enum.RenderPriority.Camera.Value + 2, function(dt)
 		if not target then
-			cameraCFrame = nil
+			camDistance, camDir, camLook = nil, nil, nil
 			return
 		end
 		local root = rootPart()
-		local enemyRoot = targetRoot(target)
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		if not root or not enemyRoot or not humanoid or humanoid.Health <= 0 then
+		if not root or not humanoid or humanoid.Health <= 0 then
 			release()
+			return
+		end
+		local enemyRoot = targetRoot(target)
+		if not enemyRoot then
+			-- El enemigo cayó: se suelta limpio, o se pasa al siguiente si así se eligió en Ajustes
+			local fallen = target
+			local nextModel = FijarObjetivoController.AutoSwitch and pick(nil) or nil
+			if nextModel and nextModel ~= fallen then
+				lockOn(nextModel)
+			else
+				release()
+			end
 			return
 		end
 		local offset = enemyRoot.Position - root.Position
@@ -270,20 +312,33 @@ function FijarObjetivoController.Start(input, movementController, camera)
 		local flatDir = Vector3.new(offset.X, 0, offset.Z)
 		flatDir = if flatDir.Magnitude > 0.1 then flatDir.Unit else Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
 		local right = Vector3.new(-flatDir.Z, 0, flatDir.X)
-		local position = root.Position - flatDir * DISTANCE + Vector3.new(0, HEIGHT, 0) + right * SHOULDER
-		-- La cámara no se mete dentro de las paredes: se acerca si algo tapa
-		sightParams.FilterDescendantsInstances = { player.Character, target, camera }
-		local pivot = root.Position + Vector3.new(0, 2.5, 0)
-		local hit = Workspace:Raycast(pivot, position - pivot, sightParams)
-		if hit then
-			position = hit.Position + (pivot - hit.Position).Unit * 0.6
+		-- Varios enemigos cerca: el plano se abre un poco (más lejos y más alto) para ver venir sus ataques
+		local others = 0
+		for _, model in ipairs(candidates()) do
+			local otherRoot = model ~= target and targetRoot(model)
+			if otherRoot and (otherRoot.Position - root.Position).Magnitude <= CROWD_RANGE then
+				others += 1
+			end
 		end
+		crowd += (math.min(others, 2) - crowd) * (1 - math.exp(-2 * dt))
+		local wanted = root.Position - flatDir * (DISTANCE + crowd * 1.6) + Vector3.new(0, HEIGHT + crowd * 0.7, 0) + right * SHOULDER
+		-- Choque con paredes, como una esfera: si algo tapa, la cámara se acerca AL INSTANTE (nunca se ve a través de
+		-- la pared ni un cuadro de ella) y al despejarse vuelve SUAVE (sin saltos)
+		local pivot = root.Position + Vector3.new(0, 2.5, 0)
+		local toCamera = wanted - pivot
+		local allowed = freeDistance(pivot, toCamera)
+		if not camDistance or allowed < camDistance then
+			camDistance = allowed
+		else
+			camDistance += (allowed - camDistance) * (1 - math.exp(-5 * dt))
+		end
+		local follow = 1 - math.exp(-12 * dt)
+		camDir = if camDir then camDir:Lerp(toCamera.Unit, follow).Unit else toCamera.Unit
 		local lookAt = enemyRoot.Position:Lerp(root.Position, 0.25) + Vector3.new(0, 1, 0)
-		local desired = CFrame.lookAt(position, lookAt)
-		cameraCFrame = if cameraCFrame then cameraCFrame:Lerp(desired, 1 - math.exp(-12 * dt)) else desired
+		camLook = if camLook then camLook:Lerp(lookAt, follow) else lookAt
 		-- La vibración de los golpes también se ve con la cámara fijada
 		local shake = if cameraController and cameraController.ShakeOffset then cameraController.ShakeOffset() else Vector3.zero
-		camera.CFrame = cameraCFrame * CFrame.new(shake)
+		camera.CFrame = CFrame.lookAt(pivot + camDir * camDistance, camLook) * CFrame.new(shake)
 	end)
 end
 

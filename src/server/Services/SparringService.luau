@@ -276,20 +276,51 @@ end
 -- un Paso real parecía lento). Un Paso recorre 14 studs; corriendo de lado se llega a 9 como mucho. Espera, acotado,
 -- a que lleguen esas posiciones: si fue muy justo, el veredicto sale unas décimas después, pero un Paso legítimo
 -- nunca se niega por llegar tarde.
+--
+-- Dos preguntas distintas: ¿fue un Paso válido? (avanzó lo que permitía el camino) y ¿lo sacó del golpe? (eso lo
+-- decide la zona del ataque). Si una pared acortaba el camino, el Paso sigue siendo válido con el avance que cabía,
+-- pero queda "frenado": solo cuenta como Contrapaso si de verdad salió de la zona (un Paso contra la pared no esquiva
+-- nada). Así un Paso legítimo corto no se niega, y quedarse quieto junto a un muro tampoco engaña.
 local MovementConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
 local DASH_SPAN = MovementConfig.DashDuration * 1.5
-local DASH_EVIDENCE = MovementConfig.DashDistance * 0.75 -- 10,5 studs: por encima del sprint en ese tiempo (34 × 0,27 = 9,2)
+local DASH_EVIDENCE_RATIO = 0.75 -- 10,5 de 14 studs con el camino libre: por encima del sprint (34 × 0,27 = 9,2)
+local dashParams = RaycastParams.new()
+dashParams.FilterType = Enum.RaycastFilterType.Exclude
+dashParams.RespectCanCollide = true
+-- Camino libre desde `from` en la dirección del Paso (los personajes no frenan un Paso: se atraviesan)
+local function dashRoom(character, from, dir)
+	local ignore = { character }
+	for _ = 1, 4 do
+		dashParams.FilterDescendantsInstances = ignore
+		local ok, hit = pcall(Workspace.Spherecast, Workspace, from, 0.9, dir * MovementConfig.DashDistance, dashParams)
+		if not ok or not hit then
+			return MovementConfig.DashDistance
+		end
+		local model = hit.Instance:FindFirstAncestorOfClass("Model")
+		if model and model:FindFirstChildOfClass("Humanoid") then
+			table.insert(ignore, model)
+		elseif math.abs(hit.Normal.Y) > 0.6 then
+			return MovementConfig.DashDistance -- suelo o rampa: no frena
+		else
+			return hit.Distance
+		end
+	end
+	return MovementConfig.DashDistance
+end
+-- Devuelve: válido, avance, frenado (una pared acortaba el camino a menos del 60 %)
 local function realPaso(player, paso)
-	if not paso or not player.Character then
-		return false, 0
+	local character = player.Character
+	if not paso or not character then
+		return false, 0, false
 	end
 	local before = PositionService.ConfirmedAt(player, paso.t)
 	local after = before and PositionService.ConfirmedAt(player, paso.t + DASH_SPAN)
 	if not before or not after then
-		return false, 0
+		return false, 0, false
 	end
+	local room = math.min(MovementConfig.DashDistance, dashRoom(character, before.Position, paso.dir))
 	local advance = flat(after.Position - before.Position):Dot(paso.dir)
-	return advance >= DASH_EVIDENCE, advance
+	return advance >= DASH_EVIDENCE_RATIO * room, advance, room < MovementConfig.DashDistance * 0.6
 end
 
 local function resolve(s, info, player)
@@ -359,14 +390,16 @@ local function resolve(s, info, player)
 	if not result and attack.contrapaso and threat and paso then
 		local reference = (pasoStart or atCommit or atImpact).Position
 		if isLateral(paso.dir, flat(reference - info.originCFrame.Position)) then
-			local real, advance = realPaso(player, paso)
-			if real then
+			local real, advance, braked = realPaso(player, paso)
+			if real and (not braked or not insideNow) then
 				result = "contrapaso"
-			else
+			elseif not real then
 				player:SetAttribute("PasosSinMovimiento", (player:GetAttribute("PasosSinMovimiento") or 0) + 1)
 				if RunService:IsStudio() then
-					print(string.format("[UMBRAL] Defensa · ataque %d → Paso avisado sin el avance de un Paso (%.1f studs de %.1f): no hay Contrapaso", info.attackId, advance, DASH_EVIDENCE))
+					print(string.format("[UMBRAL] Defensa · ataque %d → Paso avisado sin el avance de un Paso (%.1f studs): no hay Contrapaso", info.attackId, advance))
 				end
+			elseif RunService:IsStudio() then
+				print(string.format("[UMBRAL] Defensa · ataque %d → Paso frenado por una pared y todavía dentro del golpe: no hay Contrapaso", info.attackId))
 			end
 		end
 	end

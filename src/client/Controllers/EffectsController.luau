@@ -182,11 +182,32 @@ local function playReaction(model, heavy)
 end
 
 -- Golpe que conecta (predicho en esta pantalla)
-function EffectsController.Impact(position, attack, targetModel)
+-- `blocked`: el golpe dio en una coraza (no hace daño): chispas frías y un golpe seco, sin destello ni reacción del
+-- enemigo. Ligero, pesado, bloqueado y acertado se distinguen sin mirar los números.
+function EffectsController.Impact(position, attack, targetModel, blocked)
 	local heavy = attack.heavy or attack.finisher
 	local part = anchorPart("ImpactoUmbral", position, 1)
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = part
+	if blocked then
+		burst(attachment, TEXTURES.Sparks, {
+			Color = ColorSequence.new(Color3.fromRGB(215, 232, 255), Color3.fromRGB(110, 150, 230)),
+			LightEmission = 0.5,
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 0) }),
+			Lifetime = NumberRange.new(0.08, 0.18),
+			Speed = NumberRange.new(22, 40),
+			SpreadAngle = Vector2.new(55, 55),
+			Drag = 5,
+		}, math.max(4, math.floor(12 * EcoEfectos.Escala())))
+		playSound("Block", part)
+		if heavy then
+			playSound("Break", part)
+		end
+		if attack.shake and attack.shake > 0 then
+			CameraController.Shake(attack.shake * 0.5)
+		end
+		return
+	end
 
 	burst(attachment, TEXTURES.Sparks, {
 		Color = ColorSequence.new(Color3.fromRGB(255, 244, 210), Color3.fromRGB(255, 170, 60)),
@@ -196,7 +217,7 @@ function EffectsController.Impact(position, attack, targetModel)
 		Speed = NumberRange.new(if heavy then 30 else 18, if heavy then 55 else 34),
 		SpreadAngle = Vector2.new(180, 180),
 		Drag = 7,
-	}, if heavy then 26 else 14)
+	}, math.max(4, math.floor((if heavy then 26 else 14) * EcoEfectos.Escala())))
 
 	burst(attachment, TEXTURES.Shockwave, {
 		Color = ColorSequence.new(Color3.fromRGB(255, 255, 255)),
@@ -208,12 +229,14 @@ function EffectsController.Impact(position, attack, targetModel)
 		LockedToPart = true,
 	}, 1)
 
-	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 220, 160)
-	light.Brightness = if heavy then 6 else 3
-	light.Range = if heavy then 14 else 8
-	light.Parent = part
-	Debris:AddItem(light, 0.07)
+	if EcoEfectos.Luces() then
+		local light = Instance.new("PointLight")
+		light.Color = Color3.fromRGB(255, 220, 160)
+		light.Brightness = if heavy then 6 else 3
+		light.Range = if heavy then 14 else 8
+		light.Parent = part
+		Debris:AddItem(light, 0.07)
+	end
 
 	local color = ecoColor()
 	EcoEfectos.Destello(position, color, if heavy then 5.5 else 3.2, if heavy then 0.17 else 0.12)

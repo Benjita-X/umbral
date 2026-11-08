@@ -20,6 +20,7 @@ local shared = ReplicatedStorage:WaitForChild("Shared")
 local CombatConfig = require(shared:WaitForChild("Config"):WaitForChild("CombatConfig"))
 local AnimationLibrary = require(shared:WaitForChild("Combat"):WaitForChild("AnimationLibrary"))
 local EcoEfectos = require(script.Parent:WaitForChild("EcoEfectos"))
+local Intenciones = require(script.Parent:WaitForChild("Intenciones"))
 local PositionReporter = require(script.Parent:WaitForChild("PositionReporter"))
 
 local EcoController = {}
@@ -642,10 +643,20 @@ local function deny(slot, reason)
 	end
 end
 
--- Búfer: una tecla pulsada un poco antes de tiempo (al final del enfriamiento, de un aturdimiento o de una
--- caída) no se pierde: sale sola en cuanto se pueda, dentro de BUFFER segundos.
-local BUFFER = 0.3
-local buffered = nil -- { slot, untilTime, reason }
+-- Búfer: una tecla pulsada un poco antes de tiempo no se pierde: sale sola en cuanto se pueda. Cuánto espera sale
+-- del estado REAL, no de un temporizador fijo:
+--   · enfriamiento o aturdimiento: solo si falta como mucho LEAD; espera lo que falta (+0,1 s)
+--   · el final de un golpe (fase activa o recuperación de un fallo): si falta como mucho RECOVERY_LEAD
+--   · sin saber cuánto falta (cayendo tras el Descenso...): BUFFER
+-- Pulsar otra cosa después (Atacar, el Paso, otra tecla) la reemplaza (Intenciones): nunca sale por sorpresa.
+local BUFFER = 0.18
+local LEAD = 0.2
+local RECOVERY_LEAD = 0.45
+local buffered = nil -- { slot, untilTime, reason, created, recast }
+local function clearBuffer()
+	buffered = nil
+	Intenciones.Clear("eco")
+end
 
 -- Tecla guardada en la cola (la barra la marca) o nil
 function EcoController.BufferedSlot()
@@ -663,7 +674,10 @@ end
 -- `recastOnly`: la pulsación era para el relanzamiento (si ya venció, no sale en su lugar la habilidad normal)
 local function attempt(slot, recastOnly)
 	if not canAct() then
-		return false, if combat.State.mode == "Aturdido" then "aturdido" else "ocupado"
+		if combat.State.mode == "Aturdido" then
+			return false, "aturdido", math.max(0, (combat.State.stunnedUntil or 0) - os.clock())
+		end
+		return false, "ocupado"
 	end
 	-- Relanzamiento disponible en esta tecla: corta lo que estés haciendo con la MISMA regla que una habilidad
 	-- (auditoría externa: no es una puerta trasera para saltarse la fase activa ni la recuperación de un golpe
@@ -732,15 +746,20 @@ local function tryCast(slot)
 	end
 	local ok, reason, remaining = attempt(slot)
 	if ok then
-		buffered = nil
+		clearBuffer()
+		Intenciones.Pressed("eco", "habilidad " .. slot)
 		return
 	end
-	if BUFFERABLE[reason] and (reason ~= "enfriamiento" or (remaining or 0) <= BUFFER) then
-		local ttl = if WAITS_FOR_ATTACK[reason] then math.min(0.7, (remaining or 0) + 0.15) else BUFFER
-		buffered = { slot = slot, untilTime = os.clock() + math.max(ttl, BUFFER), reason = reason, created = os.clock(), recast = wantsRecast }
+	local limit = if WAITS_FOR_ATTACK[reason] then RECOVERY_LEAD else LEAD
+	if BUFFERABLE[reason] and (remaining == nil or remaining <= limit) then
+		local ttl = if remaining then remaining + 0.1 else BUFFER
+		buffered = { slot = slot, untilTime = os.clock() + ttl, reason = reason, created = os.clock(), recast = wantsRecast }
+		Intenciones.Hold("eco", "habilidad " .. slot, function()
+			buffered = nil
+		end)
 		return
 	end
-	buffered = nil
+	clearBuffer()
 	deny(slot, reason)
 end
 
@@ -751,21 +770,21 @@ local function pollBuffer()
 		return
 	end
 	if os.clock() > b.untilTime then
-		buffered = nil
+		clearBuffer()
 		deny(b.slot, b.reason)
 		return
 	end
 	local ok, reason, remaining = attempt(b.slot, b.recast)
 	if ok then
-		buffered = nil
+		clearBuffer()
 	elseif BUFFERABLE[reason] then
 		b.reason = reason
-		-- Si ahora espera a que termine un golpe fallado, la cola dura hasta entonces (con tope)
+		-- Si ahora espera a que termine un golpe (o un fallo), la cola dura hasta entonces (con tope)
 		if WAITS_FOR_ATTACK[reason] and remaining then
-			b.untilTime = math.max(b.untilTime, math.min((b.created or os.clock()) + 0.8, os.clock() + remaining + 0.1))
+			b.untilTime = math.max(b.untilTime, math.min((b.created or os.clock()) + RECOVERY_LEAD + 0.15, os.clock() + remaining + 0.1))
 		end
 	else
-		buffered = nil
+		clearBuffer()
 		deny(b.slot, reason)
 	end
 end
@@ -793,7 +812,7 @@ local function equip(name)
 	local wait = math.max(0, EQUIP_GAP - (os.clock() - lastEquipSent))
 	state.swapUntil = os.clock() + wait + eco.SwapCooldown
 	table.clear(state.recast)
-	buffered = nil
+	clearBuffer()
 	local scheduled = pendingEquip ~= nil
 	pendingEquip = name
 	local root = rootPart()
@@ -996,7 +1015,7 @@ function EcoController.Start(inputController, movementController, combatControll
 	end)
 
 	player.CharacterAdded:Connect(function()
-		buffered = nil
+		clearBuffer()
 		falling = false
 		descentToken += 1
 		table.clear(state.recast)

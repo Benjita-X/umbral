@@ -79,9 +79,28 @@ EcoEfectos.Folder = folder
 EcoEfectos.Creados = 0 -- piezas de efecto creadas (diagnóstico de la vitrina)
 EcoEfectos.Lento = 1 -- la vitrina lo sube para ver los efectos en cámara lenta (alarga duraciones)
 local budgetCheck, saturated = 0, false
-EcoEfectos.Reducidos = false -- ajuste del menú "Efectos reducidos": siempre como si hubiera demasiados
+-- Calidad de los efectos (Ajustes): "Alta", "Equilibrada" o "Rendimiento". Cambia solo lo DECORATIVO (partículas de
+-- más, luces, piezas cuando hay muchas a la vez); las señales del combate (destello del golpe, avisos de ataque,
+-- números, colores de cada Eco) se ven igual en las tres. En celular empieza en "Equilibrada".
+local UserInputService = game:GetService("UserInputService")
+EcoEfectos.Calidades = { "Alta", "Equilibrada", "Rendimiento" }
+EcoEfectos.Calidad = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "Equilibrada" else "Alta"
+EcoEfectos.Reducidos = false -- (compatibilidad: equivale a "Rendimiento")
+local PIECE_LIMIT = { Alta = 380, Equilibrada = 200, Rendimiento = 0 }
+local PARTICLE_SCALE = { Alta = 1, Equilibrada = 0.7, Rendimiento = 0.4 }
+local function quality()
+	return if EcoEfectos.Reducidos then "Rendimiento" else EcoEfectos.Calidad
+end
+-- Multiplicador de partículas decorativas de la calidad elegida
+function EcoEfectos.Escala()
+	return PARTICLE_SCALE[quality()] or 1
+end
+-- ¿Luces en los efectos? (en "Rendimiento", no)
+function EcoEfectos.Luces()
+	return quality() ~= "Rendimiento"
+end
 function EcoEfectos.Saturado()
-	if EcoEfectos.Reducidos then
+	if quality() == "Rendimiento" then
 		return true
 	end
 	local clock = os.clock()
@@ -89,7 +108,7 @@ function EcoEfectos.Saturado()
 		budgetCheck = clock
 		local camera = Workspace.CurrentCamera
 		local f = camera and camera:FindFirstChild("UmbralEfectosEco")
-		saturated = f ~= nil and #f:GetChildren() > 380
+		saturated = f ~= nil and #f:GetChildren() > (PIECE_LIMIT[quality()] or 380)
 	end
 	return saturated
 end
@@ -182,7 +201,7 @@ function EcoEfectos.Burst(position, color, count, size, speed)
 	emitter.Drag = 6
 	emitter.Rate = 0
 	emitter.Parent = attachment
-	emitter:Emit(count or 16)
+	emitter:Emit(math.max(1, math.floor((count or 16) * EcoEfectos.Escala() + 0.5)))
 	Debris:AddItem(anchor, 1)
 end
 
@@ -805,11 +824,13 @@ function EcoEfectos.Totem(center, color, duration)
 	local pole = EcoEfectos.Part(Vector3.new(0.6, 5, 0.6), CFrame.new(ground + Vector3.new(0, 2.5, 0)), Color3.fromRGB(70, 70, 90), Enum.PartType.Block, 0)
 	pole.Material = Enum.Material.Metal
 	local tip = EcoEfectos.Part(Vector3.new(1.4, 1.4, 1.4), CFrame.new(ground + Vector3.new(0, 5.3, 0)), color, Enum.PartType.Ball, 0.1)
-	local light = Instance.new("PointLight")
-	light.Color = color
-	light.Range = 10
-	light.Brightness = 2
-	light.Parent = tip
+	if EcoEfectos.Luces() then
+		local light = Instance.new("PointLight")
+		light.Color = color
+		light.Range = 10
+		light.Brightness = 2
+		light.Parent = tip
+	end
 	EcoEfectos.Rayo(ground + Vector3.new(0, 25, 0), ground + Vector3.new(0, 5.3, 0), color, 0.5)
 	task.delay(duration, function()
 		fadeAndDestroy(pole, 0.25)
