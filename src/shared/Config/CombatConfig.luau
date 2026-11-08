@@ -836,7 +836,7 @@ local CombatConfig = {
 
 	-- IDs de animaciones publicadas en Roblox (rbxassetid://...). Vacío = se usan las generadas
 	-- por código (solo funcionan en Studio). Antes de publicar el juego hay que subirlas y ponerlas aquí.
-	AnimationIds = {},
+	AnimationIds = require(script.Parent:WaitForChild("AnimacionesSubidas")), -- IDs publicados (ver ese archivo)
 }
 
 return CombatConfig

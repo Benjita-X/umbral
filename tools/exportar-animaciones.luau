@@ -1,17 +1,54 @@
--- Pegar en la Barra de comandos de Studio (pestaña Ver → Barra de comandos) con UMBRAL-Desarrollo abierto.
--- Crea en ServerStorage/AnimacionesParaSubir una KeyframeSequence por cada animación provisional del juego (las
--- mismas que hoy solo funcionan dentro de Studio). Para subir cada una: clic derecho → "Guardar en Roblox" →
--- copia el ID y ponlo en CombatConfig.AnimationIds, por ejemplo: Jab = "rbxassetid://123456789".
--- También se pueden abrir en el Editor de animaciones para mejorarlas antes de subirlas.
+-- Animaciones de UMBRAL para editarlas y publicarlas. Pegar en la Barra de comandos de Studio (Ver → Barra de
+-- comandos) con build/UMBRAL-Desarrollo.rbxlx abierto, y pulsar Enter.
+--   1. Crea un muñeco R15 "UmbralRig" en Workspace (si no está).
+--   2. Deja TODAS las animaciones del juego en ServerStorage/RBX_ANIMSAVES/UmbralRig: el Editor de animaciones las
+--      lista en "Cargar" (selecciona el muñeco → pestaña Avatar → Editor de animaciones → ⋯ → Cargar).
+--   3. Abre una, mejórala si quieres y "Publicar en Roblox". Copia el ID en src/shared/Config/AnimacionesSubidas.luau
+--      (o pásamelo y lo pongo yo). También sirve clic derecho sobre la animación en ServerStorage → "Guardar en Roblox".
+-- Los tiempos de cada golpe ya coinciden con el combate (salen de CombatConfig): al editar, conserva la duración.
+local Players = game:GetService("Players")
+local ServerStorage = game:GetService("ServerStorage")
 local AnimationLibrary = require(game:GetService("ReplicatedStorage").Shared.Combat.AnimationLibrary)
-local storage = game:GetService("ServerStorage")
-local folder = storage:FindFirstChild("AnimacionesParaSubir") or Instance.new("Folder")
-folder.Name = "AnimacionesParaSubir"
-folder.Parent = storage
-folder:ClearAllChildren()
-for _, name in ipairs(AnimationLibrary.Names()) do
+
+local rig = workspace:FindFirstChild("UmbralRig")
+if not rig then
+	local ok, model = pcall(function()
+		return Players:CreateHumanoidModelFromDescription(Instance.new("HumanoidDescription"), Enum.HumanoidRigType.R15)
+	end)
+	if ok and model then
+		rig = model
+		rig.Name = "UmbralRig"
+		rig:PivotTo(CFrame.new(0, 6, -12))
+		rig.HumanoidRootPart.Anchored = true
+		rig.Parent = workspace
+	else
+		warn("[UMBRAL] No se pudo crear el muñeco. Insértalo con Avatar → Constructor de rigs → R15 y llámalo UmbralRig; luego vuelve a pegar este comando.")
+	end
+end
+
+local saves = ServerStorage:FindFirstChild("RBX_ANIMSAVES")
+if not saves then
+	saves = Instance.new("Model")
+	saves.Name = "RBX_ANIMSAVES"
+	saves.Parent = ServerStorage
+end
+local entry = saves:FindFirstChild("UmbralRig")
+if not entry then
+	entry = Instance.new("ObjectValue")
+	entry.Name = "UmbralRig"
+	entry.Parent = saves
+end
+entry.Value = rig
+
+local names = AnimationLibrary.Names()
+for _, name in ipairs(names) do
+	local old = entry:FindFirstChild(name)
+	if old then
+		old:Destroy()
+	end
 	local sequence = AnimationLibrary.BuildSequence(name)
 	sequence.Name = name
-	sequence.Parent = folder
+	sequence.Parent = entry
 end
-print(string.format("[UMBRAL] %d animaciones listas en ServerStorage/AnimacionesParaSubir", #folder:GetChildren()))
+print(string.format("[UMBRAL] %d animaciones listas en ServerStorage/RBX_ANIMSAVES/UmbralRig:", #names))
+print(table.concat(names, ", "))
