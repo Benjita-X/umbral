@@ -1,10 +1,7 @@
--- IDs de las animaciones ya publicadas en Roblox (Editor de animaciones → Publicar en Roblox). Mientras una no esté
--- aquí, el juego usa su versión provisional, que SOLO funciona dentro de Studio; con todas puestas, el juego
--- publicado se ve animado. Los nombres son los que lista tools/exportar-animaciones.luau.
+-- IDs de las animaciones publicadas en Roblox (clic derecho sobre la animación → Guardar en Roblox). Mientras una no
+-- esté aquí, el juego usa su versión provisional, que SOLO funciona dentro de Studio. Están las 40 que lista
+-- tools/exportar-animaciones.luau; si se agrega o cambia una animación, hay que volver a subirla y poner su ID.
 -- Formato: NombreDeLaAnimacion = "rbxassetid://123456789",
--- Faltan (19): EstocadaCarrera, Fuerte, Guardia, Jab, Paso, PasoVoltereta, Patada, PatadaPicada, PatadaVoladora,
--- Reaccion, ReaccionFuerte, Reves, SaltoPared, SparringBarrido, SparringFuerte, SparringGolpe, SparringRapido, Tajo,
--- TajoFuerte.
 return {
 	AgarreBorde = "rbxassetid://137717582857537",
 	Aturdido = "rbxassetid://137185917657813",
@@ -27,4 +24,23 @@ return {
 	EcoTempestad = "rbxassetid://110269464864767",
 	EcoTorbellino = "rbxassetid://96459412392934",
 	Estocada = "rbxassetid://135142375830440",
+	EstocadaCarrera = "rbxassetid://80540157152446",
+	Fuerte = "rbxassetid://77635350916094",
+	Guardia = "rbxassetid://78181924057893",
+	Jab = "rbxassetid://112121990154260",
+	Paso = "rbxassetid://83168459141386",
+	PasoVoltereta = "rbxassetid://111441842210215",
+	Patada = "rbxassetid://93280699388760",
+	PatadaPicada = "rbxassetid://99232724408154",
+	PatadaVoladora = "rbxassetid://93450226203668",
+	Reaccion = "rbxassetid://134140283694656",
+	ReaccionFuerte = "rbxassetid://111032776050997",
+	Reves = "rbxassetid://89026392742386",
+	SaltoPared = "rbxassetid://115362497910486",
+	SparringBarrido = "rbxassetid://93272692943162",
+	SparringFuerte = "rbxassetid://71106120225287",
+	SparringGolpe = "rbxassetid://92916868119584",
+	SparringRapido = "rbxassetid://93380143829866",
+	Tajo = "rbxassetid://111252403750038",
+	TajoFuerte = "rbxassetid://84330174824143",
 }
