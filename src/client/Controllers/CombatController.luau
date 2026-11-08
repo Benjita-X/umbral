@@ -179,8 +179,9 @@ local function findSoftTarget(desired, range, cosLimit)
 	return best, bestDistance
 end
 
--- Asistencia de apuntado elegida en Ajustes (CombatConfig.AimAssist). En PC, Ligera; con pantalla táctil o mando, Completa
-local aimLevel = if game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled then "Completa" else "Ligera"
+-- Asistencia de apuntado elegida en Ajustes (CombatConfig.AimAssist). Ligera por defecto en PC, mando y celular:
+-- orienta un poco hacia el rival de delante sin acercarte ni robarle el control a quien apunta a mano.
+local aimLevel = "Ligera"
 local function assist()
 	return Config.AimAssist[aimLevel] or Config.AimAssist.Ligera
 end
@@ -193,12 +194,46 @@ function CombatController.AimAssist()
 	return aimLevel, assist()
 end
 
+local attackIntent -- (más abajo)
 local function defaultSoftTarget(desired)
 	local a = assist()
 	if a.attackAngle <= 0 then
 		return nil -- Manual: el golpe sale hacia donde miras
 	end
 	return findSoftTarget(desired, a.attackRange, math.cos(math.rad(a.attackAngle)))
+end
+
+-- Hacia dónde sale el golpe y si el jugador pide avanzar. La dirección del ataque NO es la del movimiento:
+--   · enemigo fijado → hacia él; cámara fija → hacia la mira; si no → hacia donde mira el cuerpo;
+--   · la entrada solo "manda" si va hacia delante (dentro de FORWARD_CONE del frente): entonces el golpe se orienta
+--     un poco hacia ella y cuenta como "pido avanzar". Retroceder o ir de lado mientras golpeas NO gira el golpe.
+local FORWARD_CONE = math.cos(math.rad(60))
+attackIntent = function()
+	local facing = flat(root.CFrame.LookVector)
+	facing = if facing.Magnitude > 0.01 then facing.Unit else Vector3.new(0, 0, -1)
+	local steered = true
+	local locked = movement.LockedTarget()
+	local lockedRoot = locked and targetRootOf(locked)
+	if lockedRoot and flat(lockedRoot.Position - root.Position).Magnitude > 0.3 then
+		facing = flat(lockedRoot.Position - root.Position).Unit
+		steered = false
+	elseif movement.CameraFacing() then
+		local camera = workspace.CurrentCamera
+		local look = camera and flat(camera.CFrame.LookVector)
+		if look and look.Magnitude > 0.01 then
+			facing = look.Unit
+			steered = false
+		end
+	end
+	local move = humanoid and flat(humanoid.MoveDirection) or Vector3.zero
+	local forward = move.Magnitude > 0.1 and move.Unit:Dot(facing) >= FORWARD_CONE
+	if forward and steered then
+		return move.Unit, true
+	end
+	return facing, forward
+end
+CombatController.AttackIntent = function()
+	return attackIntent()
 end
 
 -- ---------- Bloqueos del movimiento ----------
@@ -210,6 +245,14 @@ local function setAttackLocks(phase)
 	movement.SetJumpBlocked(KEY, committed)
 	movement.SetAutoRotateBlocked(KEY, phase ~= "recovery")
 	movement.SetSpeedMultiplier(KEY, Config.AttackMoveMultiplier)
+end
+
+-- Cancelar tiene coste: tras un golpe que CONECTÓ, el Paso o un Eco cortan la recuperación. Un remate o un golpe
+-- fuerte FALLADO no se escapa con un Paso (es el castigo del fallo, igual que en el servidor y con los Ecos).
+local function lockWhiff(a)
+	if a and a.phase == "recovery" and not a.hit and (a.def.finisher or a.def.heavy) then
+		movement.SetDashBlocked(KEY, true)
+	end
 end
 
 local function clearLocks()
@@ -270,6 +313,7 @@ local function onHitRejected(data)
 			a.hit = false
 			a.cancelable = false
 			a.rejected = true
+			lockWhiff(a)
 		end
 	end
 	events.HitRejected:Fire(data.seq, data.target, data.reason)
@@ -366,30 +410,51 @@ local function startAttack(name, charge)
 			remotes.start:FireServer(state.sequence, name, serverNow())
 		end
 	end
-	local desired = movement.DesiredDirection()
+	-- Dirección del golpe e intención de avanzar: independientes del movimiento (ver attackIntent)
+	local aim, forward = attackIntent()
 	local target, distance
+	local a = assist()
 	if counter then
-		local a = assist()
-		target, distance = findSoftTarget(desired, a.counterRange, if a.counterAngle >= 180 then -1 else math.cos(math.rad(a.counterAngle)))
+		-- Contraataque: premio a una buena defensa, de alcance CORTO (no persigue a nadie lejos)
+		if a.counterAngle > 0 then
+			target, distance = findSoftTarget(aim, a.counterRange, if a.counterAngle >= 180 then -1 else math.cos(math.rad(a.counterAngle)))
+		end
 	else
-		target, distance = defaultSoftTarget(desired)
+		target, distance = defaultSoftTarget(aim)
 	end
-	local direction = desired
+	local direction = aim
 	if target then
 		direction = flat(targetRootOf(target).Position - root.Position).Unit
 	end
 	movement.Face(direction)
+	movement.MarkCombat()
 
-	-- El avance debe LLEGAR a mitad de la ventana activa (antes llegaba justo al cerrarse y el golpe salía
-	-- al aire, sobre todo el Contraataque que recorre ~11 studs). Si el tramo es largo, la preparación se
-	-- alarga lo justo para recorrerlo sin pasar de MAX_LUNGE_SPEED (el servidor vigila las velocidades).
+	-- Avance: cada golpe tiene su pequeño paso propio (igual con o sin rival: no se siente estático). Acercarse de
+	-- verdad al rival SOLO si se pide: entrada hacia delante, el golpe tras el Paso o el contraataque (corto). Fijar
+	-- con R no acerca por sí solo. Para no pasarse, se mide la distancia al rival que tienes delante (en Manual,
+	-- solo para medir: no te gira).
+	-- El avance debe LLEGAR a mitad de la ventana activa. Si el tramo es largo, la preparación se alarga lo justo
+	-- para recorrerlo sin pasar de MAX_LUNGE_SPEED (el servidor vigila las velocidades).
 	local MAX_LUNGE_SPEED = 120
-	local maxLunge = if counter then defense.CounterMaxLunge else Config.MaxLunge
 	local ideal = def.idealDistance or Config.IdealDistance
-	local lungeDistance = if target then math.clamp(distance - ideal, 0, maxLunge) else Config.LungeWithoutTarget
-	if def.special == "dash" and def.lunge then
-		-- Golpe tras el Paso: sale con el impulso del Paso (más recorrido, aunque no haya rival)
-		lungeDistance = if target then math.clamp(distance - ideal, 0, def.lunge) else def.lunge * 0.6
+	local step = def.step or Config.LungeWithoutTarget
+	local measured, measuredDistance = target, distance
+	if not measured then
+		measured, measuredDistance = findSoftTarget(direction, Config.ApproachRange, math.cos(math.rad(Config.ApproachMeasureAngle)))
+	end
+	local requested = forward or counter or def.special == "dash"
+	local reach = if def.special == "dash" and def.lunge then math.max(def.lunge, if counter then defense.CounterMaxLunge else 0)
+		elseif counter then defense.CounterMaxLunge
+		else Config.MaxLunge
+	local lungeDistance = step
+	if def.special == "dash" and def.lunge and not measured then
+		lungeDistance = def.lunge * 0.6 -- golpe tras el Paso: sale con su impulso aunque no haya rival
+	elseif measured then
+		if requested then
+			lungeDistance = math.clamp(measuredDistance - ideal, math.min(step, reach), reach)
+		end
+		-- Nunca te mete dentro del rival
+		lungeDistance = math.min(lungeDistance, math.max(0, measuredDistance - Config.MinGap))
 	end
 	local lungeTime = startup + def.active * 0.5
 	if lungeDistance / lungeTime > MAX_LUNGE_SPEED then
@@ -418,6 +483,7 @@ local function startAttack(name, charge)
 		recovery = def.recovery,
 		cancelable = false,
 		counter = counter,
+		startClock = os.clock(),
 	}
 	state.lastAttackName = name
 	setAttackLocks("startup")
@@ -432,12 +498,26 @@ local function startAttack(name, charge)
 	events.PhaseChanged:Fire(name, "startup")
 end
 
+-- Rutas del combo ligero (entradas claras, sin sorpresas):
+--   · clic a ritmo → la cadena sigue (Jab → Cross → Patada);
+--   · PAUSA tras un golpe que conectó (ChainPause: ni seguido ni tan tarde que el combo se reinicie) → salta al
+--     remate de la cadena (Jab · pausa · Patada);
+--   · mantener → golpe fuerte; tras un Paso → golpe tras el Paso; adelante + clic → el golpe además te acerca.
 local function nextLightName()
-	if state.mode == "Libre" and os.clock() - state.lastAttackEnd > Config.ComboResetTime then
+	local chain = (weapons[state.weapon] or weapons.Punos).chain
+	local idle = os.clock() - state.lastAttackEnd
+	local pause = Config.ChainPause
+	if state.mode == "Libre" and state.chainHit and state.comboIndex >= 1 and state.comboIndex < #chain - 1
+		and idle >= pause.min and idle <= pause.max then
+		state.comboIndex = #chain
+		state.route = "pausa"
+		return chain[#chain]
+	end
+	if state.mode == "Libre" and idle > Config.ComboResetTime then
 		state.comboIndex = 0
 	end
-	local chain = (weapons[state.weapon] or weapons.Punos).chain
 	state.comboIndex = state.comboIndex % #chain + 1
+	state.route = "cadena"
 	return chain[state.comboIndex]
 end
 
@@ -464,6 +544,7 @@ local function enterRecovery(a)
 	end
 	a.cancelable = a.hit and not a.def.finisher
 	setAttackLocks("recovery")
+	lockWhiff(a)
 	events.PhaseChanged:Fire(a.name, "recovery")
 end
 
@@ -475,11 +556,14 @@ local function finishAttack()
 			state.comboIndex = 0
 		end
 	end
+	-- La pausa en la cadena solo vale tras un golpe ligero de la cadena que conectó (y no rechazado)
+	state.chainHit = a ~= nil and a.hit and not a.def.finisher and not a.def.heavy and not a.def.special
 	state.attack = nil
 	state.mode = "Libre"
 	state.lastAttackEnd = os.clock()
 	stopTrack(0.12)
 	clearLocks()
+	movement.MarkCombat()
 	if a then
 		events.AttackEnded:Fire(a.name, a.hit)
 	end
@@ -490,7 +574,7 @@ local function startCharge()
 	dropAttackVisuals()
 	movement.CancelDash()
 	movement.StopLunge()
-	local target = defaultSoftTarget(movement.DesiredDirection())
+	local target = defaultSoftTarget((attackIntent()))
 	if target then
 		movement.Face(flat(targetRootOf(target).Position - root.Position))
 	end
@@ -532,6 +616,7 @@ local function startGuard(deflect)
 	clearLocks()
 	movement.SetSpeedMultiplier(KEY, Config.GuardMoveMultiplier)
 	movement.SetJumpBlocked(KEY, true)
+	movement.MarkCombat()
 	playTrack(if deflect then "Desvio" else "Guardia", 0.03)
 	events.PhaseChanged:Fire("Guardia", if deflect then "desvio" else "inicio")
 end
@@ -837,7 +922,7 @@ local function update(dt)
 
 	-- Guardia: mira al rival más cercano (la guardia solo cubre el frente); en Manual, giras tú
 	if state.mode == "Guardia" then
-		local target = assist().guardTracking and findSoftTarget(movement.DesiredDirection(), Config.SoftTargetRange, -1) or nil
+		local target = assist().guardTracking and findSoftTarget((attackIntent()), Config.SoftTargetRange, -1) or nil
 		if target then
 			movement.SetAutoRotateBlocked(KEY, true)
 			movement.Face(flat(targetRootOf(target).Position - root.Position))
@@ -870,7 +955,14 @@ local function update(dt)
 	elseif state.mode == "Ataque" then
 		local a = state.attack
 		local def = a.def
-		a.t += dt
+		-- El primer cuadro solo cuenta el tiempo desde que empezó el golpe (no el cuadro entero): con un cuadro largo,
+		-- la preparación corta del Contraataque se saltaba y el golpe llegaba al servidor antes de su ventana
+		if a.startClock then
+			a.t += math.min(dt, os.clock() - a.startClock)
+			a.startClock = nil
+		else
+			a.t += dt
+		end
 		if a.phase == "startup" and humanoid:GetState() == Enum.HumanoidStateType.Jumping then
 			finishAttack() -- saltar en la preparación cancela el golpe (amague / movilidad)
 			return

@@ -276,6 +276,26 @@ local function strike(player, model, skillName, spec, synergy)
 		end
 		spec.synergy = synergy.name
 	end
+	-- Enlace con el cuerpo a cuerpo (sin sinergia con nombre): la habilidad rinde más si REMATA un combo de golpes
+	-- (más daño; más aún tras un remate o un golpe fuerte) o si lo ABRE (un rival que no estabas golpeando queda
+	-- aturdido un poco más, para entrar con los puños).
+	if not synergy and not spec.dot then
+		local link = eco.MeleeLink
+		local last = recordFor(player).lastHits[model]
+		local lastDef = last and CombatConfig.Attacks[last.name]
+		if lastDef and os.clock() - last.t <= link.window then
+			spec.damage *= if lastDef.finisher or lastDef.heavy then link.finisherDamage else link.damage
+			spec.link = "remate"
+			if not reaction then
+				spec.synergy = "REMATE"
+			end
+		elseif not last or os.clock() - last.t > link.openGap then
+			if spec.stun and spec.stun > 0 then
+				spec.stun *= link.openStun
+			end
+			spec.link = "apertura"
+		end
+	end
 	if model:HasTag("Guardian") and spec.knockUp then
 		spec.knockUp *= eco.GuardianLaunchScale
 	end

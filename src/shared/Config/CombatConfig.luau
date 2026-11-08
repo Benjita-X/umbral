@@ -30,13 +30,19 @@ local CombatConfig = {
 	--   Manual   · nada: el golpe sale hacia donde miras o apuntas, con su avance propio (el fijado con R sigue: es
 	--              tu elección). El Contraataque conserva un giro corto: es la recompensa de haber defendido bien.
 	AimAssist = {
-		Completa = { attackAngle = 75, attackRange = 12, counterAngle = 180, counterRange = 18, guardTracking = true, ecoAngle = 35, ecoMouseAngle = 14 },
-		Ligera = { attackAngle = 32, attackRange = 8, counterAngle = 125, counterRange = 17, guardTracking = true, ecoAngle = 16, ecoMouseAngle = 7 },
-		Manual = { attackAngle = 0, attackRange = 0, counterAngle = 100, counterRange = 15, guardTracking = false, ecoAngle = 0, ecoMouseAngle = 0 },
+		-- attack*/counter* solo ORIENTAN el golpe hacia un rival cercano; acercarse lo decide el jugador (adelante,
+		-- Paso, gancho o técnica). El contraataque es de alcance corto en todos los niveles; en Manual no gira.
+		Completa = { attackAngle = 75, attackRange = 10, counterAngle = 120, counterRange = 7.5, guardTracking = true, ecoAngle = 35, ecoMouseAngle = 14 },
+		Ligera = { attackAngle = 32, attackRange = 8, counterAngle = 75, counterRange = 7, guardTracking = true, ecoAngle = 16, ecoMouseAngle = 7 },
+		Manual = { attackAngle = 0, attackRange = 0, counterAngle = 0, counterRange = 0, guardTracking = false, ecoAngle = 0, ecoMouseAngle = 0 },
 	},
 	IdealDistance = 3.2, -- distancia a la que el golpe conecta mejor
-	MaxLunge = 3.5, -- lo máximo que un golpe te acerca al rival
-	LungeWithoutTarget = 1, -- avance de cada golpe al aire
+	MaxLunge = 3.5, -- lo máximo que un golpe te acerca al rival (solo si lo pides: adelante + golpe)
+	LungeWithoutTarget = 1, -- paso propio de cada golpe, igual con o sin rival (el golpe nunca es estático)
+	MinGap = 2.2, -- el avance nunca te deja más cerca que esto del rival
+	ApproachRange = 8, -- hasta aquí se mide la distancia al rival de delante para no pasarse al avanzar
+	ApproachMeasureAngle = 25, -- cono (grados) en el que se busca ese rival
+	ChainPause = { min = 0.25, max = 0.55 }, -- pausa en la cadena: atacar en esta ventana tras un golpe que conectó salta al remate (antes de ComboResetTime)
 
 	-- Validación en el servidor
 	Validation = {
@@ -461,7 +467,7 @@ local CombatConfig = {
 		CounterDamageMultiplier = 1.3,
 		CounterStartupMultiplier = 0.5, -- el Contraataque sale el doble de rápido
 		CounterTargetRange = 18, -- y llega más lejos (vuelves al rival tras esquivar de lado)
-		CounterMaxLunge = 12,
+		CounterMaxLunge = 4, -- el contraataque acerca poco: premia defender bien, no persigue
 		HitStun = 0.35, -- aturdimiento al recibir un golpe
 		-- AGUANTE (anticadena): cada aturdimiento dentro de StunChainWindow dura ×StunChainFactor respecto al
 		-- anterior; al llegar a StunChainMax, AguanteTime segundos sin nuevos aturdimientos (el daño sí entra).
@@ -794,6 +800,9 @@ local CombatConfig = {
 			-- V · rayos que caen sobre los enemigos a tu alrededor
 			Juicio = { slot = "V", label = "Juicio", desc = "Rayos que caen sobre los enemigos a tu alrededor.", cooldown = 15, cost = 60, strikes = 6, interval = 0.25, radius = 18, damage = 8, knockUp = 25, stun = 0.6 },
 		},
+		-- Enlace con el cuerpo a cuerpo: una habilidad que remata golpes recientes (window s) hace más daño; una que
+		-- abre sobre un rival que no golpeabas desde openGap s aturde un poco más (para entrar con los puños)
+		MeleeLink = { window = 0.9, damage = 1.2, finisherDamage = 1.3, openGap = 2.5, openStun = 1.25 },
 		-- Estados: quemadura (daño cada medio segundo) y marca de la Daga
 		Burn = { tick = 0.5, damage = 2 },
 		-- Combos con nombre: una habilidad que conecta poco después de otra técnica en el MISMO enemigo.

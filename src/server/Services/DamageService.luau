@@ -404,9 +404,13 @@ end
 -- ---------- Inicios de ataque (secuencia legal) ----------
 local LIGHT_NEXT = {} -- [ataque] = siguiente del combo
 local CHAIN_START = {} -- [ataque] = true si empieza el combo de su arma
+local PAUSE_NEXT = {} -- [ataque] = remate de su cadena (pausa en la cadena: tras una pausa, el golpe salta al remate)
 local function addChain(chain)
 	for i, name in ipairs(chain) do
 		LIGHT_NEXT[name] = chain[i % #chain + 1]
+		if i < #chain then
+			PAUSE_NEXT[name] = chain[#chain]
+		end
 	end
 	CHAIN_START[chain[1]] = true
 end
@@ -524,6 +528,12 @@ local function legalStart(previous, attackName, def, t)
 	-- Los especiales (tras el Paso, en picada) pueden salir en cualquier momento libre: sus condiciones se
 	-- comprueban aparte (specialAllowed)
 	if def.special ~= nil or CHAIN_START[attackName] or LIGHT_NEXT[previous.name] == attackName then
+		return true, nil, 0
+	end
+	-- Pausa en la cadena: el remate puede seguir a cualquier golpe anterior de su cadena tras una pausa real (el
+	-- golpe anterior entero y luego la pausa; se admite media pausa de margen)
+	local whole = previous.def.startup + previous.def.active + previous.def.recovery
+	if PAUSE_NEXT[previous.name] == attackName and elapsed >= whole + CombatConfig.ChainPause.min * 0.5 - validation.StartTimeSlack then
 		return true, nil, 0
 	end
 	return false, string.format("%s no puede seguir a %s", attackName, previous.name), 0
@@ -967,7 +977,7 @@ local PHASE_SLACK = 0.05
 local function startupRange(def)
 	local function range(counter)
 		local fastest = if counter then def.startup * CombatConfig.Defense.CounterStartupMultiplier else def.startup
-		local reach = if counter then CombatConfig.Defense.CounterMaxLunge else math.max(CombatConfig.MaxLunge, CombatConfig.LungeWithoutTarget, def.lunge or 0)
+		local reach = if counter then math.max(CombatConfig.Defense.CounterMaxLunge, def.lunge or 0) else math.max(CombatConfig.MaxLunge, CombatConfig.LungeWithoutTarget, def.lunge or 0)
 		return fastest, math.max(fastest, reach / MAX_LUNGE_SPEED - def.active * 0.5)
 	end
 	local fastest, slowest = range(false)

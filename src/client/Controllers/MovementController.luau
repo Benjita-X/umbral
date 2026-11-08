@@ -100,6 +100,8 @@ local jumpBlockers = {}
 local rotateBlockers = {}
 local cameraFacing = false -- cámara fija: el personaje mira hacia donde apunta la cámara
 local lockedTarget = nil -- enemigo fijado (R): el personaje lo encara siempre
+local combatFacingUntil = -math.huge -- hasta cuándo dura la orientación de combate (ver updateCombatFacing)
+local COMBAT_FACING_TIME = 0.6 -- s de orientación de combate tras atacar, defender o un Paso en postura
 
 local function log(...)
 	if Config.DebugPrints then
@@ -340,6 +342,46 @@ local function combatStance(dir)
 	return best
 end
 
+-- Orientación de combate: poco después de atacar, defender o un Paso en postura, retroceder o ir de lado con un
+-- enemigo delante NO gira el cuerpo (das pasos atrás mirándolo y el siguiente golpe sigue saliendo hacia él). Ir
+-- hacia delante gira como siempre, y sin nadie delante el cuerpo vuelve a girar libre.
+local COMBAT_FACING_RANGE = 22 -- un enemigo vivo delante a menos de esto (un Paso de 14 studs no lo deja atrás)
+local COMBAT_FACING_INPUT = 0.3 -- por debajo de este coseno (entrada hacia los lados o atrás) se conserva el frente
+local function enemyInFront()
+	local look = flat(root.CFrame.LookVector)
+	if look.Magnitude < 0.01 then
+		return false
+	end
+	look = look.Unit
+	for _, model in ipairs(CollectionService:GetTagged("Objetivo")) do
+		if model ~= root.Parent then
+			local enemyRoot = model:FindFirstChild("HumanoidRootPart")
+			local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
+			if enemyRoot and enemyHumanoid and enemyHumanoid.Health > 0 then
+				local offset = flat(enemyRoot.Position - root.Position)
+				if offset.Magnitude > 0.1 and offset.Magnitude < COMBAT_FACING_RANGE and look:Dot(offset.Unit) >= 0 then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function updateCombatFacing(now)
+	local hold = false
+	if now < combatFacingUntil and not dash then
+		local move = flat(humanoid.MoveDirection)
+		if move.Magnitude > 0.1 and flat(root.CFrame.LookVector):Dot(move.Unit) < COMBAT_FACING_INPUT then
+			hold = rotateBlockers.combate ~= nil or enemyInFront()
+		end
+	end
+	if (rotateBlockers.combate ~= nil) ~= hold then
+		rotateBlockers.combate = if hold then true else nil
+		applyBlockers()
+	end
+end
+
 local function setDashFacing(on)
 	if not on then
 		stanceHoldUntil = nil
@@ -383,6 +425,7 @@ local function endDash()
 	log(string.format("Paso: %.1f studs en %.2f s (objetivo %.1f)", distance, dash.elapsed, Config.DashDistance))
 	if dash.stance then
 		stanceHoldUntil = os.clock() + STANCE_HOLD -- la postura dura un instante más (ver update)
+		combatFacingUntil = math.max(combatFacingUntil, os.clock() + COMBAT_FACING_TIME)
 	elseif dash.keepFacing then
 		setDashFacing(false)
 	end
@@ -573,6 +616,8 @@ end
 local function setupCharacter(character)
 	bufferedDash = nil
 	table.clear(recentLooks)
+	rotateBlockers.combate = nil
+	combatFacingUntil = -math.huge
 	Intenciones.Clear("movimiento")
 	disconnectAll()
 	stopDashForces()
@@ -643,6 +688,7 @@ local function update(dt)
 	if stanceHoldUntil and now >= stanceHoldUntil and not dash then
 		setDashFacing(false)
 	end
+	updateCombatFacing(now)
 	-- Hacia dónde miraba hace un instante (la postura de combate del Paso)
 	local currentLook = flat(root.CFrame.LookVector)
 	if currentLook.Magnitude > 0.01 then
@@ -1189,6 +1235,15 @@ function MovementController.Face(direction)
 	if dir.Magnitude > 0.01 then
 		root.CFrame = CFrame.lookAt(root.Position, root.Position + dir.Unit)
 	end
+end
+
+-- El combate avisa de que se está peleando (golpe, guardia): abre la orientación de combate un instante
+function MovementController.MarkCombat(duration)
+	combatFacingUntil = math.max(combatFacingUntil, os.clock() + (duration or COMBAT_FACING_TIME))
+end
+
+function MovementController.CameraFacing()
+	return cameraFacing
 end
 
 -- Cámara fija (la activa CameraController): el personaje mira hacia la cámara

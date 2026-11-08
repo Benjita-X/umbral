@@ -208,7 +208,8 @@ aimParams.FilterType = Enum.RaycastFilterType.Exclude
 local function aim(range, allowVertical, maxPitch)
 	local root = rootPart()
 	local chest = root.Position + Vector3.new(0, 0.3, 0)
-	local forward = movement.DesiredDirection()
+	-- Igual que los golpes: la dirección de la habilidad no es la del movimiento (retroceder no la lanza hacia atrás)
+	local forward = combat.AttackIntent()
 	local dir = forward
 	-- Ayuda de la asistencia de apuntado elegida (Ajustes): Completa, Ligera o Manual (sin ayuda)
 	local _, aimAssist = combat.AimAssist()

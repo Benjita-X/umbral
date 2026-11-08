@@ -20,6 +20,7 @@ local SUITES = {
 	{ "RevisionCodex", "RevisionCodex" },
 	{ "AuditoriaMaxima", "AuditoriaMaxima" },
 	{ "PulidoFinal", "PulidoFinal" },
+	{ "Libertad", "Libertad" },
 	{ "Expedicion", "Expedicion" },
 	{ "Combos", "Combos" },
 	{ "Estres", "Estres" },

@@ -328,6 +328,13 @@ return function(ctx)
 	task.wait(0.15)
 	local distanceBefore = (Vector3.new(npcRoot.Position.X, 0, npcRoot.Position.Z) - Vector3.new(ctx.root.Position.X, 0, ctx.root.Position.Z)).Magnitude
 	local counterOpen = os.clock() <= Combat.State.counterUntil
+	-- El contraataque ya no persigue solo: volver es decisión del jugador (Paso hacia el rival y golpe tras el Paso)
+	local back = Vector3.new(npcRoot.Position.X - ctx.root.Position.X, 0, npcRoot.Position.Z - ctx.root.Position.Z).Unit
+	ctx.humanoid:Move(back)
+	task.wait()
+	Input.Trigger("Paso")
+	task.wait(0.1)
+	ctx.humanoid:Move(Vector3.zero)
 	Input.Trigger("Atacar")
 	local closest = math.huge
 	local t0 = os.clock()
@@ -347,9 +354,9 @@ return function(ctx)
 		player:GetAttribute("GolpesRechazados") or 0
 	)
 	record(
-		"Contraataque vuelve al rival",
+		"Contraataque: Paso de vuelta y golpe tras el Paso",
 		started[s0 + 1] ~= nil and started[s0 + 1].counter == true and counterConfirm ~= nil and counterConfirm.target == npc and counterConfirm.counter == true,
-		(if counterConfirm then string.format("tras apartarse de lado, vuelve y conecta (%.1f de daño)", counterConfirm.damage) else "no conectó") .. counterDiag
+		(if counterConfirm then string.format("tras apartarse de lado, vuelve con un Paso y conecta (%.1f de daño)", counterConfirm.damage) else "no conectó") .. counterDiag
 	)
 
 	setPattern("Barrido")

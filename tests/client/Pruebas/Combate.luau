@@ -345,11 +345,14 @@ return function(ctx)
 
 	prepare("Muneco1", 6.5)
 	c0 = #confirms
+	ctx.humanoid:Move(Vector3.new(0, 0, -1)) -- acercarse es una decisión: adelante + golpe
+	task.wait(0.05)
 	Input.Trigger("Atacar")
 	local reached = waitUntil(function()
 		return #confirms > c0
 	end, 1)
-	record("El golpe se acerca al rival", reached, "a 6,5 studs el golpe avanza y conecta")
+	ctx.humanoid:Move(Vector3.zero)
+	record("Adelante + golpe se acerca al rival", reached, "a 6,5 studs, pulsando hacia él, el golpe avanza y conecta")
 
 	prepare("Muneco1", 13)
 	c0 = #confirms
