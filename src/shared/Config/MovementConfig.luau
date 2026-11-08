@@ -52,7 +52,7 @@ local MovementConfig = {
 
 	-- Depuración
 	DebugHUD = false, -- panel con velocidad, cargas y estado (true para medir; las pruebas no lo necesitan)
-	DebugPrints = true, -- mensajes [UMBRAL] en Output
+	DebugPrints = game:GetService("RunService"):IsStudio(), -- mensajes [UMBRAL] en Output (solo en Studio; nunca en el juego publicado)
 }
 
 return MovementConfig

@@ -29,6 +29,8 @@ local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
 local PositionService = require(script.Parent:WaitForChild("PositionService"))
 local BalanceService = require(script.Parent:WaitForChild("BalanceService"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local DamageService = {}
 
 -- Se dispara con cada golpe aplicado: (jugador, objetivo, nombreDelAtaque, extra)
@@ -540,6 +542,9 @@ local function legalStart(previous, attackName, def, t)
 end
 
 local function handleStart(player, seq, attackName, t, position, look)
+	if not RemoteGuard.Allow(player, "InicioGolpe") then
+		return
+	end
 	local def = type(attackName) == "string" and CombatConfig.Attacks[attackName]
 	if not def or type(seq) ~= "number" or seq ~= seq then
 		return reject(player, "inicio inválido")
@@ -907,6 +912,9 @@ local function judgeHit(player, attackName, def, seq, target, charge, t)
 end
 
 local function handleHit(player, payload)
+	if not RemoteGuard.Allow(player, "Golpe") then
+		return
+	end
 	-- 1. Forma de la petición
 	if type(payload) ~= "table" then
 		return reject(player, "formato")

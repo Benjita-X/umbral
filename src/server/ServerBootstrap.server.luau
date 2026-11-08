@@ -19,6 +19,7 @@ local RecoveryService = require(services:WaitForChild("RecoveryService"))
 local PersonajeService = require(services:WaitForChild("PersonajeService"))
 local BalanceService = require(services:WaitForChild("BalanceService"))
 local ExpedicionService = require(services:WaitForChild("ExpedicionService"))
+local PerfilService = require(services:WaitForChild("PerfilService"))
 
 Workspace.Gravity = MovementConfig.Gravity
 
@@ -33,8 +34,9 @@ RecoveryService.Start() -- recuperación de vida: Respiro fuera de combate y pun
 PersonajeService.Start() -- red de seguridad (nadie muere por caer al vacío) y respaldo de la apariencia
 DummyService.Start()
 SparringService.Start()
+PerfilService.Start() -- progreso permanente mínimo: NivelGlobal y ExpedicionesCompletadas (DataStore)
 GrietaService.Start() -- solo actúa si el mapa tiene la Grieta (lugar de desarrollo)
 BalanceService.Start() -- poder, defensa, experiencia y niveles (una sola fórmula con límites)
 ExpedicionService.Start() -- la Grieta como partida completa: encuentros, mejoras, Guardián (y el encuentro de prueba)
 
-print("[UMBRAL] Servidor listo · Fase 3: defensa y Contrapaso")
+print("[UMBRAL] Servidor listo")

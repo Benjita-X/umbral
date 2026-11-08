@@ -60,6 +60,37 @@ remote.OnServerEvent:Connect(function(player, action, payload, extra)
 			end
 			expedicion.StartTestEncounter({ player }, spawns, payload.difficulty, payload.round)
 		end
+	elseif string.sub(tostring(action), 1, 7) == "perfil_" then
+		-- Perfil permanente con la tienda SIMULADA (Studio sin publicar): fallos inyectados, recargas y cerrojos
+		local services = game:GetService("ServerScriptService"):FindFirstChild("Services")
+		local Perfil = services and require(services:FindFirstChild("PerfilService"))
+		if not Perfil then
+			return
+		end
+		if action == "perfil_fallo" and type(payload) == "table" then
+			Perfil.TestFailNext(payload.kind, payload.count)
+		elseif action == "perfil_recargar" then
+			local tag = tostring(payload)
+			player:SetAttribute("PerfilRecarga", tag .. "|esperando")
+			task.spawn(function()
+				player:SetAttribute("PerfilRecarga", tag .. "|" .. (Perfil.TestReload(player) or "nada"))
+			end)
+		elseif action == "perfil_cerrojo" and type(payload) == "table" then
+			Perfil.TestForeignLock(player, payload.age, payload.completed)
+		elseif action == "perfil_soltar" then
+			Perfil.TestReleaseForeign(player, payload)
+		elseif action == "perfil_guardar" then
+			local tag = tostring(payload)
+			task.spawn(function()
+				local ok = Perfil.Save(player)
+				local stored = Perfil.TestStored(player)
+				player:SetAttribute("PerfilGuardado", string.format("%s|%s|%d", tag, if ok then "ok" else "fallo", stored and stored.ExpedicionesCompletadas or -1))
+			end)
+		elseif action == "perfil_completar" then
+			player:SetAttribute("PerfilConto", Perfil.RecordCompletion(player, tostring(payload)))
+		elseif action == "perfil_simulado" then
+			player:SetAttribute("PerfilSimulado", Perfil.IsSimulated())
+		end
 	elseif action == "vida_enemigo" then
 		-- Fija la vida de los enemigos con una etiqueta (p. ej. dejar uno a punto de caer)
 		for _, model in ipairs(game:GetService("CollectionService"):GetTagged(payload.tag)) do

@@ -18,6 +18,8 @@ local MovementConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForC
 local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
 local BalanceService = require(script.Parent:WaitForChild("BalanceService"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local DefenseService = {}
 
 local defense = CombatConfig.Defense
@@ -367,6 +369,9 @@ function DefenseService.Start()
 	remote.Name = "Defensa"
 	remote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	remote.OnServerEvent:Connect(function(player, action, t, dir, position, look)
+		if not RemoteGuard.Allow(player, "Defensa") then
+			return
+		end
 		if action == "defender_inicio" or action == "defender_fin" or action == "paso" then
 			onDefense(player, action, t, dir, position, look)
 		end

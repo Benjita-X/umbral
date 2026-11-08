@@ -190,6 +190,21 @@ const META = '<Meta name="ExplicitAutoJoints">true</Meta>\n';
 
 writeModel(OUT, placeTree(false), META);
 
+// --beta: candidato de lanzamiento (build/UMBRAL-Beta.rbxlx). Mismo árbol que el de desarrollo (sin tests/ ni la
+// marca del plugin de pruebas), tras comprobar que todas las animaciones tienen su ID publicado.
+if (args.has('--beta')) {
+  const ids = readFileSync(join(SRC, 'shared', 'Config', 'AnimacionesSubidas.luau'), 'utf8').match(/rbxassetid:\/\/\d+/g) || [];
+  const library = readFileSync(join(SRC, 'shared', 'Combat', 'AnimationLibrary.luau'), 'utf8');
+  if (ids.length < 40) throw new Error(`Faltan IDs de animaciones publicadas: hay ${ids.length} de 40`);
+  const names = (insts) => insts.flatMap((i) => [i.name, ...names(i.children || [])]);
+  const all = names(placeTree(false));
+  for (const banned of ['UmbralPruebasAutomaticas', 'PruebasServidor', 'PruebasRunner']) {
+    if (all.includes(banned)) throw new Error(`El candidato no debe incluir las pruebas (${banned})`);
+  }
+  if (!library) throw new Error('No se encontró AnimationLibrary');
+  writeModel(join(ROOT, 'build', 'UMBRAL-Beta.rbxlx'), placeTree(false), META);
+}
+
 if (args.has('--pruebas')) {
   writeModel(join(ROOT, 'build', 'UMBRAL-Pruebas.rbxlx'), placeTree(true), META);
 }

@@ -35,6 +35,8 @@ local DamageService = require(services:WaitForChild("DamageService"))
 local PositionService = require(services:WaitForChild("PositionService"))
 local BalanceService = require(services:WaitForChild("BalanceService"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local SparringService = {}
 
 local sparring = CombatConfig.Sparring
@@ -993,6 +995,9 @@ function SparringService.Start()
 	executeRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	local lastExecute = {}
 	executeRemote.OnServerEvent:Connect(function(player, target)
+		if not RemoteGuard.Allow(player, "Ejecutar") then
+			return
+		end
 		local s = typeof(target) == "Instance" and npcs[target]
 		if not s or not s.root then
 			return

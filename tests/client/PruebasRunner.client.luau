@@ -22,6 +22,7 @@ local SUITES = {
 	{ "PulidoFinal", "PulidoFinal" },
 	{ "Libertad", "Libertad" },
 	{ "Expedicion", "Expedicion" },
+	{ "Beta", "Beta" },
 	{ "Combos", "Combos" },
 	{ "Estres", "Estres" },
 	{ "Vitrina", "Vitrina", manual = true }, -- solo si se pide: -Suites Vitrina (revisión a ojo)

@@ -9,6 +9,8 @@ local RunService = game:GetService("RunService")
 
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local ResonanceService = {}
 
 local settings = CombatConfig.Resonance
@@ -129,6 +131,9 @@ function ResonanceService.Start()
 	spendRemote.Name = "GastarResonancia"
 	spendRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	spendRemote.OnServerEvent:Connect(function(player, kind)
+		if not RemoteGuard.Allow(player, "Resonancia") then
+			return
+		end
 		if kind == "paso" then
 			-- Autoridad del servidor: como mucho un Paso extra cada ExtraDashCooldown (con un pequeño margen
 			-- por la variación de la red), y solo si alcanza la Resonancia

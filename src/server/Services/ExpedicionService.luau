@@ -19,6 +19,9 @@ local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChi
 local SparringService = require(script.Parent:WaitForChild("SparringService"))
 local BalanceService = require(script.Parent:WaitForChild("BalanceService"))
 local PositionService = require(script.Parent:WaitForChild("PositionService"))
+local PerfilService = require(script.Parent:WaitForChild("PerfilService"))
+
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
 
 local ExpedicionService = {}
 
@@ -67,6 +70,7 @@ local ENCOUNTERS = {
 local stateFolder, remote
 local grieta = nil
 local run = nil -- partida en curso (ver newRun)
+local runCounter = 0
 
 local function now()
 	return Workspace:GetServerTimeNow()
@@ -153,7 +157,9 @@ local function publish()
 end
 
 local function newRun(difficulty, players, total)
+	runCounter += 1
 	run = {
+		id = string.format("%s:%d:%d", game.JobId, runCounter, math.floor(now() * 1000)), -- identifica la victoria (perfil)
 		difficulty = if balance.Difficulties[difficulty] then difficulty else balance.DefaultDifficulty,
 		startedAt = now(),
 		phase = "explorando", -- explorando · combate · completada
@@ -226,13 +232,25 @@ local function summary()
 end
 
 local function complete()
+	if run.phase == "completada" then
+		return -- una partida se completa una sola vez
+	end
 	run.phase = "completada"
 	run.completedAt = now()
 	publish()
 	setDoor("PuertaExpedicion0", true)
 	local data = summary()
 	for _, player in ipairs(data.players) do
+		-- Progreso permanente: solo expediciones reales (o el encuentro de prueba con la tienda simulada de Studio)
+		local counted = false
+		if not run.test or PerfilService.IsSimulated() then
+			counted = PerfilService.RecordCompletion(player, run.id)
+		end
 		remote:FireClient(player, "fin", {
+			counted = counted,
+			completed = player:GetAttribute("ExpedicionesCompletadas"),
+			globalLevel = player:GetAttribute("NivelGlobal"),
+			profile = player:GetAttribute("PerfilEstado"),
 			time = data.time,
 			deaths = data.deaths,
 			difficulty = data.difficulty,
@@ -437,6 +455,9 @@ function ExpedicionService.Start()
 	end)
 
 	remote.OnServerEvent:Connect(function(player, action, value)
+		if not RemoteGuard.Allow(player, "Expedicion") then
+			return
+		end
 		if action == "empezar" then
 			if not grieta or (run and run.phase ~= "completada") then
 				return
@@ -454,7 +475,7 @@ function ExpedicionService.Start()
 				BalanceService.AddUpgrade(player, value)
 			end
 		elseif action == "repetir" then
-			if not run or run.phase ~= "completada" then
+			if not run or run.phase ~= "completada" or not run.participants[player] then
 				return
 			end
 			local difficulty = if type(value) == "string" and balance.Difficulties[value] then value else run.difficulty
@@ -472,6 +493,23 @@ function ExpedicionService.Start()
 				teleport(p, entranceCFrame())
 			end
 		elseif action == "abandonar" then
+			if run and run.participants[player] and run.phase ~= "completada" and not run.test then
+				-- A mitad de partida, abandonar saca SOLO a quien lo pide; la partida sigue para los demás
+				local others = false
+				for p in pairs(run.participants) do
+					if p ~= player and p.Parent then
+						others = true
+					end
+				end
+				if others then
+					run.participants[player] = nil
+					run.choosing[player] = nil
+					BalanceService.ResetProgress(player)
+					publish()
+					teleport(player, entranceCFrame())
+					return
+				end
+			end
 			if run and run.participants[player] then
 				local players = {}
 				for p in pairs(run.participants) do
@@ -531,7 +569,15 @@ function ExpedicionService.Start()
 						end
 					end
 					if not anyoneAlive then
+						local wasFighting = run.phase == "combate"
 						resetEncounter()
+						if wasFighting then
+							for p in pairs(run.participants) do
+								if p.Parent then
+									remote:FireClient(p, "derrota", { encounter = run.index })
+								end
+							end
+						end
 					end
 				end)
 			end
@@ -545,7 +591,14 @@ function ExpedicionService.Start()
 			end
 		end)
 	end
-	Players.PlayerAdded:Connect(watch)
+	Players.PlayerAdded:Connect(function(player)
+		-- Quien entra con una partida en curso se une a ella (empieza en nivel 1 y aparece en el último punto de control)
+		if run and not run.test and run.phase ~= "completada" then
+			run.participants[player] = true
+			BalanceService.ResetProgress(player)
+		end
+		watch(player)
+	end)
 	for _, player in ipairs(Players:GetPlayers()) do
 		watch(player)
 	end

@@ -175,9 +175,9 @@ function ExpedicionHUD.Start(input, movement, camera)
 	end
 
 	-- ---------- Fin ----------
-	local finish = panel(gui, "Fin", UDim2.fromOffset(440, 260))
+	local finish = panel(gui, "Fin", UDim2.fromOffset(440, 290))
 	label(finish, "¡EXPEDICIÓN COMPLETADA!", UDim2.new(1, -20, 0, 30), UDim2.fromOffset(10, 12), ACCENT, Enum.Font.GothamBlack)
-	local details = label(finish, "", UDim2.new(1, -20, 0, 110), UDim2.fromOffset(10, 50), TEXT, Enum.Font.Gotham)
+	local details = label(finish, "", UDim2.new(1, -20, 0, 140), UDim2.fromOffset(10, 50), TEXT, Enum.Font.Gotham)
 	details.TextWrapped = true
 	details.TextYAlignment = Enum.TextYAlignment.Top
 	local again = button(finish, "Repetir", UDim2.new(0.5, -15, 0, 36), UDim2.new(0, 10, 1, -88))
@@ -198,8 +198,54 @@ function ExpedicionHUD.Start(input, movement, camera)
 	end)
 	close.Activated:Connect(hideFinish)
 
+	-- ---------- Derrota: cayó todo el grupo ----------
+	local defeat = panel(gui, "Derrota", UDim2.fromOffset(400, 200))
+	label(defeat, "EL GRUPO HA CAÍDO", UDim2.new(1, -20, 0, 30), UDim2.fromOffset(10, 12), Color3.fromRGB(255, 120, 120), Enum.Font.GothamBlack)
+	local defeatText = label(defeat, "El encuentro se reinicia: vuelve a entrar en su sala para intentarlo otra vez.", UDim2.new(1, -20, 0, 50), UDim2.fromOffset(10, 50), TEXT, Enum.Font.Gotham)
+	defeatText.TextWrapped = true
+	local retry = button(defeat, "Reintentar", UDim2.new(0.5, -15, 0, 40), UDim2.new(0, 10, 1, -52))
+	local quit = button(defeat, "Abandonar", UDim2.new(0.5, -15, 0, 40), UDim2.new(0.5, 5, 1, -52))
+	local function hideDefeat()
+		defeat.Visible = false
+		setOpen("derrota", false)
+	end
+	retry.Activated:Connect(hideDefeat)
+	quit.Activated:Connect(function()
+		remote:FireServer("abandonar")
+		dismissed = false
+		hideDefeat()
+	end)
+
+	-- ---------- Marca de beta y progreso permanente ----------
+	local beta = label(gui, "BETA DE PRUEBAS", UDim2.fromOffset(150, 16), UDim2.new(0, 8, 1, -22), Color3.fromRGB(255, 210, 120), Enum.Font.GothamBold)
+	beta.Name = "MarcaBeta"
+	beta.TextXAlignment = Enum.TextXAlignment.Left
+	beta.TextTransparency = 0.25
+	local profileLabel = label(gui, "", UDim2.fromOffset(260, 14), UDim2.new(0, 8, 1, -38), TEXT, Enum.Font.Gotham)
+	profileLabel.Name = "ProgresoPermanente"
+	profileLabel.TextXAlignment = Enum.TextXAlignment.Left
+	profileLabel.TextTransparency = 0.3
+	local function showProfile()
+		local estado = player:GetAttribute("PerfilEstado")
+		if estado == "listo" or estado == "simulado" then
+			profileLabel.Text = string.format("Nivel global %d · %d expediciones%s", player:GetAttribute("NivelGlobal") or 1,
+				player:GetAttribute("ExpedicionesCompletadas") or 0, if estado == "simulado" then " (simulado)" else "")
+		elseif estado == "error" then
+			profileLabel.Text = "Progreso permanente sin cargar: esta sesión no guarda"
+		else
+			profileLabel.Text = "Cargando progreso…"
+		end
+	end
+	for _, attr in ipairs({ "PerfilEstado", "NivelGlobal", "ExpedicionesCompletadas" }) do
+		player:GetAttributeChangedSignal(attr):Connect(showProfile)
+	end
+	showProfile()
+
 	remote.OnClientEvent:Connect(function(kind, data)
-		if kind == "mejoras" and type(data) == "table" and type(data.options) == "table" then
+		if kind == "derrota" then
+			defeat.Visible = true
+			setOpen("derrota", true)
+		elseif kind == "mejoras" and type(data) == "table" and type(data.options) == "table" then
 			showUpgrades(data.options)
 		elseif kind == "fin" and type(data) == "table" then
 			local d = balance.Difficulties[data.difficulty or ""]
@@ -209,8 +255,11 @@ function ExpedicionHUD.Start(input, movement, camera)
 				table.insert(upgrades, spec and spec.label or id)
 			end
 			local t = math.floor(data.time or 0)
-			details.Text = string.format("Dificultad: %s\nTiempo: %d:%02d\nCaídas: %d\nNivel alcanzado: %d\nMejoras: %s",
-				d and d.label or "?", t // 60, t % 60, data.deaths or 0, data.level or 1, if #upgrades > 0 then table.concat(upgrades, ", ") else "ninguna")
+			local permanent = if data.profile == "error" then "Progreso permanente: NO se guardó (perfil sin cargar)"
+				elseif data.counted then string.format("Expediciones completadas: %d · Nivel global %d", data.completed or 0, data.globalLevel or 1)
+				else "Progreso permanente: sin cambios"
+			details.Text = string.format("Dificultad: %s\nTiempo: %d:%02d\nCaídas: %d\nNivel alcanzado: %d\nMejoras: %s\n%s",
+				d and d.label or "?", t // 60, t % 60, data.deaths or 0, data.level or 1, if #upgrades > 0 then table.concat(upgrades, ", ") else "ninguna", permanent)
 			again.Visible = not data.test
 			other.Visible = not data.test
 			finish.Visible = true

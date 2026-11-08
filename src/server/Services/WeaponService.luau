@@ -9,6 +9,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local WeaponService = {}
 
 local weapons = CombatConfig.Weapons
@@ -88,6 +90,9 @@ function WeaponService.Start()
 	remote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	local last = {}
 	remote.OnServerEvent:Connect(function(player, name)
+		if not RemoteGuard.Allow(player, "Arma") then
+			return
+		end
 		local clock = os.clock()
 		if clock - (last[player] or -math.huge) < weapons.SwitchTime * 0.8 then
 			return
@@ -126,6 +131,9 @@ function WeaponService.Start()
 		player:SetAttribute("GanchosRechazados", (player:GetAttribute("GanchosRechazados") or 0) + 1)
 	end
 	hookRemote.OnServerEvent:Connect(function(player, t, target, position, look)
+		if not RemoteGuard.Allow(player, "Gancho") then
+			return
+		end
 		local clock = os.clock()
 		local times = lastHook[player] or {}
 		lastHook[player] = times

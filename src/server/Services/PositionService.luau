@@ -31,6 +31,8 @@ local Workspace = game:GetService("Workspace")
 
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
 
+local RemoteGuard = require(script.Parent:WaitForChild("RemoteGuard"))
+
 local PositionService = {}
 
 local net = CombatConfig.Network
@@ -332,6 +334,9 @@ function PositionService.Start()
 	stream.Name = "Posicion"
 	stream.Parent = remotes
 	stream.OnServerEvent:Connect(function(player, t, position, look)
+		if not RemoteGuard.Allow(player, "Posicion") then
+			return
+		end
 		PositionService.Report(player, t, position, look)
 	end)
 
