@@ -70,6 +70,8 @@ local CombatConfig = {
 		MaxShakeOffset = 0.45,
 		Flashes = true, -- destello blanco del objetivo al recibir el golpe
 		DamageNumbers = true,
+		LowHealthPulse = true, -- bordes rojos que laten con poca vida (se puede apagar: accesibilidad)
+		HitIndicator = true, -- marca en el borde de la pantalla hacia quien te golpeó
 	},
 
 	-- Combo básico: pulsar Atacar encadena estos golpes en orden (Puños; cada arma tiene el suyo en Weapons)
@@ -83,6 +85,8 @@ local CombatConfig = {
 		Punos = { label = "Puños", chain = { "Jab", "Cross", "Patada" }, heavy = "Fuerte", dash = "PatadaVoladora", plunge = "PatadaPicada" },
 		Espada = { label = "Espada", chain = { "Tajo", "Reves", "Estocada" }, heavy = "TajoFuerte", dash = "EstocadaCarrera", plunge = "Clavada" },
 		DashWindow = 0.4, -- s tras un Paso en los que atacar sale como golpe tras el Paso
+		-- Gancho: lo comparten el cliente (marco, movimiento) y el servidor (validación del enganche)
+		Grapple = { PointRange = 50, EnemyRange = 32, Cooldown = 0.8, Speed = 95, ArriveDistance = 10 },
 		PlungeMinHeight = 5, -- altura mínima de los pies para el golpe en picada
 		SwitchTime = 0.25, -- s sin poder atacar al cambiar de arma
 	},

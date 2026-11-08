@@ -169,13 +169,16 @@ return function(api)
 			if not root or not player.Parent then
 				return
 			end
-			-- El enemigo cercano que menos rayos recibió
+			-- El enemigo cercano que menos rayos recibió. El rayo baja del nubarrón que está sobre ti: cae sobre quien
+			-- se ve desde ti o desde la nube (por encima de una cobertura baja sí; dentro de otra sala techada, no)
 			local best, bestScore = nil, math.huge
+			local chest = root.Position + Vector3.new(0, 1, 0)
+			local cloud = root.Position + Vector3.new(0, 14, 0)
 			for _, model in ipairs(game:GetService("CollectionService"):GetTagged("Objetivo")) do
 				local targetRootPart = api.targetRoot(model)
 				if targetRootPart then
 					local d = api.flat(targetRootPart.Position - root.Position).Magnitude
-					if d <= spec.radius then
+					if d <= spec.radius and (clearLine(character, chest, targetRootPart.Position) or clearLine(character, cloud, targetRootPart.Position)) then
 						local score = (struck[model] or 0) * 100 + d
 						if score < bestScore then
 							best, bestScore = model, score

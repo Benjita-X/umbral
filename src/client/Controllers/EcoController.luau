@@ -35,6 +35,7 @@ local synergyEvent = signal("Synergy") -- (nombre del combo)
 local kitEvent = signal("KitChanged") -- (nombre del Eco)
 local recastEvent = signal("Recast") -- (tecla, texto o nil): relanzamiento disponible
 local rejectedEvent = signal("Rejected") -- (motivo): el servidor no aceptó la última habilidad
+local replacedEvent = signal("Replaced") -- (tecla vieja, tecla nueva): la tecla en cola dejó su sitio a otra
 local infoEvent = signal("InfoRequested") -- (Eco, tecla o nil): ficha del Eco o pista de una habilidad (Alt + tecla)
 
 local eco = CombatConfig.Eco
@@ -89,6 +90,15 @@ function EcoController.CooldownRemaining(key)
 		return math.max(0, state.swapUntil - os.clock()) -- modo práctica (Studio): sin enfriamientos
 	end
 	return math.max(0, (state.cooldownEnd[key] or 0) - os.clock(), state.swapUntil - os.clock())
+end
+
+-- Enfriamiento propio de una clave, sin contar la espera del cambio de Eco (avisos como "¡DEFINITIVA LISTA!":
+-- cambiar de Eco no debe repetirlos)
+function EcoController.OwnCooldown(key)
+	if player:GetAttribute("Practica") then
+		return 0
+	end
+	return math.max(0, (state.cooldownEnd[key] or 0) - os.clock())
 end
 
 -- Clave del enfriamiento de una habilidad (las variantes en el aire llevan el suyo)
@@ -644,20 +654,34 @@ end
 local BUFFERABLE = { aturdido = true, ocupado = true, enfriamiento = true, golpeando = true, recuperando = true }
 local WAITS_FOR_ATTACK = { golpeando = true, recuperando = true } -- la cola dura lo que falte del golpe
 
+local function recastOpen(slot)
+	local r = state.recast[slot]
+	return r ~= nil and os.clock() <= r.untilTime and recastActions[r.action] ~= nil
+end
+
 -- Intenta lanzar la habilidad de la tecla. Devuelve true, o false y el motivo (sin avisar todavía).
-local function attempt(slot)
+-- `recastOnly`: la pulsación era para el relanzamiento (si ya venció, no sale en su lugar la habilidad normal)
+local function attempt(slot, recastOnly)
 	if not canAct() then
 		return false, if combat.State.mode == "Aturdido" then "aturdido" else "ocupado"
 	end
-	-- Relanzamiento disponible en esta tecla
+	-- Relanzamiento disponible en esta tecla: corta lo que estés haciendo con la MISMA regla que una habilidad
+	-- (auditoría externa: no es una puerta trasera para saltarse la fase activa ni la recuperación de un golpe
+	-- fallado). Si no puede todavía, la tecla espera en la cola sin gastar el relanzamiento.
 	local r = state.recast[slot]
-	if r and os.clock() <= r.untilTime and recastActions[r.action] then
+	if recastOpen(slot) then
+		local canceled, why, wait = combat.CancelForSkill()
+		if not canceled then
+			return false, why or "aturdido", wait
+		end
 		state.recast[slot] = nil
 		recastEvent:Fire(slot, nil)
-		combat.CancelForSkill()
 		recastActions[r.action](r)
 		usedEvent:Fire(r.action, slot)
 		return true
+	end
+	if recastOnly then
+		return false, "relanzamiento vencido"
 	end
 	local skillName = EcoController.SkillFor(slot, inAir())
 	local spec = skillName and skills[skillName]
@@ -700,6 +724,12 @@ local function attempt(slot)
 end
 
 local function tryCast(slot)
+	local wantsRecast = recastOpen(slot)
+	-- Una tecla en cola que deja su sitio a otra no desaparece en silencio: se avisa (registro de práctica)
+	local previous = buffered
+	if previous and previous.slot ~= slot then
+		replacedEvent:Fire(previous.slot, slot)
+	end
 	local ok, reason, remaining = attempt(slot)
 	if ok then
 		buffered = nil
@@ -707,7 +737,7 @@ local function tryCast(slot)
 	end
 	if BUFFERABLE[reason] and (reason ~= "enfriamiento" or (remaining or 0) <= BUFFER) then
 		local ttl = if WAITS_FOR_ATTACK[reason] then math.min(0.7, (remaining or 0) + 0.15) else BUFFER
-		buffered = { slot = slot, untilTime = os.clock() + math.max(ttl, BUFFER), reason = reason, created = os.clock() }
+		buffered = { slot = slot, untilTime = os.clock() + math.max(ttl, BUFFER), reason = reason, created = os.clock(), recast = wantsRecast }
 		return
 	end
 	buffered = nil
@@ -725,7 +755,7 @@ local function pollBuffer()
 		deny(b.slot, b.reason)
 		return
 	end
-	local ok, reason, remaining = attempt(b.slot)
+	local ok, reason, remaining = attempt(b.slot, b.recast)
 	if ok then
 		buffered = nil
 	elseif BUFFERABLE[reason] then

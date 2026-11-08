@@ -24,6 +24,9 @@ InputController.ActionBegan = beganEvent.Event
 InputController.ActionEnded = endedEvent.Event
 
 local held = {}
+-- Contextos que bloquean las acciones de combate NUEVAS (el menú abierto): pulsar no hace nada; soltar sí (nada
+-- queda pegado). Moverse y saltar siguen libres: el menú no pausa el juego.
+local blockers = {}
 
 -- JumpRequest puede dispararse varias veces seguidas mientras se mantiene el salto:
 -- solo cuenta como pulsación nueva si hubo una pausa mayor que esto.
@@ -31,7 +34,7 @@ local JUMP_REPEAT_GAP = 0.1
 local lastJumpRequest = -math.huge
 
 local function press(action)
-	if held[action] then
+	if held[action] or next(blockers) ~= nil then
 		return
 	end
 	held[action] = true
@@ -69,6 +72,19 @@ function InputController.ReleaseAll()
 	for action in pairs(held) do
 		release(action)
 	end
+end
+
+-- Bloquea (o desbloquea) las acciones nuevas mientras dure un contexto, p. ej. SetBlocked("menu", true). Al
+-- bloquear también suelta lo mantenido.
+function InputController.SetBlocked(reason, on)
+	blockers[reason] = if on then true else nil
+	if on then
+		InputController.ReleaseAll()
+	end
+end
+
+function InputController.IsBlocked()
+	return next(blockers) ~= nil
 end
 
 -- Pulsar y soltar enseguida (un toque)
@@ -192,7 +208,13 @@ local function createTouchButtons()
 end
 
 function InputController.Start()
-	UserInputService.WindowFocusReleased:Connect(InputController.ReleaseAll)
+	-- Perder el foco (Alt+Tab) suelta lo mantenido. En las pruebas automáticas no hay nadie al teclado: que otra
+	-- ventana tome el foco no debe soltar la guardia que la prueba mantiene (fallo intermitente de "Ruptura")
+	UserInputService.WindowFocusReleased:Connect(function()
+		if not game:GetService("ReplicatedStorage"):FindFirstChild("UmbralPruebasAutomaticas") then
+			InputController.ReleaseAll()
+		end
+	end)
 	Players.LocalPlayer.CharacterAdded:Connect(InputController.ReleaseAll)
 	bind("Atacar", Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonX)
 	bind("Defender", Enum.KeyCode.F, Enum.KeyCode.ButtonR1)

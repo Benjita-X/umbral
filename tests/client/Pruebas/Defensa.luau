@@ -368,6 +368,19 @@ return function(ctx)
 	ctx.humanoid:Move(Vector3.zero)
 	record("El barrido no admite Contrapaso", r ~= nil and r.result == "esquiva" and os.clock() > Combat.State.counterUntil, describe(r, id) .. " (sale del área, pero sin Contraataque) " .. beforeSweepDash)
 
+	-- ---------- 7b. Aviso de Paso FALSO (auditoría externa): avisar un Paso lateral sin moverse no da Contrapaso ----------
+	setPattern("Golpe")
+	reset()
+	stand(3.5)
+	impact, id = nextAttack("Golpe")
+	at(impact - 0.15)
+	local fakes0 = player:GetAttribute("PasosSinMovimiento") or 0
+	-- Lo que haría un cliente modificado: avisa un Paso lateral con hora válida, pero no se mueve
+	remotes:WaitForChild("Defensa"):FireServer("paso", serverNow(), Vector3.new(1, 0, 0), ctx.root.Position, ctx.root.CFrame.LookVector)
+	r = resultFor(id)
+	local fakes = (player:GetAttribute("PasosSinMovimiento") or 0) - fakes0
+	record("Un aviso de Paso sin moverse no da Contrapaso", r ~= nil and r.result ~= "contrapaso" and fakes >= 1, describe(r, id) .. string.format(" · avisos sin movimiento detectados: %d", fakes))
+
 	-- ---------- 8. Esquiva precisa ----------
 	setPattern("Golpe")
 	reset()

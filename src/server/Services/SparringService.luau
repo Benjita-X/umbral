@@ -269,6 +269,29 @@ stagger = function(s, duration)
 end
 
 -- Decide qué le pasó a un jugador con un ataque (corre en su propio hilo; las esperas están acotadas)
+-- ¿El Paso avisado fue un Paso DE VERDAD? (auditoría externa: un aviso sin moverse, o correr de lado, no basta; y un
+-- Paso que choca contra una pared tampoco te saca del golpe). Se mide cuánto avanzó en la dirección del Paso durante
+-- lo que dura un Paso (con el tope de 1,5× de los cuadros lentos), con posiciones CONFIRMADAS: lo que informó su
+-- cliente con la hora exacta y que la física observada respalda (lo observado solo, llega suavizado por la red y
+-- un Paso real parecía lento). Un Paso recorre 14 studs; corriendo de lado se llega a 9 como mucho. Espera, acotado,
+-- a que lleguen esas posiciones: si fue muy justo, el veredicto sale unas décimas después, pero un Paso legítimo
+-- nunca se niega por llegar tarde.
+local MovementConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
+local DASH_SPAN = MovementConfig.DashDuration * 1.5
+local DASH_EVIDENCE = MovementConfig.DashDistance * 0.75 -- 10,5 studs: por encima del sprint en ese tiempo (34 × 0,27 = 9,2)
+local function realPaso(player, paso)
+	if not paso or not player.Character then
+		return false, 0
+	end
+	local before = PositionService.ConfirmedAt(player, paso.t)
+	local after = before and PositionService.ConfirmedAt(player, paso.t + DASH_SPAN)
+	if not before or not after then
+		return false, 0
+	end
+	local advance = flat(after.Position - before.Position):Dot(paso.dir)
+	return advance >= DASH_EVIDENCE, advance
+end
+
 local function resolve(s, info, player)
 	local attack = info.attack
 	local oneWay = DefenseService.OneWay(player)
@@ -314,6 +337,7 @@ local function resolve(s, info, player)
 	end
 
 	local result, damage, exposed = nil, 0, false
+	local deflectPress = nil -- la pulsación que desvió este ataque (para el entrenador)
 	local stunApplied = nil -- duración real del aturdimiento (el cliente usa la misma)
 	-- 0. Eclipse (definitiva de la Oscuridad): los ataques te atraviesan
 	local eclipseUntil = player:GetAttribute("EclipseHasta")
@@ -325,6 +349,7 @@ local function resolve(s, info, player)
 		local kind, press = DefenseService.FindDeflect(player, perceived)
 		if kind == "perfecto" or (kind == "normal" and not attack.perfectOnly) then
 			DefenseService.Consume(press)
+			deflectPress = press
 			result = if kind == "perfecto" then "desvio_perfecto" else "desvio"
 		end
 	end
@@ -334,7 +359,15 @@ local function resolve(s, info, player)
 	if not result and attack.contrapaso and threat and paso then
 		local reference = (pasoStart or atCommit or atImpact).Position
 		if isLateral(paso.dir, flat(reference - info.originCFrame.Position)) then
-			result = "contrapaso"
+			local real, advance = realPaso(player, paso)
+			if real then
+				result = "contrapaso"
+			else
+				player:SetAttribute("PasosSinMovimiento", (player:GetAttribute("PasosSinMovimiento") or 0) + 1)
+				if RunService:IsStudio() then
+					print(string.format("[UMBRAL] Defensa · ataque %d → Paso avisado sin el avance de un Paso (%.1f studs de %.1f): no hay Contrapaso", info.attackId, advance, DASH_EVIDENCE))
+				end
+			end
 		end
 	end
 	-- 3. Salió del área o saltó por encima del barrido
@@ -347,7 +380,7 @@ local function resolve(s, info, player)
 		local jumped = overRing or (attack.shape == "ring" and insideNow and airborne(p, atImpact.Position))
 		if not insideNow or jumped then
 			local dodgePaso = DefenseService.FindPaso(player, perceived - defense.PreciseDodgeWindow, perceived + 0.03)
-			if threat and (dodgePaso or jumped) then
+			if threat and (jumped or (dodgePaso and realPaso(player, dodgePaso))) then
 				result = "esquiva"
 			else
 				if RunService:IsStudio() then
@@ -413,14 +446,6 @@ local function resolve(s, info, player)
 	elseif result == "contrapaso" then
 		ResonanceService.Gain(player, "Contrapaso")
 		DefenseService.OpenCounter(player)
-		local character = player.Character
-		local before = character and paso and PositionService.ObservedAt(character, paso.t)
-		task.delay(0.45, function()
-			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if before and root and Vector3.new(root.Position.X - before.Position.X, 0, root.Position.Z - before.Position.Z).Magnitude < 3 then
-				player:SetAttribute("ContrapasosSinMovimiento", (player:GetAttribute("ContrapasosSinMovimiento") or 0) + 1)
-			end
-		end)
 	elseif result == "esquiva" then
 		ResonanceService.Gain(player, "Esquiva")
 	elseif result == "ruptura" then
@@ -449,8 +474,17 @@ local function resolve(s, info, player)
 			damage
 		))
 	end
+	-- Entrenador: el desvío normal mide SU pulsación (cuánto faltó para el perfecto); un golpe, la guardia o la
+	-- ruptura, el intento de desvío que iba a este ataque (si lo hubo)
+	local timing, timingValid = nil, nil
+	if result == "desvio" and deflectPress then
+		timing, timingValid = perceived - deflectPress.t, true
+	elseif result == "golpe" or result == "guardia" or result == "ruptura" then
+		timing, timingValid = DefenseService.CoachPress(player, perceived)
+	end
 	resultRemote:FireAllClients({
-		timing = if result ~= "desvio_perfecto" then DefenseService.NearestPressOffset(player, info.impactTime + PositionService.OneWay(player)) else nil,
+		timing = timing,
+		timingSpam = if timing ~= nil and timingValid == false then true else nil,
 		player = player,
 		npc = s.model,
 		attack = info.attackName,

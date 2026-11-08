@@ -62,6 +62,7 @@ local function label(parent, text, size, color, font, align)
 end
 
 function MenuController.Start(movement, combat, debugHud, tutorial, ecoController)
+	local toggle -- (se define abajo: abre o cierra el menú con todo lo que eso implica)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "UmbralMenu"
 	gui.ResetOnSpawn = false
@@ -321,6 +322,24 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 			end,
 		},
 		{
+			name = "Bordes rojos con poca vida",
+			get = function()
+				return feedback.LowHealthPulse ~= false
+			end,
+			set = function(on)
+				feedback.LowHealthPulse = on
+			end,
+		},
+		{
+			name = "Marca de dónde vino el golpe",
+			get = function()
+				return feedback.HitIndicator ~= false
+			end,
+			set = function(on)
+				feedback.HitIndicator = on
+			end,
+		},
+		{
 			name = "Cámara fija: el personaje mira a la mira (Ctrl)",
 			get = function()
 				return CameraController.IsLocked()
@@ -393,7 +412,7 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 		again.Parent = content
 		again.Activated:Connect(function()
 			tutorial.Restart()
-			panel.Visible = false
+			toggle(false)
 		end)
 	end
 
@@ -409,16 +428,15 @@ function MenuController.Start(movement, combat, debugHud, tutorial, ecoControlle
 	corner(close, 8)
 	close.Parent = panel
 
-	local function toggle(force)
+	toggle = function(force)
 		local visible = if force ~= nil then force else not panel.Visible
 		panel.Visible = visible
-		-- Con el menú abierto el ratón queda libre (la cámara fija se suspende) y nada queda pulsado detrás
+		-- Con el menú abierto el ratón queda libre (la cámara fija se suspende), nada queda pulsado detrás y las
+		-- acciones de combate no salen (un clic en sus botones ya no es también un golpe; Z/X/C/V no lanzan)
 		CameraController.SetMouseFree("menu", visible)
-		if visible then
-			local ok, input = pcall(require, script.Parent:WaitForChild("InputController"))
-			if ok and input.ReleaseAll then
-				input.ReleaseAll()
-			end
+		local ok, input = pcall(require, script.Parent:WaitForChild("InputController"))
+		if ok and input.SetBlocked then
+			input.SetBlocked("menu", visible)
 		end
 	end
 	open.Activated:Connect(function()

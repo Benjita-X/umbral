@@ -14,6 +14,8 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local CombatConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig"))
+local MovementConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MovementConfig"))
+local ResonanceService = require(script.Parent:WaitForChild("ResonanceService"))
 
 local DefenseService = {}
 
@@ -53,9 +55,13 @@ function DefenseService.OneWay(player)
 end
 
 local MAX_EVENTS_PER_SECOND = 30 -- defensas por segundo y jugador (machacar a mano no llega a 15)
--- Avisos de Paso: cubo de cargas como el del cliente (2 cargas + 1 Paso extra con Resonancia; una carga cada
--- 0,75 s). Mandar "paso" sin parar ya no da una ventana de Contrapaso permanente (auditoría externa).
-local PASO_CAPACITY, PASO_REFILL = 3, 0.75
+-- Avisos de Paso: la MISMA economía del cliente (MovementConfig): DashCharges cargas que vuelven de una en una
+-- cada DashRechargeTime, contadas con la hora de la PULSACIÓN (la red no las amontona ni las separa) y con un 6 % de
+-- holgura a favor del jugador. Sin cargas, solo vale el Paso extra que la Resonancia ya pagó (ResonanceService lo
+-- acredita). Un aviso sin carga ni pago no cuenta (auditoría externa).
+local PASO_CHARGES = MovementConfig.DashCharges
+local PASO_REFILL = MovementConfig.DashRechargeTime * 0.94
+local PASO_MIN_GAP = MovementConfig.DashMinInterval * 0.5
 
 -- La hora que manda el cliente solo vale si es coherente: ni futura ni más vieja que el retroceso
 -- acotado (min(ping, MaxRewind)) más un margen. Una hora inválida no se usa: se toma la actual.
@@ -131,14 +137,20 @@ local function onDefense(player, action, t, dir, position, look)
 			end
 		end
 	elseif action == "paso" then
-		local clock = os.clock()
-		r.pasoTokens = math.min(PASO_CAPACITY, (r.pasoTokens or PASO_CAPACITY) + (clock - (r.pasoClock or clock)) / PASO_REFILL)
-		r.pasoClock = clock
-		if r.pasoTokens < 1 then
+		local at = math.max(time, r.pasoClock or -math.huge) -- nunca hacia atrás (avisos desordenados)
+		if r.lastPasoAt and at - r.lastPasoAt < PASO_MIN_GAP then
 			player:SetAttribute("PasosExcedidos", (player:GetAttribute("PasosExcedidos") or 0) + 1)
 			return
 		end
-		r.pasoTokens -= 1
+		r.pasoTokens = math.min(PASO_CHARGES, (r.pasoTokens or PASO_CHARGES) + (at - (r.pasoClock or at)) / PASO_REFILL)
+		r.pasoClock = at
+		if r.pasoTokens >= 1 then
+			r.pasoTokens -= 1
+		elseif not ResonanceService.TakeExtraDash(player) then
+			player:SetAttribute("PasosExcedidos", (player:GetAttribute("PasosExcedidos") or 0) + 1)
+			return
+		end
+		r.lastPasoAt = at
 		local flatDir = if typeof(dir) == "Vector3" then Vector3.new(dir.X, 0, dir.Z) else Vector3.zero
 		if flatDir.Magnitude > 0.1 then
 			table.insert(r.pasos, { t = time, dir = flatDir.Unit })
@@ -165,17 +177,24 @@ function DefenseService.FindDeflect(player, perceived)
 	return best, bestPress
 end
 
--- Entrenador de defensa: cuánto antes del impacto (s; negativo = después) fue la pulsación de Defender más
--- cercana, si hubo una en ±0,5 s. Sirve para decirle al jugador "70 ms temprano" en vez de solo "te golpearon".
-function DefenseService.NearestPressOffset(player, perceived)
-	local best = nil
+-- Entrenador de defensa: cuánto antes del impacto (s; negativo = después) fue la pulsación de Defender con la
+-- que el jugador intentaba defenderse de ESTE ataque, para decirle "70 ms temprano" en vez de solo "te golpearon".
+-- Solo cuentan las pulsaciones en ±0,5 s que no desviaron otro ataque, y cada una aconseja UNA vez (con varios
+-- enemigos, el consejo es del ataque más cercano a ella, no se repite en todos). Devuelve desfase, válida
+-- (false = estaba en el enfriamiento del desvío: pulsó demasiado seguido) o nil si no hubo intento.
+function DefenseService.CoachPress(player, perceived)
+	local best, bestPress = nil, nil
 	for _, press in ipairs(recordFor(player).presses) do
 		local before = perceived - press.t
-		if math.abs(before) <= 0.5 and (best == nil or math.abs(before) < math.abs(best)) then
-			best = before
+		if not press.consumed and not press.coached and math.abs(before) <= 0.5 and (best == nil or math.abs(before) < math.abs(best)) then
+			best, bestPress = before, press
 		end
 	end
-	return best
+	if not bestPress then
+		return nil
+	end
+	bestPress.coached = true
+	return best, bestPress.valid
 end
 
 function DefenseService.Consume(press)
@@ -293,6 +312,35 @@ function DefenseService.IsStunnedAt(player, t)
 	return pressed >= start + notice and pressed < untilTime
 end
 
+-- Ganchos ACEPTADOS (WeaponService ya comprobó el enganche, el alcance y la línea de visión): el golpe tras el
+-- Paso al llegar a un enemigo y la regla de "golpe fallado" se juzgan con este registro
+function DefenseService.RecordGrapple(player, t, target, enemy, from)
+	local r = recordFor(player)
+	r.grapples = r.grapples or {}
+	table.insert(r.grapples, { t = t, target = target, enemy = enemy == true, from = from })
+	prune(r.grapples, t)
+end
+
+-- Último gancho aceptado entre `from` y `to` (hora del servidor)
+function DefenseService.FindGrapple(player, from, to)
+	local list = recordFor(player).grapples
+	if not list then
+		return nil
+	end
+	for i = #list, 1, -1 do
+		local g = list[i]
+		if g.t >= from and g.t <= to then
+			return g
+		end
+	end
+	return nil
+end
+
+-- ¿Empezó un aturdimiento en la hora `t` o después? (corta lo que el jugador estuviera haciendo)
+function DefenseService.StunnedSince(player, t)
+	return (recordFor(player).stunStart or -math.huge) >= t
+end
+
 -- Borra la cadena de aturdimientos y el Aguante (reaparecer, pruebas)
 function DefenseService.ClearStunChain(player)
 	local r = recordFor(player)
@@ -319,6 +367,19 @@ function DefenseService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		records[player] = nil
 	end)
+	-- Al reaparecer, el cliente vuelve a tener todas sus cargas de Paso: el servidor también
+	local function watch(player)
+		player.CharacterAdded:Connect(function()
+			local r = records[player]
+			if r then
+				r.pasoTokens, r.pasoClock, r.lastPasoAt = nil, nil, nil
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(watch)
+	for _, player in ipairs(Players:GetPlayers()) do
+		watch(player)
+	end
 
 	-- La postura se recupera si no estás en guardia ni recibiendo golpes
 	RunService.Heartbeat:Connect(function(dt)

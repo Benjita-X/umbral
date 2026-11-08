@@ -74,9 +74,13 @@ function AvisosHUD.Start(combat)
 	mark.Parent = pivot
 	gui.Parent = player:WaitForChild("PlayerGui")
 
+	local feedback = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig")).Feedback
 	local hitToken = 0
 	local from = nil
 	local function showHit(position)
+		if feedback.HitIndicator == false then
+			return -- apagada en Ajustes
+		end
 		from = position
 		hitToken += 1
 		local token = hitToken
@@ -130,7 +134,9 @@ function AvisosHUD.Start(combat)
 				showHit(data.from)
 			end
 			local timing = data.timing
-			if type(timing) == "number" then
+			if type(timing) == "number" and data.timingSpam then
+				advise("desvío en enfriamiento: pulsaste Defender demasiado seguido")
+			elseif type(timing) == "number" then
 				local ms = math.floor(math.abs(timing) * 1000 + 0.5)
 				if data.result == "desvio" then
 					local toPerfect = math.floor((timing - defense.PerfectWindow) * 1000 + 0.5)
@@ -148,41 +154,30 @@ function AvisosHUD.Start(combat)
 		end)
 	end
 
-	-- Golpe que en esta pantalla conectó pero el servidor no aceptó: una ✕ sobre el objetivo con el motivo (así se
-	-- entiende por qué no contó, en vez de sentir que el juego se lo comió)
-	local lastTarget, lastHitClock = nil, -math.huge
-	if combat and combat.Hit then
-		combat.Hit:Connect(function(_, model)
-			if typeof(model) == "Instance" then
-				lastTarget, lastHitClock = model, os.clock()
-			end
-		end)
-	end
-	local rejectedBefore = player:GetAttribute("GolpesRechazados") or 0
-	player:GetAttributeChangedSignal("GolpesRechazados"):Connect(function()
-		local count = player:GetAttribute("GolpesRechazados") or 0
-		local grew = count > rejectedBefore
-		rejectedBefore = count
-		local root = lastTarget and lastTarget:FindFirstChild("HumanoidRootPart")
-		if not grew or not root or os.clock() - lastHitClock > 0.8 then
+	-- Golpe que en esta pantalla conectó pero el servidor no aceptó: una ✕ sobre ESE objetivo con el motivo (así se
+	-- entiende por qué no contó, en vez de sentir que el juego se lo comió). El servidor dice qué golpe (seq) y a
+	-- quién: con varios objetivos la marca no cae sobre el equivocado.
+	local function showRejected(target, rawReason)
+		local root = typeof(target) == "Instance" and target:FindFirstChild("HumanoidRootPart")
+		if not root then
 			return
 		end
-		local reason = tostring(player:GetAttribute("UltimoRechazo") or "")
+		local reason = tostring(rawReason or "")
 		reason = string.match(reason, "^[^%(·]+") or reason -- solo la causa, sin los datos técnicos
-		local gui = Instance.new("BillboardGui")
-		gui.Size = UDim2.fromOffset(170, 40)
-		gui.StudsOffset = Vector3.new(0, 4, 0)
-		gui.AlwaysOnTop = true
-		gui.LightInfluence = 0
-		local mark = Instance.new("TextLabel")
-		mark.BackgroundTransparency = 1
-		mark.Size = UDim2.new(1, 0, 0.6, 0)
-		mark.Font = Enum.Font.GothamBlack
-		mark.TextScaled = true
-		mark.Text = "✕"
-		mark.TextColor3 = Color3.fromRGB(200, 200, 210)
-		mark.TextStrokeTransparency = 0.2
-		mark.Parent = gui
+		local billboard = Instance.new("BillboardGui")
+		billboard.Size = UDim2.fromOffset(170, 40)
+		billboard.StudsOffset = Vector3.new(0, 4, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		local cross = Instance.new("TextLabel")
+		cross.BackgroundTransparency = 1
+		cross.Size = UDim2.new(1, 0, 0.6, 0)
+		cross.Font = Enum.Font.GothamBlack
+		cross.TextScaled = true
+		cross.Text = "✕"
+		cross.TextColor3 = Color3.fromRGB(200, 200, 210)
+		cross.TextStrokeTransparency = 0.2
+		cross.Parent = billboard
 		local why = Instance.new("TextLabel")
 		why.BackgroundTransparency = 1
 		why.Position = UDim2.fromScale(0, 0.6)
@@ -192,17 +187,22 @@ function AvisosHUD.Start(combat)
 		why.Text = "no contó: " .. reason
 		why.TextColor3 = Color3.fromRGB(200, 200, 210)
 		why.TextStrokeTransparency = 0.3
-		why.Parent = gui
-		gui.Adornee = root
-		gui.Parent = player:WaitForChild("PlayerGui")
+		why.Parent = billboard
+		billboard.Adornee = root
+		billboard.Parent = gui
 		task.delay(0.9, function()
-			TweenService:Create(mark, TweenInfo.new(0.3), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			TweenService:Create(cross, TweenInfo.new(0.3), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 			TweenService:Create(why, TweenInfo.new(0.3), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 			task.delay(0.32, function()
-				gui:Destroy()
+				billboard:Destroy()
 			end)
 		end)
-	end)
+	end
+	if combat and combat.HitRejected then
+		combat.HitRejected:Connect(function(_, target, reason)
+			showRejected(target, reason)
+		end)
+	end
 
 	local pulse = 0
 	RunService.RenderStepped:Connect(function(dt)
@@ -224,7 +224,7 @@ function AvisosHUD.Start(combat)
 		-- Vida baja: late más rápido cuanto menos vida queda
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local ratio = if humanoid and humanoid.MaxHealth > 0 then humanoid.Health / humanoid.MaxHealth else 1
-		if humanoid and humanoid.Health > 0 and ratio < LOW_HEALTH then
+		if humanoid and humanoid.Health > 0 and ratio < LOW_HEALTH and feedback.LowHealthPulse ~= false then
 			pulse += dt * (4 + (LOW_HEALTH - ratio) * 20)
 			vignette.GroupTransparency = 0.45 + 0.35 * (0.5 + 0.5 * math.sin(pulse))
 		elseif vignette.GroupTransparency < 1 then

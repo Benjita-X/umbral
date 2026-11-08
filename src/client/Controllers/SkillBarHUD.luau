@@ -299,9 +299,15 @@ function SkillBarHUD.Start(ecoController)
 			end
 		end)
 	end
+	-- Motivos del servidor dichos como los entiende un jugador
+	local FRIENDLY = {
+		["golpe fallado"] = "tu golpe no contó: espera a que termine",
+		["posición no confirmada"] = "se perdió la conexión un instante",
+		["cambiando de Eco"] = "el Eco se está cambiando",
+	}
 	ecoController.Rejected:Connect(function(reason)
 		if reason and reason ~= "enfriamiento" then
-			notice("No salió: " .. tostring(reason))
+			notice("No salió: " .. (FRIENDLY[reason] or tostring(reason)))
 		end
 	end)
 
@@ -426,14 +432,30 @@ function SkillBarHUD.Start(ecoController)
 	end
 	inputLog.Parent = gui
 	local entries = {}
+	local serverRow = nil -- habilidad de la fila del servidor que está arriba (para actualizarla en su sitio)
+	local function redraw()
+		for i, row in ipairs(logRows) do
+			row.Text = entries[i] or ""
+		end
+	end
 	local function pushLog(line)
+		serverRow = nil
 		table.insert(entries, 1, line)
 		if #entries > 5 then
 			table.remove(entries)
 		end
-		for i, row in ipairs(logRows) do
-			row.Text = entries[i] or ""
+		redraw()
+	end
+	-- Lo que dijo el SERVIDOR (la verdad, no solo lo que se vio aquí): ✓✓ con a cuántos alcanzó o ✕✕ con el motivo.
+	-- Una habilidad que sigue golpeando (tornado, Juicio) actualiza su misma fila en vez de llenar el registro.
+	local function pushServer(name, line)
+		if name ~= nil and serverRow == name and entries[1] then
+			entries[1] = line
+			redraw()
+		else
+			pushLog(line)
 		end
+		serverRow = name
 	end
 	local function practicing()
 		return player:GetAttribute("Practica") == true
@@ -451,6 +473,28 @@ function SkillBarHUD.Start(ecoController)
 	ecoController.Denied:Connect(function(slot, reason)
 		if practicing() then
 			pushLog(string.format('<font color="#FF8070">✕</font> %s · no salió: %s', tostring(slot), tostring(reason)))
+		end
+	end)
+	if ecoController.Replaced then
+		ecoController.Replaced:Connect(function(old, new)
+			if practicing() then
+				pushLog(string.format('<font color="#C8C8D2">↺</font> %s en cola · la reemplazó %s', tostring(old), tostring(new)))
+			end
+		end)
+	end
+	player:GetAttributeChangedSignal("UltimoEco"):Connect(function()
+		if not practicing() then
+			return
+		end
+		local name, count = string.match(tostring(player:GetAttribute("UltimoEco") or ""), "^([^:]+):(%d+)")
+		if name then
+			local spec = skills[name]
+			pushServer(name, string.format('<font color="#8CFFA0">✓✓</font> servidor: %s · alcanzó a %s', Texto.Mayusculas(spec and spec.label or name), count))
+		end
+	end)
+	ecoController.Rejected:Connect(function(reason)
+		if practicing() then
+			pushServer(nil, string.format('<font color="#FF8070">✕✕</font> servidor: no salió · %s', tostring(reason)))
 		end
 	end)
 	local loggedQueue = nil
@@ -706,8 +750,10 @@ function SkillBarHUD.Start(ecoController)
 
 	RunService.Heartbeat:Connect(function()
 		local resonance = player:GetAttribute("Resonancia") or 0
+		-- Lista de verdad: Resonancia suficiente Y la V sin enfriamiento (antes avisaba con la Resonancia aunque la V
+		-- siguiera enfriándose). La espera corta del cambio de Eco no cuenta: si no, cada cambio repetiría el aviso.
 		local ultimate = skills[ecoController.Kit().slots.V or ""]
-		local ready = ultimate ~= nil and resonance >= (ultimate.cost or 0)
+		local ready = ultimate ~= nil and resonance >= (ultimate.cost or 0) and ecoController.OwnCooldown("V") <= 0
 		if ready and wasReady == false then
 			notice("¡DEFINITIVA LISTA! (V)")
 			local s = slots.V

@@ -95,18 +95,68 @@ function WeaponService.Start()
 		last[player] = clock
 		WeaponService.Equip(player, name)
 	end)
-	-- Gancho: la hora en que el jugador se enganchó (habilita el golpe tras el Paso al llegar a un enemigo)
+	-- Gancho: el cliente dice A QUÉ se enganchó (un punto "PuntoGancho" del mapa o un enemigo "Objetivo") y desde
+	-- dónde. El servidor comprueba la hora, el enfriamiento, que el enganche exista, el alcance y la línea de visión,
+	-- y solo entonces anota el gancho (DefenseService.RecordGrapple). Llegar a un ENEMIGO enganchado habilita el
+	-- golpe tras el Paso (DamageService lo juzga contra ese registro).
 	local hookRemote = Instance.new("RemoteEvent")
 	hookRemote.Name = "Gancho"
 	hookRemote.Parent = ReplicatedStorage:WaitForChild("Remotes")
 	local PositionService = require(script.Parent:WaitForChild("PositionService"))
+	local DefenseService = require(script.Parent:WaitForChild("DefenseService"))
+	local DamageService = require(script.Parent:WaitForChild("DamageService"))
+	local grapple = CombatConfig.Weapons.Grapple
 	local lastHook = {}
-	hookRemote.OnServerEvent:Connect(function(player, t)
+	local function refuseHook(player, reason)
+		player:SetAttribute("GanchoRechazado", reason)
+		player:SetAttribute("GanchosRechazados", (player:GetAttribute("GanchosRechazados") or 0) + 1)
+	end
+	hookRemote.OnServerEvent:Connect(function(player, t, target, position, look)
 		local clock = os.clock()
-		if clock - (lastHook[player] or -math.huge) < 0.5 or not PositionService.ValidTime(player, t) then
-			return
+		if clock - (lastHook[player] or -math.huge) < grapple.Cooldown * 0.8 then
+			return refuseHook(player, "gancho en enfriamiento")
+		end
+		if not PositionService.ValidTime(player, t) then
+			return refuseHook(player, "hora inválida")
+		end
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root or typeof(target) ~= "Instance" or not target:IsDescendantOf(workspace) then
+			return refuseHook(player, "enganche inválido")
+		end
+		local enemy = target:IsA("Model") and target:HasTag("Objetivo") and target ~= character
+		local anchor = target:IsA("BasePart") and target.Name == "PuntoGancho"
+		if not enemy and not anchor then
+			return refuseHook(player, "enganche inválido")
+		end
+		local targetPosition
+		if enemy then
+			local humanoid = target:FindFirstChildOfClass("Humanoid")
+			local targetRootPart = target:FindFirstChild("HumanoidRootPart")
+			if not humanoid or humanoid.Health <= 0 or not targetRootPart then
+				return refuseHook(player, "enemigo vencido")
+			end
+			local seen = PositionService.ObservedAt(target, t - PositionService.OneWay(player))
+			targetPosition = if seen then seen.Position else targetRootPart.Position
+		else
+			targetPosition = target.Position
+		end
+		-- Desde dónde: lo que informa, si es coherente con lo observado (a pocos studs); si no, lo observado
+		local seenSelf = PositionService.ObservedAt(character, t)
+		local from = if seenSelf then seenSelf.Position else root.Position
+		if typeof(position) == "Vector3" and ((position - from).Magnitude <= 10 or (position - root.Position).Magnitude <= 10) then
+			PositionService.Report(player, t, position, look)
+			from = position
+		end
+		local range = if enemy then grapple.EnemyRange else grapple.PointRange
+		if (targetPosition - from).Magnitude > range + 6 then
+			return refuseHook(player, string.format("gancho fuera de alcance (%.0f studs)", (targetPosition - from).Magnitude))
+		end
+		if DamageService.SolidBetween(character, target, from + Vector3.new(0, 0.5, 0), targetPosition) then
+			return refuseHook(player, "gancho a través de una pared")
 		end
 		lastHook[player] = clock
+		DefenseService.RecordGrapple(player, t, target, enemy, from)
 		player:SetAttribute("GanchoHora", t)
 	end)
 

@@ -44,7 +44,7 @@ local weapons = Config.Weapons
 local CombatController = {}
 
 local events = {}
-for _, name in ipairs({ "AttackStarted", "PhaseChanged", "Hit", "AttackEnded", "Confirmed", "DefenseResult" }) do
+for _, name in ipairs({ "AttackStarted", "PhaseChanged", "Hit", "AttackEnded", "Confirmed", "DefenseResult", "HitRejected" }) do
 	events[name] = Instance.new("BindableEvent")
 	CombatController[name] = events[name].Event
 end
@@ -191,10 +191,42 @@ local function dropAttackVisuals()
 end
 
 -- ---------- Golpes ----------
+-- El servidor rechazó un contacto (fuera de alcance, pared...): si ese ataque ya no tiene ningún contacto en pie,
+-- fue un golpe FALLADO aunque aquí pareciera conectar. Su recuperación deja de poder cortarse con una habilidad,
+-- la guardia o el siguiente golpe (lo mismo que exige el servidor); no se alarga a mitad de camino.
+local function onHitRejected(data)
+	if type(data) ~= "table" or type(data.seq) ~= "number" then
+		return
+	end
+	local a = state.attack
+	if a and a.seq == data.seq and typeof(data.target) == "Instance" and a.verdicts[data.target] == "pendiente" then
+		a.verdicts[data.target] = "rechazado"
+		state.comboHits = math.max(0, state.comboHits - 1)
+		state.comboDamage = math.max(0, state.comboDamage - (a.predicted or 0))
+		local standing = false
+		for _, verdict in pairs(a.verdicts) do
+			if verdict ~= "rechazado" then
+				standing = true
+				break
+			end
+		end
+		if not standing and a.hit then
+			a.hit = false
+			a.cancelable = false
+			a.rejected = true
+		end
+	end
+	events.HitRejected:Fire(data.seq, data.target, data.reason)
+end
+
+-- El contacto en esta pantalla es una PREDICCIÓN (sin esperar a la red: el golpe se siente al instante). Cada
+-- objetivo queda "pendiente" hasta que el servidor lo acepte (GolpeConfirmado con este seq) o lo rechace
+-- (GolpeRechazado): si rechaza todos, el ataque pasa a ser un golpe fallado también aquí (ver onHitRejected).
 local function onHit(a, model, targetRoot)
 	local def = a.def
 	local firstHit = not a.hit
 	a.hit = true
+	a.verdicts[model] = "pendiente"
 
 	local t = os.clock()
 	if t - state.lastHitTime > Config.ComboResetTime + 0.6 then
@@ -206,6 +238,7 @@ local function onHit(a, model, targetRoot)
 	if a.counter then
 		predicted *= defense.CounterDamageMultiplier
 	end
+	a.predicted = predicted
 	state.comboDamage += predicted
 	state.lastHitTime = t
 
@@ -322,6 +355,7 @@ local function startAttack(name, charge)
 		startup = startup,
 		hit = false,
 		targets = {},
+		verdicts = {}, -- [objetivo] = "pendiente" | "aceptado" | "rechazado" (lo que dijo el servidor)
 		seq = state.sequence,
 		charge = charge or 0,
 		recovery = def.recovery,
@@ -936,6 +970,10 @@ function CombatController.Start(inputController, movementController)
 		folder:WaitForChild("GolpeConfirmado").OnClientEvent:Connect(function(data)
 			local mine = data.attacker == player
 			Effects.OnConfirmed(data, mine)
+			local current = state.attack
+			if mine and current and data.seq == current.seq and typeof(data.target) == "Instance" then
+				current.verdicts[data.target] = "aceptado"
+			end
 			if mine then
 				state.confirmedDamage += data.damage
 				-- Si el servidor cambió el daño (coraza: bloqueado o por la espalda), el contador del combo se
@@ -952,6 +990,10 @@ function CombatController.Start(inputController, movementController)
 			end
 		end)
 		folder:WaitForChild("ResultadoDefensa").OnClientEvent:Connect(onDefenseResult)
+		local rejected = folder:WaitForChild("GolpeRechazado", 10)
+		if rejected then
+			rejected.OnClientEvent:Connect(onHitRejected)
+		end
 	end)
 
 	RunService.Heartbeat:Connect(update)
@@ -965,6 +1007,25 @@ function CombatController.EndStun()
 	if state.mode == "Aturdido" then
 		endStun()
 	end
+end
+
+-- Movimiento que corta lo que haces (el gancho), con la regla del Paso: la preparación (amago) y la recuperación sí
+-- (también la de un golpe fallado: moverse es la salida, y el servidor lo sabe porque anota el gancho), la fase
+-- activa no. Devuelve false si no se puede.
+function CombatController.CancelForMovement()
+	if not alive() or state.mode == "Aturdido" then
+		return false
+	end
+	local a = state.attack
+	if state.mode == "Ataque" and a and a.phase == "active" then
+		return false
+	end
+	if state.mode == "Ataque" then
+		finishAttack()
+	elseif state.mode == "Carga" or state.mode == "Guardia" then
+		cancelToFree()
+	end
+	return true
 end
 
 -- ¿Puede una habilidad cortar lo que hace ahora? Devuelve true, o false + motivo + segundos que faltan.

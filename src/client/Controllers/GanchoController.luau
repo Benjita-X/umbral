@@ -15,11 +15,14 @@ local Workspace = game:GetService("Workspace")
 
 local GanchoController = {}
 
-local POINT_RANGE = 50
-local ENEMY_RANGE = 32
+-- Alcances, enfriamiento y velocidad: los mismos que valida el servidor (CombatConfig.Weapons.Grapple)
+local grappleConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("CombatConfig")).Weapons.Grapple
+local PositionReporter = require(script.Parent:WaitForChild("PositionReporter"))
+local POINT_RANGE = grappleConfig.PointRange
+local ENEMY_RANGE = grappleConfig.EnemyRange
 local CONE = 38 -- grados alrededor del centro de la cámara
-local COOLDOWN = 0.8
-local SPEED = 95
+local COOLDOWN = grappleConfig.Cooldown
+local SPEED = grappleConfig.Speed
 local COLOR = Color3.fromRGB(120, 255, 230)
 
 local player = Players.LocalPlayer
@@ -211,8 +214,9 @@ function GanchoController.GrappleTo(target)
 		return false
 	end
 	local enemy = not target:IsA("BasePart")
-	if combat then
-		combat.CancelForSkill()
+	-- Corta lo que hagas con la regla del Paso (no a mitad de un golpe en su fase activa)
+	if combat and combat.CancelForMovement and not combat.CancelForMovement() then
+		return false
 	end
 	local ok = movement.Grapple(function()
 		return positionOf(target)
@@ -225,7 +229,9 @@ function GanchoController.GrappleTo(target)
 		local remote = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
 		remote = remote and remote:FindFirstChild("Gancho")
 		if remote then
-			remote:FireServer(Workspace:GetServerTimeNow())
+			-- A qué se enganchó y desde dónde (el servidor valida alcance y visión antes de aceptarlo)
+			local t, position, look = PositionReporter.Sample()
+			remote:FireServer(t, target, position, look)
 		end
 	end
 	return ok

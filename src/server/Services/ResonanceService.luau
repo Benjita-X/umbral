@@ -107,6 +107,16 @@ function ResonanceService.Spend(player, amount)
 	return true
 end
 
+-- Cobra el Paso extra que la Resonancia pagó hace un instante (1 s como mucho): true si lo había
+function ResonanceService.TakeExtraDash(player)
+	local i = info(player)
+	if i.extraDashCredit and os.clock() - i.extraDashCredit <= 1 then
+		i.extraDashCredit = nil
+		return true
+	end
+	return false
+end
+
 function ResonanceService.Start()
 	local spendRemote = Instance.new("RemoteEvent")
 	spendRemote.Name = "GastarResonancia"
@@ -122,6 +132,7 @@ function ResonanceService.Start()
 				return
 			end
 			i.lastExtraDash = now
+			i.extraDashCredit = now -- DefenseService lo cobra con el aviso de ese Paso (llega justo después)
 		end
 	end)
 

@@ -39,6 +39,7 @@ local COOLDOWN_SLACK = 0.05 -- s de margen al comparar horas de pedidos (las hor
 -- así nunca se rechaza una habilidad bien pedida justo en el límite.
 local AIR_FEET = 1 -- desde aquí se acepta una variante aérea
 local GROUND_FEET = 3 -- hasta aquí se acepta una variante de suelo
+local WHIFF_FEET = 0.4 -- hasta aquí cuenta "en el suelo" para el castigo al fallar (ante la duda, en el aire)
 local records = {} -- [player] = { cooldowns = { [tecla] = hora }, descent, lastHits = { [modelo] = { name, t } } }
 local effectRemote = nil
 
@@ -323,7 +324,16 @@ local function begin(player, skillName, t, position, look)
 		refuse(player, "posición no confirmada")
 		return nil
 	end
-	return origin, feetHeight(character, origin.Position), release
+	local feet = feetHeight(character, origin.Position)
+	-- Castigo al fallar, con la verdad del servidor: en el suelo, una habilidad no corta la recuperación de un
+	-- golpe que el servidor NO aceptó (aunque en la pantalla pareciera conectar). En el aire no se exige, igual
+	-- que en el cliente: esperar arruinaría los combos aéreos.
+	if feet <= WHIFF_FEET and DamageService.WhiffRecoveryAt(player, t) then
+		release()
+		refuse(player, "golpe fallado")
+		return nil
+	end
+	return origin, feet, release
 end
 
 -- ---------- Herramientas comunes de los kits ----------
@@ -420,6 +430,8 @@ local function projectile(player, opts)
 end
 
 -- Quiénes están a lo largo de un tramo (embestidas): a menos de width/2 de la línea, en el instante t
+-- El camino ya se corta antes de una pared (dashEnd); además, el barrido LATERAL no alcanza a quien está al otro
+-- lado de una pared paralela al camino: línea libre desde el punto del camino más cercano a él
 local function pathTargets(player, from, to, width, t)
 	local segment = flat(to - from)
 	local lengthSq = segment:Dot(segment)
@@ -428,7 +440,11 @@ local function pathTargets(player, from, to, width, t)
 		local ap = flat(p - from)
 		local alpha = if lengthSq > 1e-4 then math.clamp(ap:Dot(segment) / lengthSq, 0, 1) else 0
 		local height = from.Y + (to.Y - from.Y) * alpha
-		return (ap - segment * alpha).Magnitude <= width / 2 + Hurtbox.Size.X / 2 and math.abs(p.Y - height) <= 6
+		if (ap - segment * alpha).Magnitude > width / 2 + Hurtbox.Size.X / 2 or math.abs(p.Y - height) > 6 then
+			return false
+		end
+		local nearest = from + segment * alpha + Vector3.new(0, (to.Y - from.Y) * alpha + 1, 0)
+		return not (wallBetween and wallBetween(player.Character, nearest, p - nearest))
 	end, t)
 end
 
@@ -818,7 +834,9 @@ local function descenso(player, t, position, look)
 		local distance = root and (root.Position - origin.Position).Magnitude or math.huge
 		local recent = lastHits[model] ~= nil and os.clock() - lastHits[model].t <= 1.5
 		local airborne = root ~= nil and heightAboveGround(model, root.Position) > 4
-		if root and ((distance <= spec.spikeRadius and DamageService.IsJuggled(model)) or (recent and airborne and distance <= spec.spikeRadius * 1.6)) then
+		local near = root ~= nil and ((distance <= spec.spikeRadius and DamageService.IsJuggled(model)) or (recent and airborne and distance <= spec.spikeRadius * 1.6))
+		-- (sin arrastrar a nadie a través de una pared)
+		if near and not wallBetween(player.Character, origin.Position, root.Position - origin.Position) then
 			local floor = floorBelow(model, root.Position)
 			if floor then
 				DamageService.Release(root)
@@ -912,7 +930,12 @@ local function tempestad(player, t, position, look, aim)
 		end
 		local offset = root.Position - center
 		if flat(offset).Magnitude <= spec.radius + Hurtbox.Size.X / 2 and offset.Y > -6 and offset.Y < spec.holdHeight + 10 then
-			return root
+			-- El viento no atraviesa paredes: desde el pie del tornado o desde lo alto del embudo
+			local base = center + Vector3.new(0, 1.5, 0)
+			local top = center + Vector3.new(0, spec.holdHeight, 0)
+			if not wallBetween(player.Character, base, root.Position - base) or not wallBetween(player.Character, top, root.Position - top) then
+				return root
+			end
 		end
 		return nil
 	end

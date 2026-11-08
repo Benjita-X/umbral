@@ -44,6 +44,7 @@ local FORCE = 4e5 -- suficiente para el empuje; con 1e7 los golpes metían al ob
 local validation = CombatConfig.Validation
 local records = {} -- [player] = { lastSeq, lastSeqTime, seqTargets = { [seq] = { [model] = true } }, recent = { tiempos }, starts = { [seq] = inicio }, lastStart }
 local confirmedRemote
+local rejectedRemote -- "GolpeRechazado": solo a quien golpeó, { seq, target, reason }
 local modifier = nil -- función(player, target, attackName, bodies) → multiplicador, nota, conservarOrientación
 
 -- Reglas de daño propias de un enemigo (p. ej. la coraza frontal del Centinela): las registra SparringService
@@ -55,9 +56,14 @@ local function flat(v)
 	return Vector3.new(v.X, 0, v.Z)
 end
 
-local function reject(player, reason)
+-- `seq` y `target` (si se conocen): el cliente sabe QUÉ golpe no contó (su ✕ va sobre ese objetivo y, si era el
+-- único contacto del ataque, ese ataque pasa a ser un golpe fallado también en su pantalla)
+local function reject(player, reason, seq, target)
 	player:SetAttribute("GolpesRechazados", (player:GetAttribute("GolpesRechazados") or 0) + 1)
 	player:SetAttribute("UltimoRechazo", reason)
+	if rejectedRemote and type(seq) == "number" then
+		rejectedRemote:FireClient(player, { seq = seq, target = if typeof(target) == "Instance" then target else nil, reason = reason })
+	end
 	if RunService:IsStudio() then
 		warn(string.format("[UMBRAL] Golpe rechazado de %s: %s", player.Name, reason))
 	end
@@ -66,7 +72,7 @@ end
 local function recordFor(player)
 	local record = records[player]
 	if not record then
-		record = { lastSeq = -1, lastSeqTime = -math.huge, seqTargets = {}, recent = {}, starts = {}, lastStart = nil, startTimes = {} }
+		record = { lastSeq = -1, lastSeqTime = -math.huge, seqTargets = {}, recent = {}, starts = {}, lastStart = nil, startTimes = {}, pending = {}, claimed = {} }
 		records[player] = record
 	end
 	return record
@@ -416,17 +422,24 @@ plungeParams.RespectCanCollide = true
 local function specialAllowed(player, def, t)
 	if def.special == "dash" then
 		local window = CombatConfig.Weapons.DashWindow
-		-- Un Paso reciente, o llegar con el gancho (WeaponService registra la hora del gancho)
-		local hook = player:GetAttribute("GanchoHora")
-		local hooked = type(hook) == "number" and t >= hook - 0.05 and t - hook <= window + 1.2
-		if hooked then
+		-- Un Paso reciente, o LLEGAR con el gancho a un enemigo: un gancho que el servidor aceptó (enganche real, a
+		-- alcance y a la vista; WeaponService) y, al empezar el golpe, estar junto a ESE enemigo. No vale "se movió
+		-- mucho": un empujón o un sprint no son un gancho, y una llegada corta junto a una pared sí lo es.
+		local grapple = CombatConfig.Weapons.Grapple
+		local hooked = false
+		local hook = DefenseService.FindGrapple(player, t - (grapple.EnemyRange + 6) / grapple.Speed - 0.35 - window - 0.3, t + 0.05)
+		if hook and hook.enemy and hook.target.Parent then
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
-			local atHook = character and PositionService.ObservedAt(character, hook)
-			hooked = root ~= nil and atHook ~= nil and (root.Position - atHook.Position).Magnitude >= 4
+			local enemyRoot = hook.target:FindFirstChild("HumanoidRootPart")
+			local reported = PositionService.ReportedAt(player, t)
+			local me = if reported and root and (reported - root.Position).Magnitude <= 16 then reported elseif root then root.Position else nil
+			local seen = enemyRoot and PositionService.ObservedAt(hook.target, t - PositionService.OneWay(player))
+			local them = if seen then seen.Position elseif enemyRoot then enemyRoot.Position else nil
+			hooked = me ~= nil and them ~= nil and flat(them - me).Magnitude <= grapple.ArriveDistance
 		end
 		if not hooked and not DefenseService.FindPaso(player, t - window - 0.12, t + 0.05) then
-			return false, "golpe tras el Paso sin Paso"
+			return false, if hook and hook.enemy then "golpe tras el gancho sin llegar al enemigo" else "golpe tras el Paso sin Paso"
 		end
 	elseif def.special == "plunge" then
 		local character = player.Character
@@ -605,12 +618,12 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 	local record = recordFor(player)
 	local now = os.clock()
 	if seq < record.lastSeq - 8 then
-		return reject(player, "secuencia vieja")
+		return reject(player, "secuencia vieja", seq, target)
 	end
 	if seq > record.lastSeq then
 		local previousHit = record.lastSeqHitTime
 		if previousHit and hitTime - previousHit < validation.MinSequenceInterval - validation.StartTimeSlack then
-			return reject(player, "golpes demasiado seguidos")
+			return reject(player, "golpes demasiado seguidos", seq, target)
 		end
 		record.lastSeq = seq
 		record.lastSeqTime = now
@@ -623,14 +636,14 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		record.seqTargets[seq - 10] = nil -- limpiar secuencias viejas
 	end
 	if targets[target] then
-		return reject(player, "golpe repetido")
+		return reject(player, "golpe repetido", seq, target)
 	end
 	local recent = record.recent
 	while recent[1] and now - recent[1] > 1 do
 		table.remove(recent, 1)
 	end
 	if #recent >= validation.MaxHitsPerSecond then
-		return reject(player, "demasiados golpes por segundo")
+		return reject(player, "demasiados golpes por segundo", seq, target)
 	end
 	targets[target] = true
 	if record.starts[seq] then
@@ -685,6 +698,7 @@ local function applyHit(player, attackName, def, seq, target, charge, b, geometr
 		attacker = player,
 		target = target,
 		attack = attackName,
+		seq = seq,
 		damage = damage,
 		position = b.targetRoot.Position + Vector3.new(0, 1, 0),
 		health = b.targetHumanoid.Health,
@@ -789,6 +803,76 @@ function DamageService.ApplyExternalHit(player, target, spec)
 	return damage
 end
 
+-- Juicio de un golpe (puede esperar a que la física observada confirme la posición): ventana activa, alcance y
+-- paredes. Cada rechazo lleva el seq y el objetivo.
+local function judgeHit(player, attackName, def, seq, target, charge, t)
+	local function refuse(reason)
+		return reject(player, reason, seq, target)
+	end
+	-- 4a. El golpe pertenece a un inicio aceptado del mismo ataque, y cae en su ventana activa
+	local start = startFor(player, seq)
+	if not start or start.name ~= attackName then
+		return refuse("golpe sin inicio válido")
+	end
+	local minStartup = def.startup * CombatConfig.Defense.CounterStartupMultiplier
+	local offset = t - start.t
+	local tooEarly = offset < minStartup - validation.StartTimeSlack and not start.clamped
+	if tooEarly or offset > def.startup + def.active + validation.HitWindowSlack then
+		return refuse(string.format("golpe fuera de su ventana activa (%.2f s tras el inicio)", offset))
+	end
+	charge = math.min(charge, start.maxCharge)
+	local attackerCFrame, whyNot = PositionService.ConfirmedAt(player, t)
+	-- Alrededor de un teletransporte autorizado por el servidor (reaparecer, pruebas, la Grieta) lo
+	-- informado puede mezclar el lugar viejo y el nuevo: se usa lo que el SERVIDOR observó en el
+	-- instante del golpe (su historial), no la posición de ahora
+	local teleportCandidates = nil
+	if not attackerCFrame and PositionService.Teleporting(player) and player.Character then
+		-- La replicación del salto llega unos cuadros tarde al historial: se prueban el instante del golpe,
+		-- unos cuadros después y la posición actual (solo dentro del segundo autorizado)
+		local root = player.Character:FindFirstChild("HumanoidRootPart")
+		teleportCandidates = {
+			PositionService.ObservedAt(player.Character, t),
+			PositionService.ObservedAt(player.Character, t + 0.1),
+			PositionService.ObservedAt(player.Character, t + 0.25),
+			root and root.CFrame,
+		}
+		attackerCFrame = teleportCandidates[1] or teleportCandidates[4]
+	end
+	if not attackerCFrame then
+		return refuse("posición no confirmada por la física observada (" .. tostring(whyNot) .. ")")
+	end
+	local current, problemNow = bodies(player, target)
+	if not current then
+		return refuse(problemNow)
+	end
+	-- El atacante veía al objetivo como estaba hace (latencia de ida + interpolación) aprox.
+	local targetCFrame = PositionService.ObservedAt(target, t - PositionService.OneWay(player)) or current.targetRoot.CFrame
+	if teleportCandidates then
+		for _, candidate in ipairs(teleportCandidates) do
+			if candidate and Hurtbox.AttackHits(candidate, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
+				attackerCFrame = candidate
+				break
+			end
+		end
+	end
+	if not Hurtbox.AttackHits(attackerCFrame, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
+		return refuse(string.format(
+			"fuera de alcance (%.1f studs) · %s seq %d contra %s · atacante en (%.0f, %.0f) · %.2f s tras el inicio",
+			flat(targetCFrame.Position - attackerCFrame.Position).Magnitude,
+			attackName,
+			seq,
+			target.Name,
+			attackerCFrame.Position.X,
+			attackerCFrame.Position.Z,
+			t - start.t
+		))
+	end
+	if solidBetween(player.Character, target, attackerCFrame.Position, targetCFrame.Position) then
+		return refuse("golpe a través de una pared")
+	end
+	applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame }, t)
+end
+
 local function handleHit(player, payload)
 	-- 1. Forma de la petición
 	if type(payload) ~= "table" then
@@ -802,8 +886,13 @@ local function handleHit(player, payload)
 	if type(seq) ~= "number" or seq ~= seq then
 		return reject(player, "secuencia inválida")
 	end
+	-- Este ataque tuvo contacto en la pantalla del jugador (aunque luego no cuente): su recuperación allí es la
+	-- normal, no la alargada por fallar (lo usa WhiffRecoveryAt)
+	local claims = recordFor(player).claimed
+	claims[seq] = true
+	claims[seq - 12] = nil
 	if typeof(target) ~= "Instance" or not target:IsA("Model") or not target:HasTag("Objetivo") or not target:IsDescendantOf(workspace) then
-		return reject(player, "objetivo inválido")
+		return reject(player, "objetivo inválido", seq)
 	end
 	charge = if type(charge) == "number" and charge == charge then math.clamp(charge, 0, 1) else 0
 
@@ -811,84 +900,86 @@ local function handleHit(player, payload)
 	-- enterarse del aturdimiento)
 	local b, problem = bodies(player, target)
 	if not b then
-		return reject(player, problem)
+		return reject(player, problem, seq, target)
 	end
 	if DefenseService.IsStunnedAt(player, payload.t) then
-		return reject(player, "aturdido")
+		return reject(player, "aturdido", seq, target)
 	end
 
 	-- 3. El instante del golpe: hora coherente con el ping y posición informada en ese instante
 	local t = payload.t
 	if not PositionService.ValidTime(player, t) then
-		return reject(player, "hora inválida")
+		return reject(player, "hora inválida", seq, target)
 	end
 	PositionService.Report(player, t, payload.pos, payload.look)
 
-	-- 4. Alcance en ese instante (espera acotada a que la física observada confirme la posición)
+	-- 4. Alcance en ese instante (espera acotada a que la física observada confirme la posición). Mientras se
+	-- juzga, el golpe queda PENDIENTE: una habilidad que corte la recuperación de este ataque espera el veredicto
+	local record = recordFor(player)
+	record.pending[seq] = (record.pending[seq] or 0) + 1
 	task.spawn(function()
-		-- 4a. El golpe pertenece a un inicio aceptado del mismo ataque, y cae en su ventana activa
-		local start = startFor(player, seq)
-		if not start or start.name ~= attackName then
-			return reject(player, "golpe sin inicio válido")
+		local ok, problem = pcall(judgeHit, player, attackName, def, seq, target, charge, t)
+		local left = (record.pending[seq] or 1) - 1
+		record.pending[seq] = if left > 0 then left else nil
+		if not ok then
+			reject(player, "error al juzgar el golpe", seq, target)
+			warn("[UMBRAL] " .. tostring(problem))
 		end
-		local minStartup = def.startup * CombatConfig.Defense.CounterStartupMultiplier
-		local offset = t - start.t
-		local tooEarly = offset < minStartup - validation.StartTimeSlack and not start.clamped
-		if tooEarly or offset > def.startup + def.active + validation.HitWindowSlack then
-			return reject(player, string.format("golpe fuera de su ventana activa (%.2f s tras el inicio)", offset))
-		end
-		charge = math.min(charge, start.maxCharge)
-		local attackerCFrame, whyNot = PositionService.ConfirmedAt(player, t)
-		-- Alrededor de un teletransporte autorizado por el servidor (reaparecer, pruebas, la Grieta) lo
-		-- informado puede mezclar el lugar viejo y el nuevo: se usa lo que el SERVIDOR observó en el
-		-- instante del golpe (su historial), no la posición de ahora
-		local teleportCandidates = nil
-		if not attackerCFrame and PositionService.Teleporting(player) and player.Character then
-			-- La replicación del salto llega unos cuadros tarde al historial: se prueban el instante del golpe,
-			-- unos cuadros después y la posición actual (solo dentro del segundo autorizado)
-			local root = player.Character:FindFirstChild("HumanoidRootPart")
-			teleportCandidates = {
-				PositionService.ObservedAt(player.Character, t),
-				PositionService.ObservedAt(player.Character, t + 0.1),
-				PositionService.ObservedAt(player.Character, t + 0.25),
-				root and root.CFrame,
-			}
-			attackerCFrame = teleportCandidates[1] or teleportCandidates[4]
-		end
-		if not attackerCFrame then
-			return reject(player, "posición no confirmada por la física observada (" .. tostring(whyNot) .. ")")
-		end
-		local current, problemNow = bodies(player, target)
-		if not current then
-			return reject(player, problemNow)
-		end
-		-- El atacante veía al objetivo como estaba hace (latencia de ida + interpolación) aprox.
-		local targetCFrame = PositionService.ObservedAt(target, t - PositionService.OneWay(player)) or current.targetRoot.CFrame
-		if teleportCandidates then
-			for _, candidate in ipairs(teleportCandidates) do
-				if candidate and Hurtbox.AttackHits(candidate, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
-					attackerCFrame = candidate
-					break
-				end
-			end
-		end
-		if not Hurtbox.AttackHits(attackerCFrame, def.range, def.hitboxSize, targetCFrame, validation.Tolerance) then
-			return reject(player, string.format(
-				"fuera de alcance (%.1f studs) · %s seq %d contra %s · atacante en (%.0f, %.0f) · %.2f s tras el inicio",
-				flat(targetCFrame.Position - attackerCFrame.Position).Magnitude,
-				attackName,
-				seq,
-				target.Name,
-				attackerCFrame.Position.X,
-				attackerCFrame.Position.Z,
-				t - start.t
-			))
-		end
-		if solidBetween(player.Character, target, attackerCFrame.Position, targetCFrame.Position) then
-			return reject(player, "golpe a través de una pared")
-		end
-		applyHit(player, attackName, def, seq, target, charge, current, { attacker = attackerCFrame, target = targetCFrame }, t)
 	end)
+end
+
+-- ---------- Castigo al fallar, del lado del servidor ----------
+-- Lo que vio la pantalla del jugador no basta: un golpe que el servidor rechazó es un golpe FALLADO, y su
+-- recuperación no se corta con una habilidad (auditoría externa). ¿En la hora `t` el jugador seguía en la
+-- recuperación de un ataque que no conectó? Ventana prudente, para no castigar nunca de más: desde el fin MÁS
+-- TARDÍO posible de la fase activa (el avance puede alargar la preparación) hasta el fin MÁS TEMPRANO de la
+-- recuperación que tuvo en su pantalla: la alargada por fallar si no hubo ningún contacto, la normal si lo hubo
+-- (aunque el servidor lo rechazara). Un Paso, un gancho o un aturdimiento en medio ya cortaron el ataque. Si
+-- quedan golpes de ese ataque por juzgar, espera su veredicto (acotado; casi siempre ya llegó). Devuelve true +
+-- segundos que faltan.
+local MAX_LUNGE_SPEED = 120 -- el mismo tope que usa el cliente para el avance de los golpes
+local PHASE_SLACK = 0.05
+-- Preparación más corta y más larga posibles en la pantalla del jugador. El Contraataque se toma en los dos
+-- sentidos: cliente y servidor pueden discrepar justo en el borde de su ventana, y la duda favorece al jugador.
+local function startupRange(def)
+	local function range(counter)
+		local fastest = if counter then def.startup * CombatConfig.Defense.CounterStartupMultiplier else def.startup
+		local reach = if counter then CombatConfig.Defense.CounterMaxLunge else math.max(CombatConfig.MaxLunge, CombatConfig.LungeWithoutTarget, def.lunge or 0)
+		return fastest, math.max(fastest, reach / MAX_LUNGE_SPEED - def.active * 0.5)
+	end
+	local fastest, slowest = range(false)
+	if not def.heavy then
+		local counterFastest, counterSlowest = range(true)
+		fastest, slowest = math.min(fastest, counterFastest), math.max(slowest, counterSlowest)
+	end
+	return fastest, slowest
+end
+
+function DamageService.WhiffRecoveryAt(player, t)
+	local record = records[player]
+	local start = record and record.lastStart
+	if not start or start.hit or start.clamped or type(t) ~= "number" or t ~= t then
+		return false
+	end
+	local def = start.def
+	local fastest, slowest = startupRange(def)
+	local recovery = if record.claimed[start.seq] then def.recovery else def.recovery * CombatConfig.WhiffRecoveryMultiplier
+	local from = start.t + slowest + def.active + PHASE_SLACK
+	local to = start.t + fastest + def.active + recovery - PHASE_SLACK
+	if t < from or t > to then
+		return false
+	end
+	if DefenseService.FindPaso(player, start.t, t) or DefenseService.FindGrapple(player, start.t, t) or DefenseService.StunnedSince(player, start.t) then
+		return false
+	end
+	local deadline = os.clock() + 0.5
+	while not start.hit and (record.pending[start.seq] or 0) > 0 and os.clock() < deadline do
+		RunService.Heartbeat:Wait()
+	end
+	if start.hit or record.lastStart ~= start then
+		return false
+	end
+	return true, to - t
 end
 
 function DamageService.Start()
@@ -900,6 +991,9 @@ function DamageService.Start()
 	confirmedRemote = Instance.new("RemoteEvent")
 	confirmedRemote.Name = "GolpeConfirmado"
 	confirmedRemote.Parent = remotes
+	rejectedRemote = Instance.new("RemoteEvent")
+	rejectedRemote.Name = "GolpeRechazado"
+	rejectedRemote.Parent = remotes
 	remotes.Parent = ReplicatedStorage
 
 	local startRemote = Instance.new("RemoteEvent")

@@ -141,6 +141,7 @@ return function(ctx)
 	local atAirHit = string.format("recast %s · muñeco subió %.1f · tú a %.1f del suelo · muñeco a %.1f de ti", tostring(recast), peakUp, ctx.root.Position.Y - y0, (r3.Position - ctx.root.Position).Magnitude)
 	local airBefore = h3.Health
 	Input.Trigger("Atacar")
+	local airAttack = ctx.Combat.State.attack and ctx.Combat.State.attack.name or "ninguno"
 	local airHit = damageAfter(h3, airBefore, 0.5) > 0
 	task.wait(0.15)
 	local inAir = not ctx.grounded()
@@ -151,16 +152,23 @@ return function(ctx)
 	end
 	local atPress = where()
 	local castDescent = false
+	local deniedReason = nil
 	local descentConnection = Eco.Used:Connect(function(name)
 		if name == "Descenso" then
 			castDescent = true
 		end
 	end)
+	local deniedConnection = Eco.Denied:Connect(function(slot, reason)
+		deniedReason = tostring(slot) .. ": " .. tostring(reason)
+	end)
+	local ecoInAir = Eco.InAir()
 	press("HabilidadC", "C", 0.5)
 	local descent = damageAfter(h3, descentBefore, 1.6) > 0
 	local atLanding = where()
 	descentConnection:Disconnect()
+	deniedConnection:Disconnect()
 	atLanding ..= " · Descenso lanzado " .. tostring(castDescent) .. " · relanzamiento abierto " .. tostring(Eco.State.recast.C ~= nil)
+		.. " · golpe aéreo con " .. airAttack .. " · en el aire para el Eco " .. tostring(ecoInAir) .. " · tecla negada " .. tostring(deniedReason)
 	local elapsed = os.clock() - t0
 	task.wait(0.3)
 	local total = hits()
